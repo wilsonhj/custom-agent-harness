@@ -99,8 +99,14 @@ export function canTransition(
     return { ok: false, reason: `transition ${from} -> ${to} is not allowed` };
   }
 
+  // Entering Blocked needs no approval, so stopping work is always possible.
+  if (to === "Blocked") {
+    return { ok: true };
+  }
+
   // TODO(human): decide which transitions require a human approver vs. a policy actor,
   // and reject when approval.actor/target don't match. (~5-10 lines)
 
-  return { ok: true };
+  // Until that policy exists, every other transition is denied (fail closed).
+  return { ok: false, reason: "approval policy not implemented" };
 }
