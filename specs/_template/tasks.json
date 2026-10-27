@@ -1,0 +1,26 @@
+[
+  {
+    "id": "T1",
+    "title": "<Expand migration: add nullable column>",
+    "owner_role": "implementer",
+    "worktree": "<worktree-path-or-name>",
+    "status": "Planned",
+    "depends_on": []
+  },
+  {
+    "id": "T2",
+    "title": "<Read and write the new column behind a flag>",
+    "owner_role": "implementer",
+    "worktree": "<worktree-path-or-name>",
+    "status": "Planned",
+    "depends_on": ["T1"]
+  },
+  {
+    "id": "T3",
+    "title": "<Independent review of T1-T2 diff>",
+    "owner_role": "reviewer",
+    "worktree": "<worktree-path-or-name>",
+    "status": "Planned",
+    "depends_on": ["T2"]
+  }
+]
