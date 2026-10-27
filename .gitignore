@@ -1,0 +1,10 @@
+# Local artifacts (job outputs, request files, evidence). Rename to match
+# artifacts.directory in config/harness.local.yaml.
+/.artifacts/
+
+# Local configuration and secrets
+*.local.yaml
+.env*
+!.env.example
+
+node_modules/
