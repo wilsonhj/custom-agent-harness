@@ -1,0 +1,50 @@
+[
+  {
+    "id": "T1",
+    "title": "Add harness/policy/transitions.test.ts: documented check, forged-approval denial, exhaustive pair sweep, resume cases, PreviewVerified -> MigrationGated, unknown states, 46-edge snapshot. Run against current code first and record which assertions fail",
+    "owner_role": "implementer",
+    "worktree": "wt-approval-binding",
+    "status": "todo",
+    "depends_on": []
+  },
+  {
+    "id": "T2",
+    "title": "Reject a supplied ApprovalRecord whose from_state/to_state differ from the call on the Blocked-entry path; return ok:false for unknown from/to instead of throwing",
+    "owner_role": "implementer",
+    "worktree": "wt-approval-binding",
+    "status": "todo",
+    "depends_on": ["T1"]
+  },
+  {
+    "id": "T3",
+    "title": "Replace the free blockedFrom argument with a verified ledger record (branded type, per the answered open question); resume stays 'approval policy not implemented'",
+    "owner_role": "implementer",
+    "worktree": "wt-approval-binding",
+    "status": "todo",
+    "depends_on": ["T2"]
+  },
+  {
+    "id": "T4",
+    "title": "Replace the '~5-10 lines' TODO with the release-gate constraints and fix the stale comments in transitions.ts",
+    "owner_role": "implementer",
+    "worktree": "wt-approval-binding",
+    "status": "todo",
+    "depends_on": ["T3"]
+  },
+  {
+    "id": "T5",
+    "title": "Document the test command in README 'Testing' and in release-gate.md's open question about where per-transition rules are decided",
+    "owner_role": "implementer",
+    "worktree": "wt-approval-binding",
+    "status": "todo",
+    "depends_on": ["T4"]
+  },
+  {
+    "id": "T6",
+    "title": "Independent review of the T1-T5 diff (/codex:adversarial-review); record findings and resolutions in handoff.md",
+    "owner_role": "reviewer",
+    "worktree": "wt-approval-binding",
+    "status": "todo",
+    "depends_on": ["T5"]
+  }
+]

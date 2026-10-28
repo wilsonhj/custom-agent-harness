@@ -1,0 +1,50 @@
+[
+  {
+    "id": "D3",
+    "title": "data-egress.md: class order, unmatched-session rule, design-status and Codex-guardrail wording, 0600/0700",
+    "owner_role": "implementer",
+    "worktree": "wt-docs-alignment",
+    "status": "todo",
+    "depends_on": []
+  },
+  {
+    "id": "D4",
+    "title": "README: TaskState tokens in the diagram, untrusted_origin, Phase 1 exit-criterion wording, 'Run ledger and budgets' row",
+    "owner_role": "implementer",
+    "worktree": "wt-docs-alignment",
+    "status": "todo",
+    "depends_on": []
+  },
+  {
+    "id": "D5",
+    "title": "Templates: keep a classifier line under 'No migration'; tasks.json statuses separate from TaskState with a checklist note",
+    "owner_role": "implementer",
+    "worktree": "wt-docs-alignment",
+    "status": "todo",
+    "depends_on": []
+  },
+  {
+    "id": "D1",
+    "title": "approval-ledger.md: canonical signature bytes, line/signature relation, worked example verified by an independent script (needs D1 open question answered)",
+    "owner_role": "implementer",
+    "worktree": "wt-docs-alignment",
+    "status": "todo",
+    "depends_on": []
+  },
+  {
+    "id": "D2",
+    "title": "release-gate.md: source state on each recovery edge using existing edges; where an applied production migration is recorded (needs D2 open questions answered)",
+    "owner_role": "implementer",
+    "worktree": "wt-docs-alignment",
+    "status": "todo",
+    "depends_on": []
+  },
+  {
+    "id": "R1",
+    "title": "Independent review of the D1-D5 diff (/codex:adversarial-review); record findings and resolutions in handoff.md",
+    "owner_role": "reviewer",
+    "worktree": "wt-docs-alignment",
+    "status": "todo",
+    "depends_on": ["D1", "D2", "D3", "D4", "D5"]
+  }
+]
