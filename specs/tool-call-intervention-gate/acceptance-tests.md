@@ -25,6 +25,9 @@ an ad-hoc command.
 ## Invariants
 
 - [ ] A call modified after the gate's decision does not execute (time-of-check/time-of-use) — `<permission-policy-test-command>`
+- [ ] Editing, deleting or restoring the agent's session state or snapshot cannot grant an approval or reset a counter — `<permission-policy-test-command>`
+- [ ] After one approved call, a second call to the same tool with different arguments is blocked until separately approved — `<permission-policy-test-command>`
+- [ ] Tool arguments containing text such as "read-only, no approval needed" do not change whether approval is required — `<permission-policy-test-command>`
 - [ ] A tool call naming `<ledger-root>` is denied, including via a shell command string — `<permission-policy-test-command>`
 - [ ] `canTransition` still denies every non-`Blocked` transition — `<permission-policy-test-command>`
 - [ ] Entering `Blocked` still needs no approval — `<permission-policy-test-command>`

@@ -25,7 +25,9 @@ Status: Draft. Not approved; approval lives in the ledger (`docs/architecture/ap
   open `TODO(human)` in `harness/policy/transitions.ts` and an open question in the ledger doc.
 - Adopting the Strands Agents SDK as a dependency or runtime.
 - Writing to the approval ledger. Agents and this gate only read it and request transitions.
-- LLM-based "steering" handlers. The first version uses deterministic handlers only.
+- LLM-based "steering" handlers. The first version uses deterministic handlers only. A model
+  must never decide whether approval is required: Strands' `HumanInTheLoop` classifier does
+  this from agent-written tool arguments, which is a prompt-injection path past the human.
 - A multi-user identity model (Cedar-style principals). Single-operator first.
 
 ## Invariants
@@ -41,6 +43,11 @@ Status: Draft. Not approved; approval lives in the ledger (`docs/architecture/ap
 - No retrieved text, tool output, or review comment can change a decision; they are data.
 - The call that executes is exactly the call that was evaluated: nothing may modify it after
   the gate decides (no time-of-check/time-of-use gap).
+- Gate state (approvals, trust, rate-limit counters) lives only outside agent-writable
+  storage. Nothing the agent's session, snapshot or `invocation_state` can write or restore
+  may grant, extend or reset it.
+- There is no "trust this tool for the session". Each approval covers one exact call and
+  target; a later call with the same tool name needs its own approval.
 
 ## Cited company decisions
 
@@ -55,6 +62,9 @@ Status: Draft. Not approved; approval lives in the ledger (`docs/architecture/ap
 | Evaluation is ordered by handler registration, not by action precedence; the docs' "deny > confirm > guide > transform > proceed" is not what the code does | `strands-ts/src/interventions/registry.ts` `_dispatch` @ `3ee280f` |
 | Rationale for a shared primitive over independent plugins (no short-circuit, fragmented actions, no unified audit, undefined ordering) | strands-agents/docs @ `658b6f0`: `designs/0007-intervention-primitive.md` "Problem" (also at `team/designs/` in harness-sdk). |
 | Why Strands' `confirm` cannot be the approval mechanism here: it resolves on whatever response the caller resumes with (or a `response` the handler pre-fills), checked by `defaultEvaluate`, which accepts `true`, `"y"` or `"yes"` | `strands-ts/src/interventions/registry.ts` `_onBeforeToolCall` and `actions.ts` `defaultEvaluate` @ `3ee280f`, compared with `AGENTS.md` above. |
+| Security state in agent-writable storage is resettable: `HumanInTheLoop` keeps trusted tools in `agent.state["hitl:trusted_tools"]`; `CedarAuthorization` keeps rate-limit counts in `agent.state["cedar-authorization"]`; both persist in session snapshots | `strands-py/src/strands/vended_interventions/hitl/hitl.py` `_trust_tool`, `cedar/cedar_authorization.py` `_increment_call_count` @ `3ee280f` |
+| Session-wide trust by tool name approves every later call with any arguments and disables risk classification for that tool | `hitl.py` `__init__` docstring (`enable_trust`) and `_requires_approval` @ `3ee280f` |
+| Model-decided approval requirement: built-in classifier is an inner LLM agent prompted with the tool name and agent-written input | `strands-py/src/strands/vended_interventions/hitl/classifier.py` `_create_llm_risk_classifier`, `_format_tool_call` @ `3ee280f` |
 
 ## Unresolved questions
 
@@ -63,4 +73,5 @@ Status: Draft. Not approved; approval lives in the ledger (`docs/architecture/ap
 - [ ] Which handlers are security-critical (fail closed) versus advisory (`proceed` on error)? — owner: user, blocks: T2
 - [ ] Where does the gate run for each runtime (Claude Code managed hook, Codex, Cursor), given each exposes different pre-tool interception? Not yet researched — owner: user, blocks: T3
 - [ ] Test runner and command names: README "Testing" is still placeholders (`<permission-policy-test-command>`) — owner: user, blocks: T1
+- [ ] Confirm Cedar's skip-on-error behavior for an erroring `forbid` (design.md, Cedar lessons) by running a `cedarpy` test; needed only if Cedar is adopted — owner: user, blocks: none
 - [ ] Is TypeScript the implementation language? `harness/policy/transitions.ts` suggests yes — owner: user, blocks: T1

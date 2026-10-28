@@ -76,8 +76,26 @@ Where this deliberately differs from Strands (all @ `3ee280f`):
 If an agent built on Strands is ever run under this harness, the same rules map onto an
 `InterventionHandler` with `onError = 'deny'`, `confirm(prompt, { response: <ledger lookup>,
 evaluate: <verify ledger record> })`, and no hooks registered above `INTERVENTION_INPUT`.
-That mapping is untested. Strands also ships `vended_interventions/cedar` and `/hitl` in
-Python; they have not been reviewed for this packet.
+That mapping is untested. Do not use Strands' vended `HumanInTheLoop` for it: its approval
+is the caller's `"y"`, its trust is per tool name for the session and stored in
+`agent.state`, and its optional classifier lets a model waive approval.
+
+If Cedar is later adopted as the policy actor's engine (open; see non-goals), lessons from
+`strands-py/src/strands/vended_interventions/cedar/cedar_authorization.py` @ `3ee280f`:
+
+- Build requests from structured entity values, not strings. Strands interpolates
+  `f'{type}::"{id}"'` and rejects only `"`; backslashes and the unquoted `type` are unchecked.
+- Treat `allowed` together with any `diagnostics.errors` as `deny`. Strands returns `Proceed`
+  whenever `allowed` is true. Under Cedar's skip-on-error evaluation, a `forbid` policy whose
+  condition errors (for example, a misspelt context attribute) is dropped and a `permit` can
+  still allow. Strands' auto-generated-schema validation suppresses exactly those
+  attribute errors. *Unverified:* the confirming test was not run (installing `cedarpy` was
+  blocked in the review session).
+- Always validate policies against a hand-written schema; never suppress validation errors.
+- Keep rate-limit counters outside the agent (see invariants) and update them atomically.
+- Every user callback (principal resolution, context enrichment) fails closed, not `throw`.
+- Take the principal from the authenticated runtime, never from caller-supplied
+  `invocation_state`.
 
 Initial handlers (deterministic only):
 
