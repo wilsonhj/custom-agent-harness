@@ -1,0 +1,74 @@
+[
+  {
+    "id": "T1",
+    "title": "Pin and verify: install candidates in a clean environment, record versions, resolve claims C1-C3, C5, C10, write the version manifest",
+    "owner_role": "implementer",
+    "worktree": "<unassigned>",
+    "status": "Draft",
+    "depends_on": []
+  },
+  {
+    "id": "T2",
+    "title": "Local slice: typed entrypoint, one read-only tool, in-memory two-tenant backend, stubbed model; define <local-test-command>",
+    "owner_role": "implementer",
+    "worktree": "<unassigned>",
+    "status": "Draft",
+    "depends_on": ["T1"]
+  },
+  {
+    "id": "T3",
+    "title": "Negative authorization and input-validation tests, including the injection case; define their commands",
+    "owner_role": "implementer",
+    "worktree": "<unassigned>",
+    "status": "Draft",
+    "depends_on": ["T2"]
+  },
+  {
+    "id": "T4",
+    "title": "Evaluation case set and runner (task completion, tool selection, unauthorized actions); define <eval-command>",
+    "owner_role": "implementer",
+    "worktree": "<unassigned>",
+    "status": "Draft",
+    "depends_on": ["T3"]
+  },
+  {
+    "id": "T5",
+    "title": "Bedrock path: pinned model ID and API mode, synthetic prompts only; resolve C8 (tool use with and without streaming)",
+    "owner_role": "implementer",
+    "worktree": "<unassigned>",
+    "status": "Draft",
+    "depends_on": ["T4"]
+  },
+  {
+    "id": "T6",
+    "title": "Generate (do not deploy) the AgentCore project; review synthesized CDK and IAM; replace wildcards; separate deployment and runtime roles; resolve C6, C7",
+    "owner_role": "implementer",
+    "worktree": "<unassigned>",
+    "status": "Draft",
+    "depends_on": ["T5"]
+  },
+  {
+    "id": "T7",
+    "title": "Independent review of the T1-T6 diff and of the plan (Codex review and adversarial review); record findings and resolutions in handoff.md",
+    "owner_role": "reviewer",
+    "worktree": "<unassigned>",
+    "status": "Draft",
+    "depends_on": ["T6"]
+  },
+  {
+    "id": "T8",
+    "title": "Present resource diff and cost plan for human approval; after approval and a ledger record for this commit and target, deploy to one sandbox AgentCore Runtime and run the preview smoke test",
+    "owner_role": "implementer",
+    "worktree": "<unassigned>",
+    "status": "Draft",
+    "depends_on": ["T7"]
+  },
+  {
+    "id": "T9",
+    "title": "Teardown, tag-based resource inventory, record residual telemetry and retention, finalize decision record and manifest",
+    "owner_role": "implementer",
+    "worktree": "<unassigned>",
+    "status": "Draft",
+    "depends_on": ["T8"]
+  }
+]
