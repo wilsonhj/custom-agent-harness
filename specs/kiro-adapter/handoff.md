@@ -1,15 +1,18 @@
-# Handoff: kiro-adapter / packet drafting
+# Handoff: kiro-adapter / packet revision after review and research
 
 | Field | Value |
 |---|---|
-| Base SHA | 0b9d58f7dfb1bf8a05b8726921628b56e8d63261 |
-| Head SHA | the commit that adds this file (`git log -1 -- specs/kiro-adapter/handoff.md`) |
+| Base SHA | feaf95f (packet draft; repo base 0b9d58f) |
+| Head SHA | the commit containing this file (`git log -1 -- specs/kiro-adapter/handoff.md`) |
 | Author (runtime / session ID) | Claude Code / session_01AaDiMJVSVxQVfoGPARPgBn |
 | Date | 2026-10-28 |
 
 ## Changed files
 
-- `specs/kiro-adapter/*` — new feature packet from `specs/_template/`; requirements K-1..K-13.
+- `specs/kiro-adapter/requirements.md` — K-14..K-21 added, K-1..K-13 tightened, Kiro claims graded (M)/(S)/UNVERIFIED with sources, questions re-pointed.
+- `specs/kiro-adapter/acceptance-tests.md` — one test per requirement; Migration/Preview sections removed.
+- `specs/kiro-adapter/design.md` — migration justification and rollout/rollback corrected.
+- `specs/kiro-adapter/tasks.json` — T1..T7: research, plan review, human decisions, prerequisite adapter/worktree work, adapter, tests, code review.
 
 ## Implemented requirements
 
@@ -19,32 +22,70 @@
 
 | Command | Result | Evidence |
 |---|---|---|
-| (none) | not run | No test commands exist yet; see acceptance-tests.md |
+| (none) | not run | `tests/kiro/*` do not exist yet (T5) |
+
+## Review: Claude subagent adversarial review (NOT Codex)
+
+`/codex:adversarial-review` is not installed in this session and no `codex` CLI is present,
+so no Codex review has run (CLAUDE.md requires Codex findings be recorded here; still owed).
+A fresh Claude subagent reviewed the first draft read-only. It is not an independent
+cross-vendor review. Findings and resolutions:
+
+| # | Sev | Finding | Resolution |
+|---|---|---|---|
+| 1 | High | No egress-class gate at task start; "any-provider" only a ceiling | Added K-14 + `egress-gate` test |
+| 2 | High | Hook coverage tied to agent selection; worktree `.kiro/` untrusted | K-5, K-8 extended; `canary-agents`, `config-precedence` tests |
+| 3 | High | No credential/secret handling, forbidden flags, redaction | Added K-15, K-18; `env-scrub`, `flags` tests |
+| 4 | High | Kiro never established as approved provider | Added K-17 and open question; blocks T3/T4 |
+| 5 | Med | K-9, K-12, K-13 untested; "procedure: TBD"; weak canary | Test added per requirement; canary variants listed. Commands are still named placeholders (`tests/kiro/*`) |
+| 6 | Med | Subagent/MCP/context bypasses | K-7, K-9 extended; added K-19; tests added |
+| 7 | Med | Prompt injection / forged output; instruction discovery | K-11 tightened; added K-20; invariant added |
+| 8 | Med | Ledger/evidence integrity | K-3, K-16 and `request-only`, `evidence-store` tests |
+| 9 | Med | Worktree race; adapter contract gaps | K-2 atomic lock; K-1, K-13 cover base SHA, deadline, process tree, session ID; T6 added |
+| 10 | Med | Circular blockers; no managed-config/human task; review only at end | Blockers re-pointed; T2 plan review, T3 human decisions added |
+| 11 | Med | "refused" vs "treated as any-provider" ambiguity | Added K-21 as a proposal; needs human confirmation |
+| 12 | Med | Rollout misuses ledger | design.md rewritten |
+| Low | | "No migration" claim, citations, UNVERIFIED labelling, template misuse | Citations now name sections and repo commit; labels graded; N/A template sections removed. Not done: the `Planned` transition request is not recorded |
+
+## Research findings folded in (T1, partial)
+
+kiro.dev was not readable. Findings come from public GitHub (KiroCrew offline mirror of the
+kiro-cli docs, kiro-action, issue trackers) and search snippets; a research agent summarised
+them, so details need re-checking on kiro.dev. Most consequential for the design:
+
+- Upstream hooks appear fail-open on crash/timeout (S); subagent hook triggers are isolated (M).
+  Governance needs a wrapper hook that always exits 2 on error, and a test that hooks fire in subagents.
+- `managed-settings.json` is limited to deny/ask rules, sign-in methods, MCP registry and
+  models, and Kiro says controls are bypassable with local admin (S). Pinning agents/hooks
+  is not shown to be possible, which affects K-4.
+- stdio MCP servers run outside the sandbox with full privileges (M); the sandbox covers
+  shell, not built-in file tools (S).
+- No documented exit codes or JSON output schema for `--no-interactive` (M); K-11 must parse
+  defensively.
+- Only the latest build is distributed, auto-update must be disabled to hold a version (M).
+- Retention: up to 60 days for abuse detection regardless of opt-out; individual-tier content
+  may be used for service improvement unless opted out (S). Kiro lists IDE and CLI as HIPAA
+  eligible (S) but no Kiro BAA process was found. Kiro CLI is closed source (M).
 
 ## Known limitations
 
-- Kiro-side facts are from web-search snippets only. Fetching https://kiro.dev/docs/cli/
-  failed (`getaddrinfo ENOTFOUND`, then proxy 403 on CONNECT): kiro.dev is not in the
-  session's allowed network domains. Every Kiro claim is marked UNVERIFIED.
-- Snippets disagreed on agent file format (JSON vs Markdown) and carried differing
-  "updated" dates (Nov 2025 to Aug 2026).
-- `/codex:review` has not been run on this packet.
+- No kiro.dev page was read directly. Network policy blocks the host; allow it and re-run T1.
+- The research summaries are by a subagent over fetched pages, not verbatim reads by me.
+- Pricing figures are third-party and omitted from requirements decisions.
 
 ## Unresolved decisions
 
-- Who owns the open questions in requirements.md — owner: user
-- Whether Kiro is ever used for `baa-covered-providers` work — owner: user
+- Provider approval (K-17), K-21 rule, any BAA use of Kiro, managed-config/MDM install — owner: TBD (human), in T3.
 
 ## Assumptions made
 
-- Packet ID `kiro-adapter` supplied by the user; scope limited to the Kiro CLI surface.
-- Task owner roles and worktree name `kiro-adapter` in tasks.json are placeholders.
-- A runtime with no verified managed configuration is treated as `any-provider`
-  (follows data-egress.md "A session whose runtime, account and settings do not match
-  an entry is treated as any-provider").
+- Packet ID `kiro-adapter` given by the user; scope is the Kiro CLI surface only.
+- `owner_role: human` for T3 and worktree name `kiro-adapter` in tasks.json are placeholders.
+- A runtime with no verified managed configuration is capped at `any-provider` and only under K-17.
+- T6 (adapter interface and worktree manager) may need its own packet.
 
 ## Exact next action
 
-Allow kiro.dev in the environment's network settings, then run T1: read
-https://kiro.dev/docs/cli/ and update requirements.md. Afterwards run
-`/codex:adversarial-review` on the packet and record findings here.
+Allow `kiro.dev` in the environment's Network access settings, then re-verify the (M)/(S)
+items on kiro.dev; after that a human runs `/codex:adversarial-review` with the codex plugin
+on this packet and records the findings here.

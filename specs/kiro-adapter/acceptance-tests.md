@@ -3,27 +3,32 @@
 Each item names the command or procedure that proves it and the requirement it covers.
 Check an item only when the result is recorded in `handoff.md`.
 
-Test commands do not exist yet (no adapter, no test harness). Replace the procedures
-below with runnable commands as T2-T4 land; do not report them as passing before then.
+No adapter, test harness or `kiro-cli` exists in this repository yet, so the commands
+below are named placeholders in the form `tests/kiro/<name>` to be created by T5. They do
+not exist and nothing here has been run. Do not report any item as passing before then.
 
 ## Behavior
 
-- [ ] Kiro run in a task worktree records exit status and output — procedure: adapter compatibility test (TBD) — covers: K-1, K-11
-- [ ] Second writer on the same worktree is refused — procedure: TBD — covers: K-2
-- [ ] Harness-supplied agent runs despite a same-named global agent — procedure: TBD — covers: K-8
-- [ ] Subagent from a restricted agent cannot use a tool the parent lacks — procedure: TBD — covers: K-7
+- [ ] Run is non-interactive, executes in the task worktree at the given base SHA, and records exit status and output — `tests/kiro/run-basic` — covers: K-1
+- [ ] Two concurrent launches on one worktree: exactly one starts; lock is released after exit, crash and cancel — `tests/kiro/worktree-lock` — covers: K-2
+- [ ] Output that is unparseable, fails the schema, or claims "approved" does not advance task state — `tests/kiro/output-validation` — covers: K-11
+- [ ] Output is stored by the adapter with a verifiable sha256; the Kiro process cannot write the evidence store — `tests/kiro/evidence-store` — covers: K-11, K-16
+- [ ] Deadline and cancel kill the whole process tree, including MCP/subagent children — `tests/kiro/cancel` — covers: K-13
+- [ ] Compatibility test fails on a `kiro-cli` version other than the pinned one — `tests/kiro/version-pin` — covers: K-12
+- [ ] Forbidden flags are never passed; the permission profile maps to explicit tool permissions — `tests/kiro/flags` — covers: K-18
+- [ ] Kiro sees `AGENTS.md`, and a planted steering file cannot weaken it — `tests/kiro/instructions` — covers: K-20
 
 ## Invariants
 
-- [ ] Kiro session cannot create or modify files under `<ledger-root>` — procedure: TBD — covers: K-3
-- [ ] Canary `local-only` file is denied via file read, grep, shell `cat` and MCP — procedure per data-egress.md "Tests" — covers: K-5, K-6
-- [ ] Session on an unpinned account is refused — procedure: TBD — covers: K-4
-- [ ] Kiro session is treated as `any-provider` while no BAA allowlist entry exists — procedure: TBD — covers: K-10
-
-## Migration
-
-Not applicable: design.md says "No migration".
-
-## Preview
-
-Not applicable: no deployed surface.
+- [ ] Run as the adapter's OS user, the Kiro process cannot read or write `<ledger-root>`, the signing keys or the anchor deploy key — `tests/kiro/ledger-denied` — covers: K-3
+- [ ] A transition request is written only under `<local-artifacts-directory>/requests/`; Kiro cannot mark any transition approved — `tests/kiro/request-only` — covers: K-3, K-16
+- [ ] Canary `local-only` file is denied via file read, grep, glob, shell `cat`, symlink, `../` traversal, `$(...)`, interpreter one-liner, `git show`, MCP and retrieval — `tests/kiro/canary-read` — covers: K-5, K-9
+- [ ] The same canary is denied when Kiro runs with no `--agent`, with a different agent, with a subagent, and with a worktree-planted `.kiro/` agent, hook or MCP file — `tests/kiro/canary-agents` — covers: K-5, K-7, K-8
+- [ ] Canary content placed in steering or agent `resources` is not loaded into the session — `tests/kiro/canary-context` — covers: K-19
+- [ ] Subagent cannot use a tool its parent lacks and cannot exceed the delegation depth limit — `tests/kiro/subagent-limits` — covers: K-7
+- [ ] A worktree-planted `.kiro/` file cannot override managed config or the harness-supplied agent — `tests/kiro/config-precedence` — covers: K-4, K-8
+- [ ] An unpinned login/account is refused — `tests/kiro/unpinned-account` — covers: K-4
+- [ ] Launch against a `baa-covered-providers` or `local-only` fixture is refused; the class is assigned by the adapter, not the session — `tests/kiro/egress-gate` — covers: K-10, K-14, K-21
+- [ ] With no recorded provider approval, a non-fixture Kiro job is refused — `tests/kiro/provider-approval` — covers: K-17
+- [ ] A canary secret in the parent environment (including `SSH_AUTH_SOCK`) is absent from the Kiro process and from stored artifacts and logs — `tests/kiro/env-scrub` — covers: K-15
+- [ ] A hook run from a runtime-specific root-owned script identifies its runtime from the script, not from input — `tests/kiro/hook-identity` — covers: K-6

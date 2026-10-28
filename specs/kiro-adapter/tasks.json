@@ -1,7 +1,7 @@
 [
   {
     "id": "T1",
-    "title": "Read Kiro CLI primary docs; resolve unverified items in requirements.md",
+    "title": "Read Kiro CLI primary docs and repos; resolve UNVERIFIED items in requirements.md with cited sources",
     "owner_role": "implementer",
     "worktree": "kiro-adapter",
     "status": "Planned",
@@ -9,26 +9,50 @@
   },
   {
     "id": "T2",
-    "title": "Add Kiro row to data-egress runtime-capabilities table and decide managed config / hook approach",
-    "owner_role": "implementer",
+    "title": "Independent review of the revised plan (/codex:adversarial-review, run by a human with the codex plugin)",
+    "owner_role": "reviewer",
     "worktree": "kiro-adapter",
     "status": "Planned",
     "depends_on": ["T1"]
   },
   {
     "id": "T3",
-    "title": "Implement Kiro adapter and compatibility/egress tests",
-    "owner_role": "implementer",
+    "title": "Human decisions: provider approval (K-17), K-21 rule, BAA use, and whether to install managed config / root-owned hook and egress-profile entry (MDM or admin step)",
+    "owner_role": "human",
     "worktree": "kiro-adapter",
     "status": "Planned",
     "depends_on": ["T2"]
   },
   {
     "id": "T4",
-    "title": "Independent review of the packet and adapter diff",
-    "owner_role": "reviewer",
+    "title": "Add Kiro row to data-egress runtime-capabilities table; implement adapter on the adapter interface and worktree manager",
+    "owner_role": "implementer",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": ["T3", "T6"]
+  },
+  {
+    "id": "T5",
+    "title": "Create tests/kiro/* and run them; record results in handoff.md",
+    "owner_role": "implementer",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": ["T4"]
+  },
+  {
+    "id": "T6",
+    "title": "Prerequisite: adapter interface and harness worktree ownership (README lists both as Planned); a separate packet if too large",
+    "owner_role": "implementer",
     "worktree": "kiro-adapter",
     "status": "Planned",
     "depends_on": ["T3"]
+  },
+  {
+    "id": "T7",
+    "title": "Independent review of the adapter diff and test evidence",
+    "owner_role": "reviewer",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": ["T5"]
   }
 ]
