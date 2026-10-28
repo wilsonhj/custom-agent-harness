@@ -36,11 +36,18 @@ export interface Handler {
 export function evaluate(handlers: readonly Handler[], call: ToolCall, ctx: GateContext): GateResult;
 ```
 
-Evaluation rules (borrowed from the Strands intervention docs, adapted):
+Evaluation rules (borrowed from the shipped Strands registry, `strands-ts/src/interventions/registry.ts`
+@ `3ee280f`, then adapted):
 
-- Handlers run in registration order. `deny` returns immediately.
-- `guide` feedback from all handlers is concatenated; evaluation continues.
-- Precedence of the final result: deny > confirm > guide > transform > proceed.
+- Handlers run in registration order; duplicate handler names are rejected at construction.
+- `deny` returns immediately; later handlers do not run.
+- An unmet `confirm` returns immediately as `deny`; a met `confirm` continues to the next handler.
+- `transform` applies in order, so later handlers evaluate the transformed call.
+- `guide` feedback from all handlers is collected and returned only if nothing short-circuited.
+- There is no separate action-precedence rule. Order is the policy, so the security-critical
+  handlers (`ledger-path-protect`, `ledger-approval`) are registered first. The Strands docs
+  describe a precedence order (deny > confirm > guide > transform > proceed) that the code does
+  not implement; this design follows the code.
 - `confirm` is satisfied only when `ctx.ledger` returns a verified record whose `target`,
   `to_state` and `policy_digest` match the request. The gate never accepts an answer from
   the agent session. With no matching record the call stays blocked.
@@ -50,6 +57,27 @@ Evaluation rules (borrowed from the Strands intervention docs, adapted):
 - `transform` may only narrow a call (for example, redact a field or drop an argument).
   It may not add a target, path or credential. Enforced by a post-transform check that the
   new call is a subset of the original.
+
+- The decision is taken on the final call. Nothing may run between the gate and execution.
+  (In Strands, interventions on `Before*` events run at hook order 90, after default-order
+  hooks at 0, but a hook registered at `SDK_LAST` = 100 could still change the input after
+  evaluation: `strands-ts/src/hooks/types.ts` `HookOrder` @ `3ee280f`.)
+
+Where this deliberately differs from Strands (all @ `3ee280f`):
+
+| Concern | Strands behavior | This gate |
+|---|---|---|
+| Handler error | `onError` defaults to `'throw'` (`handler.ts`) | `critical: true` handlers fail closed (`deny`); no `throw` default |
+| `confirm` | Accepts caller's resume value or a handler-supplied `response`; `defaultEvaluate` accepts `true`, `"y"`, `"yes"` | Only a verified ledger record counts; no free-form response is evaluated |
+| `transform` | `apply` mutates the event arbitrarily | Must narrow the call; widening is rejected |
+| deny vs guide | Both set `event.cancel`; they differ only by the `DENIED:` / `GUIDANCE:` text prefix | Separate result kinds in `GateResult` |
+| Audit | `logger.debug` lines only; no structured record | One run-ledger record per decision |
+
+If an agent built on Strands is ever run under this harness, the same rules map onto an
+`InterventionHandler` with `onError = 'deny'`, `confirm(prompt, { response: <ledger lookup>,
+evaluate: <verify ledger record> })`, and no hooks registered above `INTERVENTION_INPUT`.
+That mapping is untested. Strands also ships `vended_interventions/cedar` and `/hitl` in
+Python; they have not been reviewed for this packet.
 
 Initial handlers (deterministic only):
 

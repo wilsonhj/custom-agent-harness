@@ -39,6 +39,8 @@ Status: Draft. Not approved; approval lives in the ledger (`docs/architecture/ap
 - Entering `Blocked` stays possible without approval.
 - Missing or mismatched approval blocks external writes (README, "Minimum acceptance tests").
 - No retrieved text, tool output, or review comment can change a decision; they are data.
+- The call that executes is exactly the call that was evaluated: nothing may modify it after
+  the gate decides (no time-of-check/time-of-use gap).
 
 ## Cited company decisions
 
@@ -49,9 +51,10 @@ Status: Draft. Not approved; approval lives in the ledger (`docs/architecture/ap
 | Default-deny until approval policy exists | `harness/policy/transitions.ts` `canTransition` @ `0b9d58f` (commit `2cf1fe1`) |
 | Approvals for one deployment target do not cover another | `docs/architecture/release-gate.md` @ `0b9d58f` |
 | Content leaving the machine follows the egress policy | `docs/security/data-egress.md` @ `0b9d58f` |
-| Action vocabulary and ordering to borrow: proceed / deny / guide / confirm / transform; `deny` short-circuits; `guide` feedback accumulates; per-handler `onError` (`throw` / `proceed` / `deny`) | strands-agents/docs @ `658b6f0` (archived; moved to strands-agents/harness-sdk): `site/src/content/docs/user-guide/concepts/agents/interventions.mdx`, `designs/0007-intervention-primitive.md` |
-| Rationale for a shared primitive over independent plugins (no short-circuit, fragmented actions, no unified audit, undefined ordering) | strands-agents/docs @ `658b6f0`: `designs/0007-intervention-primitive.md` "Problem". Proposal text; interface status in the SDK is unverified. |
-| Why Strands' in-process `interrupt` cannot be the approval mechanism here | Derived by comparing `site/src/content/docs/user-guide/concepts/interrupts.mdx` @ `658b6f0` (the caller of the agent supplies the response) with `AGENTS.md` above. |
+| Action vocabulary to borrow: proceed / deny / guide / confirm / transform; `deny` short-circuits; `guide` feedback accumulates; per-handler `onError` (`throw` / `proceed` / `deny`) | Shipped code, strands-agents/harness-sdk @ `3ee280f`: `strands-ts/src/interventions/{actions,handler,registry}.ts`; Python parity in `strands-py/src/strands/interventions/`. Docs: strands-agents/docs @ `658b6f0` `interventions.mdx` (archived). |
+| Evaluation is ordered by handler registration, not by action precedence; the docs' "deny > confirm > guide > transform > proceed" is not what the code does | `strands-ts/src/interventions/registry.ts` `_dispatch` @ `3ee280f` |
+| Rationale for a shared primitive over independent plugins (no short-circuit, fragmented actions, no unified audit, undefined ordering) | strands-agents/docs @ `658b6f0`: `designs/0007-intervention-primitive.md` "Problem" (also at `team/designs/` in harness-sdk). |
+| Why Strands' `confirm` cannot be the approval mechanism here: it resolves on whatever response the caller resumes with (or a `response` the handler pre-fills), checked by `defaultEvaluate`, which accepts `true`, `"y"` or `"yes"` | `strands-ts/src/interventions/registry.ts` `_onBeforeToolCall` and `actions.ts` `defaultEvaluate` @ `3ee280f`, compared with `AGENTS.md` above. |
 
 ## Unresolved questions
 

@@ -16,11 +16,15 @@ an ad-hoc command.
 - [ ] Ledger record for a different commit or `deployment_target` does not satisfy `confirm` — `<permission-policy-test-command>` — covers: "exact target"
 - [ ] Critical handler that throws, times out or cannot read the ledger yields `deny` — `<permission-policy-test-command>` — covers: "fails closed"
 - [ ] Broken hash chain, bad signature, wrong namespace or missing anchor yields `deny` — `<permission-policy-test-command>` — covers: "fails closed"
+- [ ] `deny` registered after a `guide` still blocks, and the guide feedback is not returned — `<permission-policy-test-command>` — covers: registration-order evaluation
+- [ ] Duplicate handler names are rejected at construction — `<permission-policy-test-command>` — covers: design "duplicate handler names"
+- [ ] `confirm` given `true`, `"y"` or `"yes"` with no ledger record is still blocked — `<permission-policy-test-command>` — covers: "An agent-supplied answer is never accepted"
 - [ ] `transform` that adds a path, target or credential is rejected — `<permission-policy-test-command>` — covers: design "transform may only narrow"
 - [ ] Every result is recorded with handler name and version — `<permission-policy-test-command>` — covers: "Each decision ... is written to the run ledger"
 
 ## Invariants
 
+- [ ] A call modified after the gate's decision does not execute (time-of-check/time-of-use) — `<permission-policy-test-command>`
 - [ ] A tool call naming `<ledger-root>` is denied, including via a shell command string — `<permission-policy-test-command>`
 - [ ] `canTransition` still denies every non-`Blocked` transition — `<permission-policy-test-command>`
 - [ ] Entering `Blocked` still needs no approval — `<permission-policy-test-command>`
