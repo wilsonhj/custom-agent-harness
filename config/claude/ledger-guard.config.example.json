@@ -1,0 +1,3 @@
+{
+  "ledger_roots": ["/var/lib/<harness-name>/ledger"]
+}
