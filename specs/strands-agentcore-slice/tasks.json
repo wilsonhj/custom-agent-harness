@@ -1,7 +1,7 @@
 [
   {
     "id": "T1",
-    "title": "Pin and verify: install candidates in a clean environment, record versions, resolve claims C1-C3, C5, C10, write the version manifest",
+    "title": "Pin and verify: install candidates in a clean environment, record versions (npm CLI version and date, strands-agents, Runtime Python version), resolve claims C1-C3, C5, C10, C14, check how a principal reaches a Strands tool, write the version manifest",
     "owner_role": "implementer",
     "worktree": "<unassigned>",
     "status": "Draft",
@@ -13,7 +13,9 @@
     "owner_role": "implementer",
     "worktree": "<unassigned>",
     "status": "Draft",
-    "depends_on": ["T1"]
+    "depends_on": [
+      "T1"
+    ]
   },
   {
     "id": "T3",
@@ -21,15 +23,19 @@
     "owner_role": "implementer",
     "worktree": "<unassigned>",
     "status": "Draft",
-    "depends_on": ["T2"]
+    "depends_on": [
+      "T2"
+    ]
   },
   {
     "id": "T4",
-    "title": "Evaluation case set and runner (task completion, tool selection, unauthorized actions); define <eval-command>",
+    "title": "Evaluation case set and runners: Tier 1 deterministic (task completion, tool-call log, unauthorized actions) and Tier 2 Strands Evals (from T5); define <eval-tier1-command> and <eval-tier2-command>",
     "owner_role": "implementer",
     "worktree": "<unassigned>",
     "status": "Draft",
-    "depends_on": ["T3"]
+    "depends_on": [
+      "T3"
+    ]
   },
   {
     "id": "T5",
@@ -37,15 +43,19 @@
     "owner_role": "implementer",
     "worktree": "<unassigned>",
     "status": "Draft",
-    "depends_on": ["T4"]
+    "depends_on": [
+      "T4"
+    ]
   },
   {
     "id": "T6",
-    "title": "Generate (do not deploy) the AgentCore project; review synthesized CDK and IAM; replace wildcards; separate deployment and runtime roles; resolve C6, C7",
+    "title": "Generate (do not deploy) the AgentCore project; review synthesized CDK and IAM; replace wildcards; separate deployment and runtime roles; establish a pre-deploy diff (agentcore deploy --help, CDK synth/diff); resolve C6, C7, C15",
     "owner_role": "implementer",
     "worktree": "<unassigned>",
     "status": "Draft",
-    "depends_on": ["T5"]
+    "depends_on": [
+      "T5"
+    ]
   },
   {
     "id": "T7",
@@ -53,22 +63,28 @@
     "owner_role": "reviewer",
     "worktree": "<unassigned>",
     "status": "Draft",
-    "depends_on": ["T6"]
+    "depends_on": [
+      "T6"
+    ]
   },
   {
     "id": "T8",
-    "title": "Present resource diff and cost plan for human approval; after approval and a ledger record for this commit and target, deploy to one sandbox AgentCore Runtime and run the preview smoke test",
+    "title": "Present resource diff and cost plan (incl. tokens, CloudWatch, ECR) for human approval; create Budgets alerts; after approval and a ledger record for this commit and target, deploy to one sandbox AgentCore Runtime and run the preview smoke test",
     "owner_role": "implementer",
     "worktree": "<unassigned>",
     "status": "Draft",
-    "depends_on": ["T7"]
+    "depends_on": [
+      "T7"
+    ]
   },
   {
     "id": "T9",
-    "title": "Teardown, tag-based resource inventory, record residual telemetry and retention, finalize decision record and manifest",
+    "title": "Teardown (remove all + deploy, or delete the CloudFormation stack), tag-based resource inventory, record residual telemetry and retention, finalize decision record and manifest",
     "owner_role": "implementer",
     "worktree": "<unassigned>",
     "status": "Draft",
-    "depends_on": ["T8"]
+    "depends_on": [
+      "T8"
+    ]
   }
 ]

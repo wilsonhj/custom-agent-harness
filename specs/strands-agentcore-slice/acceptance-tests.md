@@ -17,8 +17,11 @@ passing (`AGENTS.md`, "While working").
 - [ ] Non-string prompt, missing prompt, and an over-length prompt are rejected before any model call (call count is zero) — `<input-validation-test-command>` — covers: typed boundary bullet
 - [ ] Tool argument failing its schema is rejected before the backend is called — `<tool-schema-test-command>` — covers: typed boundary bullet
 - [ ] Deployed agent returns an answer to a JSON payload via the pinned CLI's invoke command — `<agentcore-invoke-command>` — covers: deployment bullet
-- [ ] Evaluation run prints task completion, tool selection, and unauthorized-action rate for the fixed case set; unauthorized-action rate is zero — `<eval-command>` — covers: evaluation bullet
-- [ ] Teardown leaves zero resources carrying the slice's tag — `<inventory-command>` — covers: teardown bullet
+- [ ] Tier 1 (deterministic, no AWS): task completion, tool-call log, and unauthorized-action rate over the fixed case set; unauthorized-action rate is zero — `<eval-tier1-command>` — covers: evaluation bullet
+- [ ] Tier 2 (Strands Evals, synthetic inputs only): tool-selection and trajectory scores reported separately; not a gate for the authorization criteria — `<eval-tier2-command>` — covers: evaluation bullet
+- [ ] The principal cannot be changed by prompt text or tool arguments (injection and argument-tampering cases keep the original tenant) — `<principal-integrity-test-command>` — covers: authorization bullet
+- [ ] Teardown leaves zero resources carrying the slice's tag, and the CloudFormation stack is gone — `<inventory-command>` — covers: teardown bullet
+- [ ] AWS Budgets alerts at the approved thresholds exist before the first deploy — `<budget-check-command>` — covers: cost invariant
 
 ## Invariants
 
