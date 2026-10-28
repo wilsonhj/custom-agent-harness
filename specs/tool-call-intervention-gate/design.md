@@ -1,0 +1,86 @@
+# Design: tool-call-intervention-gate
+
+## API and schema changes
+
+Proposed, not implemented. New module `harness/policy/interventions.ts` beside `transitions.ts`.
+
+```ts
+export type Decision =
+  | { kind: "proceed" }
+  | { kind: "deny"; reason: string }
+  | { kind: "guide"; feedback: string }
+  | { kind: "confirm"; request: ConfirmRequest }
+  | { kind: "transform"; apply: (call: ToolCall) => ToolCall };
+
+export interface ToolCall {
+  task_id: string;
+  runtime: "claude-code" | "codex" | "cursor";
+  tool: string;
+  input: unknown;
+  target?: { commit_sha: string; deployment_target?: string };
+}
+
+export interface ConfirmRequest {
+  to_state?: TaskState;        // when the call implies a transition
+  target: ToolCall["target"];  // exact thing to approve
+  reason: string;
+}
+
+export interface Handler {
+  name: string;
+  version: string;
+  critical: boolean;           // true => error, timeout or missing input is deny
+  beforeToolCall(call: ToolCall, ctx: GateContext): Decision | Promise<Decision>;
+}
+
+export function evaluate(handlers: readonly Handler[], call: ToolCall, ctx: GateContext): GateResult;
+```
+
+Evaluation rules (borrowed from the Strands intervention docs, adapted):
+
+- Handlers run in registration order. `deny` returns immediately.
+- `guide` feedback from all handlers is concatenated; evaluation continues.
+- Precedence of the final result: deny > confirm > guide > transform > proceed.
+- `confirm` is satisfied only when `ctx.ledger` returns a verified record whose `target`,
+  `to_state` and `policy_digest` match the request. The gate never accepts an answer from
+  the agent session. With no matching record the call stays blocked.
+- A critical handler that throws, times out, or whose ledger read fails yields `deny`.
+  A non-critical handler yields `proceed` and logs. A broken ledger chain or missing anchor
+  yields `deny` for every handler (task is `Blocked` per the ledger doc).
+- `transform` may only narrow a call (for example, redact a field or drop an argument).
+  It may not add a target, path or credential. Enforced by a post-transform check that the
+  new call is a subset of the original.
+
+Initial handlers (deterministic only):
+
+1. `ledger-approval` — external writes (push, deploy, migration) require a verified ledger
+   record for the exact commit and `deployment_target`.
+2. `ledger-path-protect` — deny any tool call that writes to or names `<ledger-root>`.
+3. `scope-path` — writes only inside the task's assigned worktree.
+4. `egress-class` — deny content whose egress class does not permit the session's provider
+   (`docs/security/data-egress.md`).
+
+Persisted data: each result is appended to the run ledger (format owned by the run-ledger
+design, not yet written). This packet writes nothing to the approval ledger.
+
+## Dependencies
+
+- Reads `harness/policy/transitions.ts` types and `canTransition`; no change to them.
+- Needs a read-only ledger reader that verifies the hash chain, signatures and anchor.
+  That reader does not exist yet and is task T2.
+- Needs each runtime's pre-tool interception point (task T3, unresearched).
+- No new third-party packages. Strands is a reference for the design only, not a dependency.
+
+## Migration plan
+
+No migration. This change adds a module and a run-ledger record type; it changes no
+database schema or persisted data. The approval ledger format is unchanged.
+
+## Rollout and rollback
+
+- **Rollout:** Phase 1 — shadow mode: evaluate and log decisions, enforce nothing, and compare
+  against what the runtimes' own permission profiles did. Phase 2 — enforce for
+  `ledger-path-protect` and `ledger-approval` only. Phase 3 — remaining handlers. Each phase
+  needs a ledger approval.
+- **Rollback:** Return to the previous phase by changing the managed configuration. Shadow
+  mode is the safe default. Rolling back never removes OS-level ledger protections.

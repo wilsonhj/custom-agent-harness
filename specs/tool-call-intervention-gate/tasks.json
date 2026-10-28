@@ -1,0 +1,34 @@
+[
+  {
+    "id": "T1",
+    "title": "Confirm scope and language; define the policy test command in README Testing",
+    "owner_role": "implementer",
+    "worktree": "<worktree-path-or-name>",
+    "status": "Planned",
+    "depends_on": []
+  },
+  {
+    "id": "T2",
+    "title": "Read-only ledger reader (chain, signature, anchor checks) and interventions.ts with ledger-approval and ledger-path-protect handlers, tests first",
+    "owner_role": "implementer",
+    "worktree": "<worktree-path-or-name>",
+    "status": "Planned",
+    "depends_on": ["T1"]
+  },
+  {
+    "id": "T3",
+    "title": "Research per-runtime pre-tool interception points and write the shadow-mode adapter plan",
+    "owner_role": "implementer",
+    "worktree": "<worktree-path-or-name>",
+    "status": "Planned",
+    "depends_on": ["T1"]
+  },
+  {
+    "id": "T4",
+    "title": "Independent review of T2-T3 (codex review and adversarial review of the fail-closed paths)",
+    "owner_role": "reviewer",
+    "worktree": "<worktree-path-or-name>",
+    "status": "Planned",
+    "depends_on": ["T2", "T3"]
+  }
+]
