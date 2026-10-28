@@ -1,0 +1,34 @@
+[
+  {
+    "id": "T1",
+    "title": "Read Kiro CLI primary docs; resolve unverified items in requirements.md",
+    "owner_role": "implementer",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": []
+  },
+  {
+    "id": "T2",
+    "title": "Add Kiro row to data-egress runtime-capabilities table and decide managed config / hook approach",
+    "owner_role": "implementer",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": ["T1"]
+  },
+  {
+    "id": "T3",
+    "title": "Implement Kiro adapter and compatibility/egress tests",
+    "owner_role": "implementer",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": ["T2"]
+  },
+  {
+    "id": "T4",
+    "title": "Independent review of the packet and adapter diff",
+    "owner_role": "reviewer",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": ["T3"]
+  }
+]
