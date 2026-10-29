@@ -31,4 +31,8 @@ not exist and nothing here has been run. Do not report any item as passing befor
 - [ ] Launch against a `baa-covered-providers` or `local-only` fixture is refused; the class is assigned by the adapter, not the session — `tests/kiro/egress-gate` — covers: K-10, K-14, K-21
 - [ ] With no recorded provider approval, a non-fixture Kiro job is refused — `tests/kiro/provider-approval` — covers: K-17
 - [ ] A canary secret in the parent environment (including `SSH_AUTH_SOCK`) is absent from the Kiro process and from stored artifacts and logs — `tests/kiro/env-scrub` — covers: K-15
+- [ ] A crashing, timing-out or non-0/2-exiting PreToolUse hook still results in the tool call being blocked (wrapper exits 2 on any error); a read is denied by admin `deny` rules even with all hooks disabled — `tests/kiro/hook-failure` — covers: K-5
+- [ ] `--agent <missing>` exits 4 and the adapter treats any tool calls made by the built-in default agent before that as a failed, untrusted run — `tests/kiro/agent-missing` — covers: K-1, K-5
+- [ ] The run uses `--sandbox` and exits if the sandbox cannot start; MCP wrapping failure is fatal — `tests/kiro/sandbox-required` — covers: K-9, K-18
+- [ ] A hook or agent profile planted in the worktree `.kiro/` does not execute or load in an unattended run — `tests/kiro/workspace-trust` — covers: K-8
 - [ ] A hook run from a runtime-specific root-owned script identifies its runtime from the script, not from input — `tests/kiro/hook-identity` — covers: K-6

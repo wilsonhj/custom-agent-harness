@@ -47,7 +47,31 @@ cross-vendor review. Findings and resolutions:
 | 12 | Med | Rollout misuses ledger | design.md rewritten |
 | Low | | "No migration" claim, citations, UNVERIFIED labelling, template misuse | Citations now name sections and repo commit; labels graded; N/A template sections removed. Not done: the `Planned` transition request is not recorded |
 
-## Research findings folded in (T1, partial)
+## T1 update (2026-10-29): kiro.dev now reachable
+
+kiro.dev was allowed in the environment. I fetched the pages listed under (P) in
+requirements.md Sources with curl, converted them to text, and read headless, hooks,
+exit codes, and the relevant parts of permissions, subagents, sandbox, governance, data
+protection and compliance. Requirement statuses K-1, K-4, K-5, K-7..K-10, K-12, K-17, K-18
+now cite those pages. Not every page was read in full (permissions, sandbox, settings and
+CLI commands were searched, not read end to end). Changes versus the earlier research:
+
+- Hook failure semantics confirmed on kiro.dev: only exit 2 blocks (PreToolUse); other
+  non-zero exits are warnings. Fail-open confirmed; wrapper hook required.
+- Hook triggers are isolated in subagents (confirmed); subagents inherit parent permission
+  rules by deny-wins intersection, so permission deny rules are the subagent boundary.
+- `managed-settings.json` supports enterprise deny/ask permission policies in an
+  `administration` scope that deny-wins over all others; Kiro says admin controls are
+  client-enforced and bypassable with local admin.
+- Built-in file tools are outside the sandbox; stdio MCP only if wrapping is on; remote
+  MCP is outside. Sandbox failure only warns unless `--sandbox` is passed.
+- Headless: documented exit codes 0/1/3/4; exit 4 can follow tool calls by the default agent.
+- stream-json is documented as a flag, but no event schema was found.
+- Data: Bedrock-backed with possible global cross-region inference; tier-dependent
+  service-improvement use and retention; CLI listed HIPAA eligible, no BAA details.
+- Acceptance tests added: hook-failure, agent-missing, sandbox-required, workspace-trust.
+
+Earlier research (2026-10-28) summary, kept for history:
 
 kiro.dev was not readable. Findings come from public GitHub (KiroCrew offline mirror of the
 kiro-cli docs, kiro-action, issue trackers) and search snippets; a research agent summarised
@@ -69,7 +93,7 @@ them, so details need re-checking on kiro.dev. Most consequential for the design
 
 ## Known limitations
 
-- No kiro.dev page was read directly. Network policy blocks the host; allow it and re-run T1.
+- Pages were fetched as HTML and converted to text by a script; they were not rendered, and some pages were only searched, not read in full. (M) and (S) items in requirements.md are not yet re-checked.
 - The research summaries are by a subagent over fetched pages, not verbatim reads by me.
 - Pricing figures are third-party and omitted from requirements decisions.
 
@@ -86,6 +110,5 @@ them, so details need re-checking on kiro.dev. Most consequential for the design
 
 ## Exact next action
 
-Allow `kiro.dev` in the environment's Network access settings, then re-verify the (M)/(S)
-items on kiro.dev; after that a human runs `/codex:adversarial-review` with the codex plugin
-on this packet and records the findings here.
+A human runs `/codex:adversarial-review` with the codex plugin on this packet and records
+the findings here (T2); then the T3 human decisions listed in requirements.md.
