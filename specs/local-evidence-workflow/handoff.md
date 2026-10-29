@@ -63,3 +63,17 @@ must pass the full real-bubblewrap workflow and denied read/write/network probes
 is no Codex/Claude executable here, so independent live AI review was not run. A human
 should request it on the published commit. macOS/Windows, hosted adapters, resource quotas,
 production operations and the global approval ledger remain outside this slice.
+
+## Remote validation
+
+PR: https://github.com/wilsonhj/custom-agent-harness/pull/4
+
+The first published implementation, 622cc163e263ba098794f0503c7bf08bf15690ee, passed
+the required real sandbox gate on Ubuntu 22.04 / Node 24.22.1 / bubblewrap 0.6.1-1ubuntu0.3:
+https://github.com/wilsonhj/custom-agent-harness/actions/runs/40799507693
+
+The job log explicitly records the real bubblewrap workflow and denied read/write/network
+test as passing. Its one skip is the opposite-host test (namespace-unavailable behavior),
+which passed locally. Both execution environments report 27 pass, 0 fail, 1 host-specific
+skip. The final follow-up also exercises the signed fixture decision after real sandbox
+execution and avoids duplicate feature-branch push/PR runs. Final-head CI remains the gate.

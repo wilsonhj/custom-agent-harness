@@ -257,6 +257,9 @@ test('real bubblewrap workflow and denied read/write/network paths', async t => 
     const denied = await execute(f.config, p.workspace, [process.execPath, '--input-type=module', '-e', source], writable, {});
     assert.equal(denied.exitCode, 0, denied.stderr); assert.equal(denied.failure, undefined);
   }
+  const request = await requestDecision(p.root, 'accept');
+  const decision = await recordDecision(p.root, sign(f, request.file));
+  assert.equal(decision.state, 'decision-recorded');
 });
 
 test('default CLI execution fails closed when isolation is unavailable', async t => {

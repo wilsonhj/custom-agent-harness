@@ -1,7 +1,11 @@
 name: Local workflow
 on:
   push:
+    branches: [main]
   pull_request:
+concurrency:
+  group: local-workflow-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
