@@ -1,0 +1,36 @@
+[
+  {
+    "id": "T1",
+    "title": "Research and feature packet",
+    "owner_role": "implementer",
+    "status": "Implemented",
+    "depends_on": []
+  },
+  {
+    "id": "T2",
+    "title": "Local controller, sandbox, evidence and CLI",
+    "owner_role": "implementer",
+    "status": "Implemented",
+    "depends_on": [
+      "T1"
+    ]
+  },
+  {
+    "id": "T3",
+    "title": "Adversarial fixture tests and real sandbox gate",
+    "owner_role": "implementer",
+    "status": "Implemented",
+    "depends_on": [
+      "T2"
+    ]
+  },
+  {
+    "id": "T4",
+    "title": "Diff review, verification and durable handoff",
+    "owner_role": "reviewer",
+    "status": "Verified locally; independent review pending",
+    "depends_on": [
+      "T3"
+    ]
+  }
+]
