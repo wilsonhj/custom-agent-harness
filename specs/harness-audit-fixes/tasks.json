@@ -1,0 +1,50 @@
+[
+  {
+    "id": "T1",
+    "title": "Create feature packet specs/harness-audit-fixes/ from the template",
+    "owner_role": "implementer",
+    "worktree": "custom-agent-harness",
+    "status": "Implemented",
+    "depends_on": []
+  },
+  {
+    "id": "T2",
+    "title": "transitions.ts: BlockedRecord + TransitionContext, commit-pinned resume, approval from/to match, malformed/missing record rejection",
+    "owner_role": "implementer",
+    "worktree": "custom-agent-harness",
+    "status": "Implemented",
+    "depends_on": ["T1"]
+  },
+  {
+    "id": "T3",
+    "title": "transitions.ts: add Failed, Blocked and Superseded edges",
+    "owner_role": "implementer",
+    "worktree": "custom-agent-harness",
+    "status": "Implemented",
+    "depends_on": ["T1"]
+  },
+  {
+    "id": "T4",
+    "title": "tests/transitions.test.ts: pair enumeration, reachability, dead ends, resume and approval checks",
+    "owner_role": "implementer",
+    "worktree": "custom-agent-harness",
+    "status": "Implemented",
+    "depends_on": ["T2", "T3"]
+  },
+  {
+    "id": "T5",
+    "title": "Docs consistency: release-gate, approval-ledger, data-egress spelling, README terminology and overclaims",
+    "owner_role": "implementer",
+    "worktree": "custom-agent-harness",
+    "status": "Implemented",
+    "depends_on": ["T2", "T3"]
+  },
+  {
+    "id": "T6",
+    "title": "Independent review of T2-T5 diff (/codex:review, then /codex:adversarial-review); record findings in handoff.md",
+    "owner_role": "reviewer",
+    "worktree": "custom-agent-harness",
+    "status": "Planned",
+    "depends_on": ["T4", "T5"]
+  }
+]
