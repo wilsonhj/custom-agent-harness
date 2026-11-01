@@ -3,15 +3,16 @@
 | Field | Value |
 |---|---|
 | Base SHA | 0b9d58f (main at packet creation) |
-| Head SHA | 1887841 (branch head this session's edits were made on; they land in the next commit) |
-| Author (runtime / session ID) | Claude Code / session_01AaDiMJVSVxQVfoGPARPgBn |
+| Head SHA | 9d339f8 (PR head these edits were made on; the commit that adds this line is its direct child) |
+| Author (runtime / session ID) | Claude Code / session_01AaDiMJVSVxQVfoGPARPgBn; follow-up pass session_01AaDiMLni7kwVNftEwaHm1a |
 | Date | 2026-11-01 |
 
 ## Changed files
 
 - `specs/kiro-adapter/requirements.md` — K-14..K-21 added, K-1..K-13 tightened, Kiro claims graded (M)/(S)/UNVERIFIED with sources, questions re-pointed.
-- `specs/kiro-adapter/acceptance-tests.md` — one test per requirement; Migration/Preview sections removed.
+- `specs/kiro-adapter/acceptance-tests.md` — one test per requirement; Migration/Preview sections removed. Follow-up: `workspace-config` also covers K-5.
 - `specs/kiro-adapter/design.md` — migration justification and rollout/rollback corrected.
+- `specs/kiro-adapter/handoff.md` — this record.
 - `specs/kiro-adapter/tasks.json` — T1-T5 and T7: research, plan review, human decisions, adapter, tests, code review (T6 moved to a separate packet, not yet created).
 
 ## Implemented requirements
@@ -74,7 +75,7 @@ CLI commands were searched, not read end to end). Changes versus the earlier res
 - stream-json is documented as a flag, but no event schema was found.
 - Data: Bedrock-backed with possible global cross-region inference; tier-dependent
   service-improvement use and retention; CLI listed HIPAA eligible, no BAA details.
-- Acceptance tests added: hook-failure, agent-missing, sandbox-required, workspace-config (originally named workspace-trust).
+- Acceptance tests added: hook-failure, agent-missing, sandbox-required, workspace-config.
 
 The earlier (2026-10-28) GitHub-mirror and snippet summary was removed; where it
 disagreed with kiro.dev (for example on stdio MCP servers and the sandbox), the kiro.dev
@@ -114,10 +115,26 @@ Treated as claims to verify against kiro.dev (re-fetched 2026-11-01). Result:
 | design.md said the migration gate was inapplicable | Reworded; acceptance test added for a classifier result of `clean`. |
 | K-21 cited data-egress.md by line number | Now cites the sentences. |
 
+## Follow-up check of the second bot review (2026-11-01)
+
+Re-read every finding against head `9d339f8`. Still open there, now fixed:
+
+| Finding | What was still wrong | Fix |
+|---|---|---|
+| One sentence per row | K-3, K-4, K-11, K-14, K-15, K-17 still had two or three sentences; K-3 and K-5 carried defence-in-depth notes; K-8 carried the deny-rule fallback; K-17 restated the launch refusal | Each row is one sentence; the defence-in-depth and fallback notes moved to "Kiro evidence by requirement"; the refusal lives only in Launch procedure step 2. K-18 now states `--sandbox` explicitly, since step 4 relies on it |
+| One launch procedure | design.md "Rollout" still had its own ordered list; the procedure omitted the egress-profile entry, managed config and worktree lock; an open question still used K-21 as a default | Rollout now points at the procedure; step 1 checks the egress-profile entry, step 4 checks managed config (K-4) and the lock (K-2); the question points at step 3 |
+| Handoff | Assumptions still cited data-egress.md by line (L61, L97); the old `workspace-trust` name was still mentioned; Head SHA named an older commit | Sentences cited; name removed; Head SHA is the commit these edits were made on |
+
+Already fixed at `9d339f8` and left alone: T1 no longer needs the T5 test, T6 is out of
+tasks.json, the migration-gate acceptance line exists, the superseded MCP text is gone.
+No suite exists to run (`tests/kiro/*` are T5 placeholders); `tasks.json` was not changed.
+
 ## Assumptions made
 
-- K-21 (proposed, needs human confirmation): data-egress.md says an unpinned account is
-  both "refused" (L97) and "treated as any-provider" (L61). The packet resolves it as:
+- K-21 (proposed, needs human confirmation): data-egress.md says both "a session on an
+  unpinned account is refused" ("Enforcement" item 5) and "A session whose runtime, account
+  and settings do not match an entry is treated as `any-provider`" ("BAA configuration
+  allowlist"). The packet resolves it as:
   refuse Kiro jobs on `baa-covered-providers` and `local-only` content; allow
   `any-provider` content only after the K-17 decision.
 

@@ -26,10 +26,11 @@ evidence only if the deterministic classifier reports the diff as `clean`.
 
 ## Rollout and rollback
 
-- **Rollout:** adapter ships disabled. Enabling it for a project needs, in order: the
-  human provider decision (K-17), the egress-profile entry and managed config, and a
-  passing `tests/kiro/*` suite. Enabling is a configuration change recorded by a human in root-owned configuration the agent user cannot write (K-22);
-  it is not a task-state transition, so the approval ledger (per-`task_id` transitions)
+- **Rollout:** adapter ships disabled. Whether a given task may launch Kiro is decided only
+  by the "Launch procedure" in requirements.md. A human sets the enable flag (its step 1)
+  only after the `tests/kiro/*` suite passes. Enabling is a configuration change recorded
+  by a human in root-owned configuration the agent user cannot write (K-22); it is not a
+  task-state transition, so the approval ledger (per-`task_id` transitions)
   is not used for it. The task that delivers the adapter still moves through the ledger
   as usual.
 - **Rollback:** disable the runtime in config and remove the managed-config and hook
