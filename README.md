@@ -39,6 +39,15 @@
 
 ## Overview
 
+### Runnable local pilot
+
+The first local evidence workflow is implemented under `harness/local/` (Node 24,
+Linux bubblewrap). It prepares an isolated worktree, runs operator-configured worker,
+verifier and reviewer processes, verifies an out-of-band human review decision, and
+writes a durable handoff. Start with [the local workflow guide](docs/local-workflow.md)
+and `npm test`. The remaining sections describe the broader design; this pilot does
+not implement task-phase approval, hosted adapters or production release authority.
+
 <Project Name> connects coding agents to a shared engineering workflow and an evolving company knowledge base.
 
 The system keeps agent sessions replaceable while preserving specifications, architectural decisions, operational procedures, reusable skills, and verification evidence.
@@ -88,6 +97,7 @@ These are configurable workflow assignments, not model-performance rankings.
 
 | Capability | Status | Implementation / evidence |
 |---|---|---|
+| Local evidence workflow | Implemented (pilot) | `harness/local/`, `tests/local-workflow.test.mjs`, [operator guide](docs/local-workflow.md). Offline Linux process interface; task-phase/release approval remains unimplemented. |
 | Claude adapter | Planned | <Path or issue> |
 | Codex adapter | Implemented (external) | Installed `codex` Claude Code plugin v1.0.6 (`openai-codex` marketplace), which talks to Codex through its app-server broker. Commands: `/codex:review`, `/codex:adversarial-review`, `/codex:status`, `/codex:result`, `/codex:cancel`. |
 | Cursor adapter | Planned | Cursor CLI (`agent`) installed; no harness wrapper yet. |
