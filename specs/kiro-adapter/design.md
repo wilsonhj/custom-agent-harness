@@ -13,7 +13,7 @@
 
 - `kiro-cli` (version to be pinned, K-12).
 - Adapter interface and harness worktree ownership, both still "Planned" in the README:
-  a separate packet (not yet created) that this packet depends on.
+  `specs/adapter-interface/`, which this packet depends on.
 - Network access to kiro.dev for the research task (T1).
 
 ## Migration plan

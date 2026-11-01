@@ -13,7 +13,7 @@
 - `specs/kiro-adapter/acceptance-tests.md` — one test per requirement; Migration/Preview sections removed. Follow-up: `workspace-config` also covers K-5.
 - `specs/kiro-adapter/design.md` — migration justification and rollout/rollback corrected.
 - `specs/kiro-adapter/handoff.md` — this record.
-- `specs/kiro-adapter/tasks.json` — T1-T5 and T7: research, plan review, human decisions, adapter, tests, code review (T6 moved to a separate packet, not yet created).
+- `specs/kiro-adapter/tasks.json` — T1-T5 and T7: research, plan review, human decisions, adapter, tests, code review (T6 moved to `specs/adapter-interface/`).
 
 ## Implemented requirements
 
