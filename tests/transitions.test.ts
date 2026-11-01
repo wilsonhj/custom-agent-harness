@@ -1,4 +1,4 @@
-// Run: node --experimental-strip-types --test tests/
+// Run: node --experimental-strip-types --test tests/*.test.ts
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -321,6 +321,17 @@ describe("approval shape", () => {
     assert.equal(canTransition("Reviewing", "Blocked", undefined).ok, true);
     assert.equal(canTransition("Reviewing", "Blocked", record("Reviewing", "Blocked")).ok, true);
     assert.equal(canTransition("Reviewing", "Blocked", record("Reviewing", "Verified")).ok, false);
+    const forged = record("Released", "Blocked");
+    assert.equal(canTransition("Released", "Blocked", { ...forged, actor: "agent" as "human", signature: "" }).ok, false);
+    assert.equal(canTransition("Released", "Blocked", { ...forged, signature: "" }).ok, false);
+  });
+
+  it("a resume approval must name the current commit", () => {
+    const ctx = { blockedRecord: blockedAt("Implementing", SHA_A), currentCommitSha: SHA_A };
+    const approval = record("Blocked", "Implementing", SHA_B);
+    const r = canTransition("Blocked", "Implementing", approval, ctx);
+    assert.equal(r.ok, false);
+    assert.match(r.reason ?? "", /approval commit differs/);
   });
 
   it("denies unknown states", () => {

@@ -136,6 +136,8 @@ function malformedRecord(record: unknown): string | undefined {
   if (typeof r.target !== "object" || r.target === null || !nonEmpty(r.target.commit_sha)) {
     return "record target.commit_sha is missing or empty";
   }
+  if (r.actor !== "human" && r.actor !== "policy") return "record actor must be human or policy";
+  if (!nonEmpty(r.signature)) return "record signature is missing or empty";
   return undefined;
 }
 
@@ -195,6 +197,9 @@ export function canTransition(
     if (resuming && blocked !== undefined && approval.task_id !== blocked.task_id) {
       return deny("approval and blocked record belong to different tasks");
     }
+    if (resuming && approval.target.commit_sha !== context.currentCommitSha) {
+      return deny("approval commit differs from the current commit");
+    }
   }
 
   // Entering Blocked needs no approval, so stopping work is always possible.
@@ -206,8 +211,10 @@ export function canTransition(
     return deny(`transition ${from} -> ${to} requires an approval record`);
   }
 
-  // TODO(human): decide which transitions require a human approver vs. a policy actor,
-  // and reject when approval.actor/target don't match. (~5-10 lines)
+  // TODO(human): verify the signature, hash chain, and evidence digests, then apply the
+  // release gate: MigrationGated -> Released needs a human record for this commit and
+  // deployment_target; a policy actor may approve PreviewVerified -> MigrationGated only
+  // on a classifier result of clean. Do not treat actor and target shape checks as that policy.
 
   // Until that policy exists, every other transition is denied (fail closed).
   return deny("approval policy not implemented");
