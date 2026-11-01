@@ -3,7 +3,7 @@
 ## API and schema changes
 
 - New adapter module under `harness/adapters/` (not yet created) implementing the
-  common adapter interface for runtime `kiro`: start, cancel, collect artifacts.
+  common adapter interface for runtime `kiro`: `start`, `status`, `cancel`, `collect` (adapter-interface A-1).
 - Row for Kiro in the runtime-capabilities table of `docs/security/data-egress.md`,
   filled only from verified primary docs.
 - Managed Kiro configuration and a root-owned read-hook script, if Kiro supports them

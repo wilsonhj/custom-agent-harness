@@ -35,7 +35,7 @@
     "status": "Planned",
     "depends_on": [
       "T3",
-      "adapter-interface:T3"
+      "adapter-interface:T4"
     ]
   },
   {

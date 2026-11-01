@@ -111,7 +111,7 @@ Treated as claims to verify against kiro.dev (re-fetched 2026-11-01). Result:
 | No single "may this task launch Kiro?" procedure; K-21 both normative and pending | Added "Launch procedure"; K-21 moved out of the normative table as pending T3. |
 | T1's definition of done needed the T5 hook test | T1 now ends with a list of what only a test can settle; the test stays in T5. |
 | Handoff kept superseded research, a stale test name, no real SHA | Superseded summary removed, name fixed, Base/Head SHA and date recorded. |
-| T6 belongs in its own packet | Removed from tasks.json; recorded as an external prerequisite (packet not yet created). |
+| T6 belongs in its own packet | Removed from tasks.json; recorded as an external prerequisite, now `specs/adapter-interface/`. |
 | design.md said the migration gate was inapplicable | Reworded; acceptance test added for a classifier result of `clean`. |
 | K-21 cited data-egress.md by line number | Now cites the sentences. |
 
@@ -141,7 +141,7 @@ No suite exists to run (`tests/kiro/*` are T5 placeholders); `tasks.json` was no
 - Packet ID `kiro-adapter` given by the user; scope is the Kiro CLI surface only.
 - `owner_role: human` for T3 and worktree name `kiro-adapter` in tasks.json are placeholders.
 - A runtime with no verified managed configuration is capped at `any-provider` and only under K-17.
-- The adapter interface and worktree ownership (former T6) need their own packet, which does not exist yet.
+- The adapter interface and worktree ownership (former T6) are in `specs/adapter-interface/`.
 
 ## Exact next action
 

@@ -10,10 +10,10 @@ not exist and nothing here has been run. Do not report any item as passing befor
 ## Behavior
 
 - [ ] Run is non-interactive, executes in the task worktree at the given base SHA, and records exit status and output — `tests/kiro/run-basic` — covers: K-1
-- [ ] Two concurrent launches on one worktree: exactly one starts; lock is released after exit, crash and cancel — `tests/kiro/worktree-lock` — covers: K-2
+- [ ] Two concurrent launches on one worktree: exactly one starts; the lock is released only after every Kiro process is gone, and stays held after a simulated crash until a human releases it — `tests/kiro/worktree-lock` — covers: K-2
 - [ ] Output that is unparseable, fails the schema, or claims "approved" does not advance task state — `tests/kiro/output-validation` — covers: K-11
 - [ ] Output is stored by the adapter with a verifiable sha256; the Kiro process cannot write the evidence store — `tests/kiro/evidence-store` — covers: K-11, K-16
-- [ ] Deadline and cancel kill the whole process tree, including MCP/subagent children — `tests/kiro/cancel` — covers: K-13
+- [ ] Deadline and cancel kill the whole process tree, including MCP/subagent children — `tests/kiro/cancel` — covers: K-13. Also: the session ID from the first run is recorded and the continuation passes it via `--resume-id`
 - [ ] Compatibility test fails on a `kiro-cli` version other than the pinned one — `tests/kiro/version-pin` — covers: K-12
 - [ ] Forbidden flags are never passed; the permission profile maps to explicit tool permissions — `tests/kiro/flags` — covers: K-18
 - [ ] Kiro sees `AGENTS.md`, and a planted steering file cannot weaken it — `tests/kiro/instructions` — covers: K-20
@@ -21,7 +21,7 @@ not exist and nothing here has been run. Do not report any item as passing befor
 ## Invariants
 
 - [ ] Run as the adapter's OS user, the Kiro process cannot read or write `<ledger-root>`, the signing keys or the anchor deploy key — `tests/kiro/ledger-denied` — covers: K-3
-- [ ] A transition request is written only under `<local-artifacts-directory>/requests/`; Kiro cannot mark any transition approved — `tests/kiro/request-only` — covers: K-3, K-16
+- [ ] A transition request is written only under `<local-artifacts-directory>/requests/`; Kiro cannot mark any transition approved — `tests/kiro/request-only` — covers: K-3, K-16. Also: the Kiro process cannot write the artifacts directory, run ledger or another task's request directory
 - [ ] Canary `local-only` file is denied via file read, grep, glob, shell `cat`, symlink, `../` traversal, `$(...)`, interpreter one-liner, `git show`, MCP and retrieval — `tests/kiro/canary-read` — covers: K-5, K-9. Include an MCP call allowed by a scoped `mcp` allow rule and one in a trusted workspace; denial must come from `deny` rules, not from prompting
 - [ ] The same canary is denied when Kiro runs with no `--agent`, with a different agent, with a subagent, and with a worktree-planted `.kiro/` agent, hook or MCP file — `tests/kiro/canary-agents` — covers: K-5, K-7, K-8
 - [ ] Canary content placed in steering or agent `resources` is not loaded into the session — `tests/kiro/canary-context` — covers: K-19
