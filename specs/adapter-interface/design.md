@@ -5,8 +5,10 @@
 - New `harness/adapters/types.ts`: the `Adapter` interface (`start`, `status`, `cancel`,
   `collect`), `RunRequest` (task ID, base SHA, profile, deadline, session ID), `RunResult`
   (status, exit code, artifact digests) and the result schema used by A-5.
-- New `harness/orchestration/worktree.ts`: create a worktree for a task at its base SHA,
-  acquire and release the per-worktree writer lock (A-10, A-11).
+- New `harness/orchestration/worktree.ts`: create a worktree for a task at the base SHA in
+  its task record, acquire the per-worktree writer lock and release it only after the
+  run's processes are confirmed gone (A-10, A-11).
+- A per-run OS user or container for the runtime process (A-12, A-15); choice in T2.
 - New run-ledger record shape (A-13), append-only; storage is an open question.
 - No change to `harness/policy/transitions.ts` or the approval ledger.
 
