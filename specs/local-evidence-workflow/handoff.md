@@ -1,15 +1,20 @@
 # Handoff: local-evidence-workflow
 
-Base: upstream main 0b9d58f7dfb1bf8a05b8726921628b56e8d63261.
-Assigned implementation worktree: /workspace/scratch/1d7a828570fb/custom-agent-harness.
-Branch: codex/local-evidence-workflow. Other branches/PRs are not modified.
+| Field | Value |
+|---|---|
+| Base SHA | e769f18 (current main, merged into the branch at 3169e00) |
+| Head SHA | b515c37 plus the commit that adds this handoff update and the regression suite |
+| Author (runtime / session ID) | Claude Code (lead integration) / session_01AaDiMJVSVxQVfoGPARPgBn; original implementation by Codex |
+| Date | 2026-11-01 |
+
+Branch: codex/local-evidence-workflow. Original base: upstream main 0b9d58f.
 
 ## Assumptions
 
 See requirements.md. The local snapshot was reconstructed through the GitHub connector;
 local bootstrap history differs from upstream. Publication uses upstream as its parent.
 This is a local prototype, not activation of the approval ledger. No real human approval
-or independent agent review has occurred. Deterministic reviewer fixtures will test the
+has occurred; Claude agent reviews are recorded below (no Codex review). Deterministic reviewer fixtures test the
 review interface; they do not establish the quality of an AI review.
 
 ## Research and environment
@@ -20,9 +25,8 @@ repository and PRs #2/#3 and packet-only branches were inspected before starting
 
 ## Exact next action
 
-Inspect the PR and required real-sandbox CI gate. On a supported Linux host, configure
-independent local worker/verifier/reviewer commands and run doctor followed by the pilot.
-A human must inspect and sign any real acceptance decision. No task phase is approved here.
+Wait for CI (`verify`) to pass on the pushed head, then merge PR #4; afterwards a human
+configures real local worker/verifier/reviewer commands and runs `doctor` on the target host.
 
 ## Implemented
 
@@ -37,19 +41,46 @@ A human must inspect and sign any real acceptance decision. No task phase is app
 
 ## Verification
 
-| Command | Result |
-|---|---|
-| npm test | 28 tests: 27 pass, 0 fail, 1 explicit real-sandbox skip; Node 24.22.1 |
-| npm run check | Passed JavaScript syntax checks |
-| git diff --check | Passed |
-| node harness/local/cli.mjs status (missing --run) | Correctly exits 1 with structured error |
-| node harness/local/cli.mjs doctor | Host does not permit required namespace execution; exits 1 |
+Run 2026-11-01 on the branch with main merged, Node 24.22.1 under /opt, bubblewrap and
+ssh-keygen installed (same packages CI installs):
+
+| Command | Result | Evidence |
+|---|---|---|
+| `HARNESS_REQUIRE_SANDBOX=1 npm test` | 78 tests: 77 pass, 0 fail, 1 skip (the namespaces-unavailable test, skipped because the sandbox is available) | terminal output of this session |
+| `node --test tests/local-workflow-regressions.test.mjs` on the pre-fix code (5287b46) | 10 tests: 4 pass, 6 fail (bug1-bug5), as intended | terminal output of this session |
+| `npm run check` | Passed JavaScript syntax checks | terminal output |
+| `git diff --check` | Passed | terminal output |
 
 The tests include independent fixture processes, synthetic signed accept/reject decisions,
 wrong/replayed signatures, changed candidates/configuration/trust, corrupted evidence,
 failed/malformed reviews, timeouts, output caps, leases and interruption handling. Fixtures
 use disposable software keys and never represent a genuine human decision. The CLI has
 no signing command. The test-only executor does not provide a CLI isolation bypass.
+
+## Review findings and resolutions (2026-11-01)
+
+Six Claude review agents (correctness, tests, security, spec conformance) and a lead
+`/code-review` reviewed 5287b46. Not a Codex review. Fixed in b515c37 and the next commit:
+
+| Finding | Resolution | Regression test |
+|---|---|---|
+| Critical: a worker-created nested repository's `filter.*.clean` ran on the host via `git status` (sandbox escape, reproduced) | Workspace scan rejects any nested `.git` before host Git reads worker output; every host Git call disables submodule recursion | bug1 (fails on 5287b46, marker written on host) |
+| Packet digest compared the source checkout's ignored files and modes with the worktree | Packet identified by its Git tree in the base and candidate commits | bug2a, bug2b |
+| Host Git stored worker bytes before size limits applied | Limits and special-file checks run before `git add` | (covered by scan; existing limit behaviour) |
+| Snapshot exec-bit rule differed from Git | Owner exec bit only | bug3 |
+| `git()` trimmed the reviewer patch; 16 MiB buffer | Untrimmed patch, 256 MiB buffer | bug4 |
+| Second Ctrl-C or Ctrl-C during decisions left a stale lock | Handlers kept for every lease-holding command | none (signal timing) |
+| Tools-directory containment was one-way; `/opt` mountable | Two-way check; `/opt` rejected | bug5 |
+| Store created before its location was checked | Checked before creation | updated boundaries test |
+| `null` decision statement gave a TypeError | Rejected as non-object | none |
+| Human signs a path, not a checked digest; key may be a plain file | Docs: sign a checked copy, hardware-backed or separate-account key | docs only |
+| Ignored worker output failed with a misleading message | Message names the file as ignored/untracked; documented | bug7 |
+| Mount-escape fix in 5287b46 had no regression test | Added | bug6a-c |
+| Stale handoff, `git diff --check` failure, non-TaskState statuses | This handoff; README EOF; tasks use `Reviewing`/`Planned` | n/a |
+
+Not changed (documented as known limitations in docs/local-workflow.md): reviewer prompt
+injection, unbound empty directories and non-exec mode bits, and the evidence-store layout
+that differs from approval-ledger.md.
 
 ## Review and limitations
 
