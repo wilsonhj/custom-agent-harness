@@ -99,6 +99,14 @@ test('unsigned, wrong-principal and wrong-namespace decisions are rejected', asy
   assert.equal(status(f.root).state, 'awaiting-decision');
 });
 
+test('a non-canonical decision statement cannot flip reject into accept', async t => {
+  const f = await completed(t), request = await requestDecision(f.root, 'reject');
+  const raw = fs.readFileSync(request.file, 'utf8');
+  fs.writeFileSync(request.file, raw.replace('"decision": "reject"', '"decision": "reject", "decision": "accept"'));
+  await assert.rejects(recordDecision(f.root, sign(f, request.file)), /canonical bytes/);
+  assert.equal(status(f.root).state, 'awaiting-decision');
+});
+
 test('signed decision bound to another candidate or evidence is rejected', async t => {
   const f = await completed(t), request = await requestDecision(f.root, 'accept');
   const statement = JSON.parse(fs.readFileSync(request.file)); statement.evidenceDigest = 'a'.repeat(64);

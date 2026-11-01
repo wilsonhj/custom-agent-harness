@@ -44,17 +44,30 @@ function loadConfig(file, repo, store) {
     invariant(!inside(repo, p) && !inside(store, p), 'tools and trust roots must be outside repository and store');
   }
   invariant(Array.isArray(c.runtimePaths) && c.runtimePaths.length > 0, 'runtimePaths required');
+  const runtimeRoots = ['/usr', '/bin', '/lib', '/lib64', '/opt'];
+  const resolvedRuntimes = [];
   for (const p of c.runtimePaths) {
-    invariant(typeof p === 'string' && path.isAbsolute(p) && p !== '/' &&
-      ['/usr', '/bin', '/lib', '/lib64', '/opt'].some(root => inside(root, p)), 'only system runtime directories may be mounted');
-    invariant(fs.statSync(p).isDirectory(), 'runtime mount is not a directory');
-    const real = fs.realpathSync(p);
+    invariant(typeof p === 'string' && path.isAbsolute(p) && p !== '/', 'only system runtime directories may be mounted');
+    const resolved = path.resolve(p);
+    invariant(runtimeRoots.some(root => inside(root, resolved)), 'only system runtime directories may be mounted');
+    const real = fs.realpathSync(resolved);
+    invariant(runtimeRoots.some(root => inside(root, real)), 'runtime mount real path leaves the allowlist');
+    invariant(fs.statSync(real).isDirectory(), 'runtime mount is not a directory');
     invariant(!inside(real, repo) && !inside(real, store) && !inside(real, c.allowedSigners), 'runtime mount exposes trusted state');
+    resolvedRuntimes.push(resolved);
   }
+  c.runtimePaths = resolvedRuntimes;
   for (const role of ['worker', 'verifier', 'reviewer']) {
     const argv = c[role];
     invariant(Array.isArray(argv) && argv.length > 0 && argv.every(a => typeof a === 'string' && !a.includes('\0')), `invalid ${role} argv`);
     invariant(path.isAbsolute(argv[0]) && c.runtimePaths.some(p => inside(p, argv[0])), `${role} executable must be absolute in runtime mount`);
+    if (role !== 'worker') {
+      invariant(argv.every(a => !a.includes('{workspace}')), `${role} must not run a workspace path`);
+    }
+    for (const arg of argv.filter(a => path.isAbsolute(a))) {
+      const resolved = path.resolve(arg);
+      invariant(!inside(repo, resolved) && !inside(store, resolved), `${role} path must stay outside the repository and store`);
+    }
   }
   invariant(json(c.worker) !== json(c.reviewer), 'worker and reviewer commands must be distinct');
   return { config: c, configDigest: digest(bytes), toolsDigest: treeDigest(c.toolsDirectory, true),
@@ -227,7 +240,10 @@ export async function recordDecision(root, { statementFile, signatureFile, princ
     const c = currentConfig(m);
     candidateUnchanged(m); verifiedEvidence(root, m);
     invariant(typeof principal === 'string' && /^[A-Za-z0-9@._+-]+$/.test(principal), 'explicit signer principal required');
-    const bytes = fs.readFileSync(statementFile), statement = JSON.parse(bytes);
+    const bytes = fs.readFileSync(statementFile);
+    let statement;
+    try { statement = JSON.parse(bytes); } catch { invariant(false, 'decision statement is not JSON'); }
+    invariant(bytes.equals(Buffer.from(json(statement))), 'decision statement is not the canonical bytes');
     invariant(json(statement) === json(decisionStatement(m, statement.decision)), 'decision does not match run and evidence');
     const signature = fs.readFileSync(signatureFile);
     invariant(signature.length < 16384, 'oversized signature');
