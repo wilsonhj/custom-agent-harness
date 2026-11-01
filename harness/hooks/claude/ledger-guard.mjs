@@ -6,7 +6,7 @@
 //
 // Deny = exit 2 with a reason on stderr. Allow = exit 0. Any internal failure denies.
 
-import { readFileSync, realpathSync } from "node:fs";
+import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,21 +18,39 @@ function deny(reason) {
   process.exit(DENY);
 }
 
-// realpath of the deepest existing ancestor, with the missing remainder appended, so a
-// symlink in the path cannot hide the ledger root.
+// Resolve a path even when the final component does not exist yet. Follow symlinks,
+// including dangling ones, so a link aimed at a future ledger file is still inside it.
 function realpathLoose(p) {
-  let head = p;
-  const tail = [];
-  for (;;) {
+  let current = path.resolve(p);
+  const seen = new Set();
+  for (let hop = 0; hop < 32; hop++) {
+    if (seen.has(current)) deny("symlink loop while resolving a path; failing closed");
+    seen.add(current);
     try {
-      return path.join(realpathSync(head), ...tail.reverse());
+      return realpathSync(current);
     } catch {
-      const parent = path.dirname(head);
-      if (parent === head) return p;
-      tail.push(path.basename(head));
-      head = parent;
+      // The full path is missing. Walk up until a real node, and follow a symlink there.
+    }
+    const missing = [];
+    let cursor = current;
+    while (cursor !== path.dirname(cursor)) {
+      let st;
+      try {
+        st = lstatSync(cursor);
+      } catch {
+        missing.push(path.basename(cursor));
+        cursor = path.dirname(cursor);
+        continue;
+      }
+      if (st.isSymbolicLink()) {
+        const target = path.resolve(path.dirname(cursor), readlinkSync(cursor));
+        current = missing.length === 0 ? target : path.join(target, ...missing.reverse());
+        break;
+      }
+      return path.join(realpathSync(cursor), ...missing.reverse());
     }
   }
+  deny("too many symlink hops; failing closed");
 }
 
 function isInside(root, candidate) {

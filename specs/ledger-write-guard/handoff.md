@@ -19,7 +19,7 @@ All new; no existing file was modified.
 
 ## Implemented requirements
 
-- Edit/Write/MultiEdit/NotebookEdit into the root denied, including `..` and relative-to-`cwd` routes, and symlinks to existing files or directories in the root — T1. **Not** a symlink to a file that does not exist yet (see Known limitations, defect D1)
+- Edit/Write/MultiEdit/NotebookEdit into the root denied, including `..` and relative-to-`cwd` routes, symlinks to existing files or directories in the root, and a dangling symlink aimed at a ledger file that does not exist yet — T1.
 - Bash commands naming the root denied; other commands allowed — T1
 - Writes elsewhere and a name-prefix sibling allowed — T1
 - Fail closed on bad input, bad or missing config, missing path — T1
@@ -30,7 +30,7 @@ All new; no existing file was modified.
 
 | Command | Result | Evidence |
 |---|---|---|
-| `node --test tests/ledger-guard.test.mjs` | pass, 11 of 11 | terminal output, 2026-10-28 |
+| `node --test tests/ledger-guard.test.mjs` | pass, 12 of 12, including the dangling-symlink write | terminal output, 2026-10-31 |
 | Mutation check: containment always false; prefix match instead of path containment; `cwd` ignored; Bash check removed; symlink resolution removed | each mutant failed at least one test (1 to 6 tests); hook restored and diffed identical | terminal output, 2026-10-28 |
 | `jq . config/claude/managed-settings.example.json config/claude/ledger-guard.config.example.json specs/ledger-write-guard/tasks.json` | pass | terminal output |
 | `node --check harness/hooks/claude/ledger-guard.mjs` | pass | terminal output |
@@ -43,7 +43,7 @@ All new; no existing file was modified.
 
 ## Known limitations
 
-- **D1 (confirmed defect, not fixed): dangling-symlink bypass.** A symlink in the worktree that points at a ledger file that does not exist yet is allowed, because `realpathLoose` cannot resolve it and falls back to the link's own path. A real write through such a link creates the file inside the ledger (reproduced). The OS permission on the ledger root would still block it. Violates the requirement "cannot create files under `<ledger-root>`". Fix sketch: in `realpathLoose`, when `realpathSync` fails, `lstatSync` the path; if it is a symlink, `readlinkSync` it, resolve relative to its directory, and recurse. Add a regression test first. Needs remediation authority.
+- **D1 (fixed): dangling-symlink bypass.** `realpathLoose` now follows a symlink, including one whose target does not exist yet, and the suite denies a `Write` of that link. The example hook command uses an absolute `node` and clears `NODE_OPTIONS` and `NODE_PATH`. Bash `cd` plus a relative path, and tools outside the matcher, are still outside this hook.
 - **Case-insensitive filesystems (unverified risk).** Containment is case-sensitive. On default macOS (APFS) `<ledger-root>/../LEDGER/x` may name the same directory and would be allowed. Cannot be checked from the Linux sandbox. Check on the target Mac.
 - **The tests share an author with the hook.** The independent probes above are the only check written separately, and they are not in the suite.
 
@@ -69,4 +69,4 @@ All new; no existing file was modified.
 
 ## Exact next action
 
-Decide whether to remediate D1 on this branch (add a failing regression test for the dangling symlink, then fix `realpathLoose`). Then run `/codex:adversarial-review` on the diff and record its findings and resolutions here (CLAUDE.md), and request the `Planned -> Approved` transition through the approval ledger. Agents do not mark it approved. After a human decides, complete the manual checks in `acceptance-tests.md` in a real governed session and on the target Mac (case sensitivity).
+Run `/codex:adversarial-review` on the diff and record its findings and resolutions here (CLAUDE.md), and request the `Planned -> Approved` transition through the approval ledger. Agents do not mark it approved. After a human decides, complete the manual checks in `acceptance-tests.md` in a real governed session and on the target Mac (case sensitivity).

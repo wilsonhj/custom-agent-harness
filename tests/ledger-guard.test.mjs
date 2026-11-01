@@ -66,6 +66,12 @@ test("denies a symlink that points into the root", () => {
   denied(run({ tool_name: "Write", tool_input: { file_path: path.join(link, "x.jsonl") } }));
 });
 
+test("denies a dangling symlink aimed at a ledger file that does not exist yet", () => {
+  const link = path.join(work, "future.jsonl");
+  symlinkSync(path.join(ledger, "new.jsonl"), link);
+  denied(run({ tool_name: "Write", tool_input: { file_path: link } }));
+});
+
 test("denies Bash commands that name the root, and allows other commands", () => {
   denied(run({ tool_name: "Bash", tool_input: { command: `echo hi >> ${ledger}/project.jsonl` } }));
   allowed(run({ tool_name: "Bash", tool_input: { command: "ls -la && git status" } }));
