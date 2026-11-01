@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Base SHA | e769f18 (main after kiro-adapter merged) |
-| Head SHA | 88be84f (packet before this session's second-round fixes; they land in the next commit) |
+| Head SHA | 9bb0630 (packet before this session's third-round fixes; they land in the next commit) |
 | Author (runtime / session ID) | Claude Code / session_01AaDiMJVSVxQVfoGPARPgBn |
 | Date | 2026-11-01 |
 
@@ -57,9 +57,30 @@ findings fixed in the next commit:
 | Release test needs a classifier that does not exist | Release item allows full migration evidence while it is missing |
 | A-15 cited a source that does not state it | Marked *new*, with the sources it derives from |
 | Kiro K-2 crash release and K-3 shared OS user contradicted A-11 and A-15; K-16 too narrow | K-2, K-3, K-16 aligned with A-11, A-12, A-15 |
-| Kiro had no session-ID capture or depth mechanism | K-13 captures the ID (evidence: `--resume-id`); K-7 states depth is unbounded unless T1 finds a control; both added as open questions |
+| Kiro had no session-ID capture or depth mechanism | K-13 captures the ID (evidence: `--resume-id`); K-7 depth handling (revised again in round 3); both added as open questions |
 | Overlap with open PR #4 | Recorded in the banner and as a T2 open question |
 | Stale text (head SHA, A-14/A-15 omissions, kiro "not yet created", missing `status`) | Fixed |
+
+## Review round 3: /code-review plus validation (Claude, same session; NOT Codex), 2026-11-01
+
+Validation on 9bb0630 merged with current main (PR #4 merged): clean merge; all six
+`tasks.json` parse and every dependency resolves; every A- and K- requirement is covered by
+an acceptance test and vice versa; `HARNESS_REQUIRE_SANDBOX=1 npm test` 80 tests, 79 pass,
+1 skip (by design); `npm run check` and `git diff --check` clean. Review findings, all fixed
+in the next commit:
+
+| Finding | Resolution |
+|---|---|
+| K-11 let Kiro output count as evidence, contradicting A-17 | K-11 stores output as a runtime claim; evidence only as A-17 allows |
+| A-17 forbade review findings, which approval-ledger.md lists as evidence | A-17 allows harness-run validation output and schema-valid reviewer findings; free-form claims never |
+| K-3 test ran Kiro as the adapter's user | Test runs Kiro as the separate runtime user |
+| Adapter user's ledger write ban was dropped | New A-21 (adapter and runtime users), referenced by K-3, with a test |
+| K-7 accepted unbounded delegation depth | Kiro agents get no `subagent/<name>` entries unless a depth control exists |
+| Run ledger had no outcome field | A-13 adds run outcome and failure reason; test checks a cancelled run |
+| A-2 test both rejected and downgraded a caller profile | Test: a `start` call with a profile field is rejected; a reviewer task's record resolves to `analysis` |
+| Ad hoc test command | `npm test`, now on main |
+| Cited a non-existent data-egress.md "Rules" section | Cites "Egress classes" (Rules) |
+| Session ID source ambiguous; stale handoffs | A-7 records the ID in the task record and run ledger; head SHAs updated |
 
 ## Known limitations
 

@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Base SHA | 0b9d58f (main at packet creation) |
-| Head SHA | 9d339f8 (PR head these edits were made on; the commit that adds this line is its direct child) |
+| Head SHA | 9bb0630 (PR #6 head these edits were made on; they land in the next commit) |
 | Author (runtime / session ID) | Claude Code / session_01AaDiMJVSVxQVfoGPARPgBn; follow-up pass session_01AaDiMLni7kwVNftEwaHm1a |
 | Date | 2026-11-01 |
 
@@ -128,6 +128,16 @@ Re-read every finding against head `9d339f8`. Still open there, now fixed:
 Already fixed at `9d339f8` and left alone: T1 no longer needs the T5 test, T6 is out of
 tasks.json, the migration-gate acceptance line exists, the superseded MCP text is gone.
 No suite exists to run (`tests/kiro/*` are T5 placeholders); `tasks.json` was not changed.
+
+## Changes made in PR #6 (adapter-interface), 2026-11-01
+
+Normative changes to this packet, aligning it with `specs/adapter-interface/`:
+K-2 (lock released only after confirmed process death; human release after a crash),
+K-3 (separate runtime user; A-21 ledger ban for both users), K-7 (no delegation unless a
+depth control exists), K-11 (output is a runtime claim; evidence per A-17), K-13 (session
+ID capture via `--resume-id`), K-16 (artifacts directory and run ledger also protected),
+T4 depends on `adapter-interface:T4`. Matching acceptance tests were updated. Review records
+are in `specs/adapter-interface/handoff.md`.
 
 ## Assumptions made
 
