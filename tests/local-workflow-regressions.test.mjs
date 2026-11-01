@@ -240,3 +240,26 @@ test('bug7: an ignored worker artifact fails the run and the error names the pat
   assert.equal(r.state, 'failed', `expected failure, got ${r.state}`);
   assert.match(r.failure, /__pycache__\/a\.pyc/);
 });
+
+// ===========================================================================
+// 8. A packet file that is ignored (on disk but not in the commit) is rejected by prepare.
+// ===========================================================================
+test('bug8: a packet file missing from the commit is rejected even if present and ignored on disk', async t => {
+  const f = fixture(t);
+  git(f.repo, 'rm', '-q', '--cached', 'specs/example/handoff.md');
+  fs.writeFileSync(path.join(f.repo, '.gitignore'), 'specs/example/handoff.md\n');
+  recommit(f.repo, 'untrack handoff');
+  assert.equal(git(f.repo, 'status', '--porcelain', '--untracked-files=all'), '', 'source must be clean');
+  await assert.rejects(prepare(f.args), /missing packet file: handoff.md|ENOENT/);
+});
+
+// ===========================================================================
+// 9. A store path through a symlinked parent into the repository creates nothing there.
+// ===========================================================================
+test('bug9: a store reached through a symlink into the repository is rejected before creation', async t => {
+  const f = fixture(t);
+  const link = path.join(f.base, 'into-repo');
+  fs.symlinkSync(f.repo, link);
+  await assert.rejects(prepare({ ...f.args, store: path.join(link, 'state') }), /outside the source checkout/);
+  assert.equal(fs.existsSync(path.join(f.repo, 'state')), false);
+});

@@ -137,9 +137,13 @@ export async function prepare({ repo, packet, store, configFile }) {
   invariant(git(repo, 'rev-parse', '--show-toplevel') === repo, 'repo must be the checkout root');
   invariant(git(repo, 'status', '--porcelain', '--untracked-files=all') === '', 'source checkout must be clean');
   const common = fs.realpathSync(path.resolve(repo, git(repo, 'rev-parse', '--git-common-dir')));
-  // Check the requested location before creating anything, then again after resolving it.
+  // Check the requested location (through its deepest existing ancestor's real path) before
+  // creating anything, then again after resolving it.
   const storeOk = s => !inside(repo, s) && !inside(s, repo) && !inside(common, s);
-  invariant(storeOk(store), 'store must be outside the source checkout and Git administration directory');
+  let existing = store;
+  while (!fs.existsSync(existing)) existing = path.dirname(existing);
+  const planned = path.join(fs.realpathSync(existing), path.relative(existing, store));
+  invariant(storeOk(store) && storeOk(planned), 'store must be outside the source checkout and Git administration directory');
   fs.mkdirSync(store, { recursive: true, mode: 0o700 }); store = trustedPath(store, true);
   invariant(storeOk(store), 'store must be outside the source checkout and Git administration directory');
   const frozen = loadConfig(configFile, repo, store);
@@ -149,6 +153,8 @@ export async function prepare({ repo, packet, store, configFile }) {
   fs.mkdirSync(root, { mode: 0o700 });
   try {
     git(repo, 'worktree', 'add', '--detach', workspace, baseCommit);
+    // The packet must be complete in the commit, not only on disk (an ignored file would pass).
+    validatePacket(workspace, packet);
     const m = { schemaVersion: 1, id, repo, store, workspace, packet, configFile, baseCommit,
       packetDigest: pDigest, configDigest: frozen.configDigest, toolsDigest: frozen.toolsDigest,
       signersDigest: frozen.signersDigest, state: 'prepared', events: [] };

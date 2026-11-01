@@ -16,11 +16,11 @@ try {
     store: requireValue('store'), configFile: requireValue('config') });
   else {
     const root = path.resolve(requireValue('run'));
-    // While a command holds the run lease, SIGINT/SIGTERM must not kill Node before the lease
+    // While a command holds the run lease, SIGINT/SIGTERM/SIGHUP must not kill Node before the lease
     // is released: `run` cancels its sandbox job, other commands finish their bounded work.
     const controller = new AbortController();
     const abort = () => controller.abort();
-    process.on('SIGINT', abort); process.on('SIGTERM', abort);
+    process.on('SIGINT', abort); process.on('SIGTERM', abort); process.on('SIGHUP', abort);
     try {
       if (command === 'status') result = status(root);
       else if (command === 'run') result = await run(root, { signal: controller.signal });
@@ -28,7 +28,8 @@ try {
       else if (command === 'record-decision') result = await recordDecision(root, { statementFile: requireValue('statement'),
         signatureFile: requireValue('signature'), principal: requireValue('principal') });
       else throw new Error(`unknown command: ${command}`);
-    } finally { process.removeListener('SIGINT', abort); process.removeListener('SIGTERM', abort); }
+    } finally { process.removeListener('SIGINT', abort); process.removeListener('SIGTERM', abort);
+      process.removeListener('SIGHUP', abort); }
   }
   console.log(JSON.stringify(result, null, 2));
   if (result.ok === false || result.state === 'failed') process.exitCode = 1;

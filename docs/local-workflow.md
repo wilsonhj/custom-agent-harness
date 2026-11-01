@@ -118,7 +118,9 @@ compares file bytes, modes and paths against the commit, including ignored files
 caches and assume-unchanged flags cannot hide differences. Submodules/special files are
 unsupported, and so is any nested Git repository (a `.git` entry below the worktree root):
 host Git would otherwise run that repository's own configuration, such as filter commands,
-outside the sandbox. Workers must remove build output: an ignored or untracked file left in
+outside the sandbox. A worker-written `.gitattributes` can select filter drivers defined in the source repository's
+own Git config (for example a locally installed git-lfs), so keep that config minimal: those
+drivers run on the host with worker-chosen input. Workers must remove build output: an ignored or untracked file left in
 the worktree fails the run, because the controller binds every byte on disk to the commit.
 Limits are checked before host Git reads any worker output. The feature packet is identified
 by its Git tree in the base commit, so ignored files and permission bits in the source
@@ -178,7 +180,8 @@ a production operation, publish knowledge or replace the external approval ledge
 
 ## Failure and recovery
 
-Failures retain completed evidence and write a handoff with the next action. Inspect with
+Failures retain completed evidence and write a handoff with the next action. `run` and
+`status` exit 1 when the run's state is `failed`. Inspect with
 status and read the referenced objects locally. Each artifact is rehashed before use.
 An interrupted `running` job is never automatically replayed. Prepare a new run after
 inspection. A stale controller.lock requires checking that its PID is dead before a human
