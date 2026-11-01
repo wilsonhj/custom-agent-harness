@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Base SHA | feaf95f (packet draft; repo base 0b9d58f) |
-| Head SHA | the commit containing this file (`git log -1 -- specs/kiro-adapter/handoff.md`) |
+| Base SHA | 0b9d58f (main at packet creation) |
+| Head SHA | 1887841 (branch head this session's edits were made on; they land in the next commit) |
 | Author (runtime / session ID) | Claude Code / session_01AaDiMJVSVxQVfoGPARPgBn |
-| Date | 2026-10-28 |
+| Date | 2026-11-01 |
 
 ## Changed files
 
@@ -74,27 +74,11 @@ CLI commands were searched, not read end to end). Changes versus the earlier res
 - stream-json is documented as a flag, but no event schema was found.
 - Data: Bedrock-backed with possible global cross-region inference; tier-dependent
   service-improvement use and retention; CLI listed HIPAA eligible, no BAA details.
-- Acceptance tests added: hook-failure, agent-missing, sandbox-required, workspace-trust.
+- Acceptance tests added: hook-failure, agent-missing, sandbox-required, workspace-config (originally named workspace-trust).
 
-Earlier research (2026-10-28) summary, kept for history:
-
-kiro.dev was not readable. Findings come from public GitHub (KiroCrew offline mirror of the
-kiro-cli docs, kiro-action, issue trackers) and search snippets; a research agent summarised
-them, so details need re-checking on kiro.dev. Most consequential for the design:
-
-- Upstream hooks appear fail-open on crash/timeout (S); subagent hook triggers are isolated (M).
-  Governance needs a wrapper hook that always exits 2 on error, and a test that hooks fire in subagents.
-- `managed-settings.json` is limited to deny/ask rules, sign-in methods, MCP registry and
-  models, and Kiro says controls are bypassable with local admin (S). Pinning agents/hooks
-  is not shown to be possible, which affects K-4.
-- stdio MCP servers run outside the sandbox with full privileges (M); the sandbox covers
-  shell, not built-in file tools (S).
-- No documented exit codes or JSON output schema for `--no-interactive` (M); K-11 must parse
-  defensively.
-- Only the latest build is distributed, auto-update must be disabled to hold a version (M).
-- Retention: up to 60 days for abuse detection regardless of opt-out; individual-tier content
-  may be used for service improvement unless opted out (S). Kiro lists IDE and CLI as HIPAA
-  eligible (S) but no Kiro BAA process was found. Kiro CLI is closed source (M).
+The earlier (2026-10-28) GitHub-mirror and snippet summary was removed; where it
+disagreed with kiro.dev (for example on stdio MCP servers and the sandbox), the kiro.dev
+reading in requirements.md "Kiro evidence by requirement" is the current one.
 
 ## Known limitations
 
@@ -118,6 +102,18 @@ Treated as claims to verify against kiro.dev (re-fetched 2026-11-01). Result:
 | Medium: T1 vs next action inconsistent; K-21 cites a missing assumption | Yes | Next action fixed; K-21 assumption added below |
 | Draft wording inconsistent | Yes | Banner changed to "proposed, not approved" |
 
+## Second bot review (cursor[bot], PR comment 2026-11-01, "code quality")
+
+| Finding | Resolution |
+|---|---|
+| Requirement cells mix rule, evidence and workarounds; K-5 contradicts itself; K-7 carries 2.x design | Requirements table is now one normative sentence per row; evidence moved to "Kiro evidence by requirement". K-5 now rests on `deny` rules and OS controls, hooks are defence in depth. K-7 is V3-only. |
+| No single "may this task launch Kiro?" procedure; K-21 both normative and pending | Added "Launch procedure"; K-21 moved out of the normative table as pending T3. |
+| T1's definition of done needed the T5 hook test | T1 now ends with a list of what only a test can settle; the test stays in T5. |
+| Handoff kept superseded research, a stale test name, no real SHA | Superseded summary removed, name fixed, Base/Head SHA and date recorded. |
+| T6 belongs in its own packet | Removed from tasks.json; recorded as an external prerequisite (packet not yet created). |
+| design.md said the migration gate was inapplicable | Reworded; acceptance test added for a classifier result of `clean`. |
+| K-21 cited data-egress.md by line number | Now cites the sentences. |
+
 ## Assumptions made
 
 - K-21 (proposed, needs human confirmation): data-egress.md says an unpinned account is
@@ -128,11 +124,11 @@ Treated as claims to verify against kiro.dev (re-fetched 2026-11-01). Result:
 - Packet ID `kiro-adapter` given by the user; scope is the Kiro CLI surface only.
 - `owner_role: human` for T3 and worktree name `kiro-adapter` in tasks.json are placeholders.
 - A runtime with no verified managed configuration is capped at `any-provider` and only under K-17.
-- T6 (adapter interface and worktree manager) may need its own packet.
+- The adapter interface and worktree ownership (former T6) need their own packet, which does not exist yet.
 
 ## Exact next action
 
-Finish T1: re-check the remaining (M)/(S) items on kiro.dev, settle the hook failure
-semantics by test (not docs), and read the permissions, sandbox and settings pages end to
-end. Then a human runs `/codex:adversarial-review` with the codex plugin and records the
+Finish T1: read the permissions, sandbox and settings pages end to end, re-check the
+remaining (M)/(S) items on kiro.dev, and list what only a test can settle (hook failure
+semantics among them; the tests stay in T5). Then a human runs `/codex:adversarial-review` with the codex plugin and records the
 findings here (T2), then makes the T3 decisions.

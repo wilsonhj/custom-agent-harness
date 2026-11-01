@@ -12,15 +12,17 @@
 ## Dependencies
 
 - `kiro-cli` (version to be pinned, K-12).
-- Adapter interface and worktree management, both still "Planned" in the README.
+- Adapter interface and harness worktree ownership, both still "Planned" in the README:
+  a separate packet (not yet created) that this packet depends on.
 - Network access to kiro.dev for the research task (T1).
 
 ## Migration plan
 
 No migration: no application database schema or deployed-service data changes. The
 adapter does add local persisted state (job artifacts, evidence-store files, usage
-records); these are new append-only files outside the release path, so there is nothing
-for the migration gate (`docs/architecture/release-gate.md`) to expand or contract.
+records); these are new append-only files outside the release path. The migration gate
+(`docs/architecture/release-gate.md`) still applies: the release may skip migration
+evidence only if the deterministic classifier reports the diff as `clean`.
 
 ## Rollout and rollback
 
