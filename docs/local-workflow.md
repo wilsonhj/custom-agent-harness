@@ -3,8 +3,8 @@
 This implements the first local slice: packet -> isolated worker -> verification -> separate
 reviewer -> human review decision -> durable handoff. Linux, Node 24 and Git are required.
 No hosted model calls, task-phase approvals, migrations or deployments are implemented.
-The existing `canTransition` policy remains fail closed. This pilot is independent of the
-pending policy and ledger-hook work in PRs #2 and #3.
+The existing `canTransition` policy remains fail closed. This pilot does not depend on the
+policy and ledger-hook work (PRs #2 and #3, now merged) and does not change it.
 
 ## Trust and installation
 
@@ -58,7 +58,8 @@ when a run is prepared; changing any of them requires a new run.
   It emits ONLY the review JSON described below, and exits 0.
 
 All command arrays are argv, not shell strings. Executables must be absolute paths within
-runtime mounts. Arguments may contain `{workspace}`, replaced with `/work`. Absolute
+runtime mounts. Worker arguments may contain `{workspace}`, replaced with `/work`; verifier
+and reviewer arguments may not reference the workspace. `/opt` itself cannot be mounted. Absolute
 references under `toolsDirectory` are translated to `/tools`. Each process starts in
 `/work` and receives JSON on stdin:
 
@@ -115,7 +116,13 @@ Prepare prints the run ID and path. The candidate is a detached commit recorded 
 controller after the worker exits. Before and after verification/review the controller
 compares file bytes, modes and paths against the commit, including ignored files. Git stat
 caches and assume-unchanged flags cannot hide differences. Submodules/special files are
-unsupported. Pilot limits: 10,000 files, 16 MiB per file, 64 MiB total candidate bytes;
+unsupported, and so is any nested Git repository (a `.git` entry below the worktree root):
+host Git would otherwise run that repository's own configuration, such as filter commands,
+outside the sandbox. Workers must remove build output: an ignored or untracked file left in
+the worktree fails the run, because the controller binds every byte on disk to the commit.
+Limits are checked before host Git reads any worker output. The feature packet is identified
+by its Git tree in the base commit, so ignored files and permission bits in the source
+checkout do not affect it. Pilot limits: 10,000 files, 16 MiB per file, 64 MiB total candidate bytes;
 deadlines and output limits are configured per process. Use external filesystem quotas
 and resource limits for hostile workloads; disk/CPU/memory quotas are not implemented.
 
@@ -139,20 +146,25 @@ node harness/local/cli.mjs request-decision \
   --run /absolute/controller-state/RUN_ID --decision accept
 ```
 
-The human inspects the request and evidence, then signs the returned file using their key:
+The human copies the returned request out of the run store, checks that its SHA-256 equals
+the `sha256` that `request-decision` printed and that its `decision` field is the one they
+intend, then signs the copy. Sign a checked copy, never the file in the store, which another
+process could rewrite. Use a hardware-backed key (`-sk`) or a key held by an account the
+controller and agents cannot read: anyone who can use the key can record a "human" decision.
 
 ```bash
-ssh-keygen -Y sign -f /path/to/HUMAN_PRIVATE_KEY \
-  -n local-review-v1 /absolute/controller-state/RUN_ID/request-accept.json
+cp /absolute/controller-state/RUN_ID/request-accept.json ~/review/request-accept.json
+sha256sum ~/review/request-accept.json   # must equal the printed sha256
+ssh-keygen -Y sign -f /path/to/HUMAN_PRIVATE_KEY -n local-review-v1 ~/review/request-accept.json
 ```
 
-Import the detached signature:
+Import the checked copy and its detached signature:
 
 ```bash
 node harness/local/cli.mjs record-decision \
   --run /absolute/controller-state/RUN_ID \
-  --statement /absolute/controller-state/RUN_ID/request-accept.json \
-  --signature /absolute/controller-state/RUN_ID/request-accept.json.sig \
+  --statement ~/review/request-accept.json \
+  --signature ~/review/request-accept.json.sig \
   --principal YOUR_PRINCIPAL
 ```
 
@@ -173,6 +185,21 @@ inspection. A stale controller.lock requires checking that its PID is dead befor
 removes the lock; the tool never guesses from timestamps. Retain evidence according to
 your local policy. Remove abandoned worktrees with `git worktree remove` from the source
 repo; do not remove their evidence before the review/retention period ends.
+
+## Known limitations
+
+- The reviewer receives the full candidate patch. A model-based reviewer can be steered by
+  text in the diff; treat its verdict as one input, not as the human decision.
+- Empty directories and permission bits other than the owner executable bit are not bound
+  to the commit.
+- Evidence lives in `<store>/<run-id>/objects/<sha256>`, not the
+  `<local-artifacts-directory>/evidence/sha256/<digest>` layout in
+  `docs/architecture/approval-ledger.md`; a ledger verifier must be pointed at the run store.
+- `runtimePaths` entries must exist on the host; remove `/lib64` from the example config on
+  systems without it (for example arm64).
+- Tests need Node and `/usr/bin/ssh-keygen` installed under the allowed runtime roots
+  (`/usr`, `/bin`, `/lib`, `/lib64`, or a subdirectory of `/opt`); Node from a home
+  directory (nvm, volta) cannot be mounted.
 
 ## Validation scope
 

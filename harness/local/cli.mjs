@@ -16,17 +16,19 @@ try {
     store: requireValue('store'), configFile: requireValue('config') });
   else {
     const root = path.resolve(requireValue('run'));
-    if (command === 'status') result = status(root);
-    else if (command === 'run') {
-      const controller = new AbortController();
-      const abort = () => controller.abort();
-      process.once('SIGINT', abort); process.once('SIGTERM', abort);
-      try { result = await run(root, { signal: controller.signal }); }
-      finally { process.removeListener('SIGINT', abort); process.removeListener('SIGTERM', abort); }
-    } else if (command === 'request-decision') result = await requestDecision(root, requireValue('decision'));
-    else if (command === 'record-decision') result = await recordDecision(root, { statementFile: requireValue('statement'),
-      signatureFile: requireValue('signature'), principal: requireValue('principal') });
-    else throw new Error(`unknown command: ${command}`);
+    // While a command holds the run lease, SIGINT/SIGTERM must not kill Node before the lease
+    // is released: `run` cancels its sandbox job, other commands finish their bounded work.
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    process.on('SIGINT', abort); process.on('SIGTERM', abort);
+    try {
+      if (command === 'status') result = status(root);
+      else if (command === 'run') result = await run(root, { signal: controller.signal });
+      else if (command === 'request-decision') result = await requestDecision(root, requireValue('decision'));
+      else if (command === 'record-decision') result = await recordDecision(root, { statementFile: requireValue('statement'),
+        signatureFile: requireValue('signature'), principal: requireValue('principal') });
+      else throw new Error(`unknown command: ${command}`);
+    } finally { process.removeListener('SIGINT', abort); process.removeListener('SIGTERM', abort); }
   }
   console.log(JSON.stringify(result, null, 2));
   if (result.ok === false || result.state === 'failed') process.exitCode = 1;

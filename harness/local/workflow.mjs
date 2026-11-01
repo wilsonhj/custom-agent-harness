@@ -5,21 +5,40 @@ import { randomUUID } from 'node:crypto';
 import { atomic, digest, get, inside, invariant, json, leased, object, put, treeDigest, trustedPath } from './artifacts.mjs';
 import { capture } from './process.mjs';
 import { execute } from './sandbox.mjs';
-import { assertSnapshot } from './snapshot.mjs';
+import { assertSnapshot, scanWorkspace } from './snapshot.mjs';
 
 const gitEnv = { PATH: '/usr/bin:/bin', HOME: '/nonexistent', LANG: 'C.UTF-8',
   GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0',
   GIT_AUTHOR_NAME: 'Harness Runner', GIT_AUTHOR_EMAIL: 'harness@localhost',
   GIT_COMMITTER_NAME: 'Harness Runner', GIT_COMMITTER_EMAIL: 'harness@localhost' };
+// Host Git must never run code a worker controls: no hooks, fsmonitor or submodule recursion
+// (a nested repository's own config, e.g. filter commands, would otherwise run on the host).
+const gitArgs = ['--no-pager', '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false',
+  '-c', 'commit.gpgSign=false', '-c', 'submodule.recurse=false', '-c', 'diff.ignoreSubmodules=all',
+  '-c', 'status.submoduleSummary=false', '-c', 'protocol.file.allow=never'];
+function gitRaw(repo, args, maxBuffer = 16 * 1024 * 1024) {
+  return execFileSync('/usr/bin/git', [...gitArgs, ...args], { cwd: repo, env: gitEnv, encoding: 'utf8', maxBuffer });
+}
 export function git(repo, ...args) {
-  return execFileSync('/usr/bin/git', ['--no-pager', '-c', 'core.hooksPath=/dev/null',
-    '-c', 'core.fsmonitor=false', '-c', 'commit.gpgSign=false', ...args],
-  { cwd: repo, env: gitEnv, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).trim();
+  return gitRaw(repo, args).trim();
 }
 const PACKET_FILES = ['requirements.md', 'design.md', 'tasks.json', 'acceptance-tests.md', 'handoff.md'];
 
-function packetDigest(workspace, packet) {
+function checkPacketName(packet) {
   invariant(typeof packet === 'string' && /^specs\/[a-z0-9][a-z0-9-]*$/.test(packet), 'packet must be specs/<feature-id>');
+}
+
+// The packet is identified by its Git tree in a commit, not by on-disk metadata that Git does
+// not track (ignored files, permission bits other than the executable bit).
+function packetTree(repo, commit, packet) {
+  checkPacketName(packet);
+  const tree = git(repo, 'rev-parse', '--verify', '--end-of-options', `${commit}:${packet}`);
+  invariant(git(repo, 'cat-file', '-t', tree) === 'tree', 'packet must be a directory in the commit');
+  return tree;
+}
+
+function validatePacket(workspace, packet) {
+  checkPacketName(packet);
   const dir = path.join(workspace, packet);
   invariant(fs.realpathSync(dir) === dir, 'packet path must not contain symlinks');
   for (const name of PACKET_FILES) {
@@ -28,7 +47,6 @@ function packetDigest(workspace, packet) {
     invariant(fs.readFileSync(file, 'utf8').trim().length > 0, `empty packet file: ${name}`);
   }
   invariant(Array.isArray(JSON.parse(fs.readFileSync(path.join(dir, 'tasks.json'), 'utf8'))), 'tasks.json must be an array');
-  return treeDigest(dir);
 }
 
 function loadConfig(file, repo, store) {
@@ -41,7 +59,8 @@ function loadConfig(file, repo, store) {
   c.toolsDirectory = trustedPath(c.toolsDirectory, true);
   c.allowedSigners = trustedPath(c.allowedSigners);
   for (const p of [c.toolsDirectory, c.allowedSigners]) {
-    invariant(!inside(repo, p) && !inside(store, p), 'tools and trust roots must be outside repository and store');
+    invariant(!inside(repo, p) && !inside(store, p) && !inside(p, repo) && !inside(p, store),
+      'tools and trust roots must not contain or be inside the repository or store');
   }
   invariant(Array.isArray(c.runtimePaths) && c.runtimePaths.length > 0, 'runtimePaths required');
   const runtimeRoots = ['/usr', '/bin', '/lib', '/lib64', '/opt'];
@@ -49,7 +68,7 @@ function loadConfig(file, repo, store) {
   for (const p of c.runtimePaths) {
     invariant(typeof p === 'string' && path.isAbsolute(p) && p !== '/', 'only system runtime directories may be mounted');
     const resolved = path.resolve(p);
-    invariant(runtimeRoots.some(root => inside(root, resolved)), 'only system runtime directories may be mounted');
+    invariant(runtimeRoots.some(root => inside(root, resolved)) && resolved !== '/opt', 'only system runtime directories may be mounted');
     const real = fs.realpathSync(resolved);
     invariant(runtimeRoots.some(root => inside(root, real)), 'runtime mount real path leaves the allowlist');
     invariant(fs.statSync(real).isDirectory(), 'runtime mount is not a directory');
@@ -106,22 +125,26 @@ function currentConfig(m) {
 }
 
 function candidateUnchanged(m) {
+  scanWorkspace(m.workspace);
   invariant(git(m.workspace, 'rev-parse', 'HEAD') === m.candidateCommit, 'candidate HEAD changed');
-  invariant(git(m.workspace, 'status', '--porcelain', '--untracked-files=all') === '', 'candidate worktree changed');
+  invariant(git(m.workspace, 'status', '--porcelain', '--untracked-files=all', '--ignore-submodules=all') === '', 'candidate worktree changed');
   assertSnapshot(m.workspace, m.candidateCommit, git);
-  invariant(packetDigest(m.workspace, m.packet) === m.packetDigest, 'feature packet changed');
+  invariant(packetTree(m.workspace, m.candidateCommit, m.packet) === m.packetDigest, 'feature packet changed');
 }
 
 export async function prepare({ repo, packet, store, configFile }) {
   repo = fs.realpathSync(repo); store = path.resolve(store); configFile = path.resolve(configFile);
   invariant(git(repo, 'rev-parse', '--show-toplevel') === repo, 'repo must be the checkout root');
   invariant(git(repo, 'status', '--porcelain', '--untracked-files=all') === '', 'source checkout must be clean');
-  fs.mkdirSync(store, { recursive: true, mode: 0o700 }); store = trustedPath(store, true);
-  invariant(!inside(repo, store) && !inside(store, repo), 'store must be outside source checkout');
   const common = fs.realpathSync(path.resolve(repo, git(repo, 'rev-parse', '--git-common-dir')));
-  invariant(!inside(common, store), 'store must be outside Git administration directory');
+  // Check the requested location before creating anything, then again after resolving it.
+  const storeOk = s => !inside(repo, s) && !inside(s, repo) && !inside(common, s);
+  invariant(storeOk(store), 'store must be outside the source checkout and Git administration directory');
+  fs.mkdirSync(store, { recursive: true, mode: 0o700 }); store = trustedPath(store, true);
+  invariant(storeOk(store), 'store must be outside the source checkout and Git administration directory');
   const frozen = loadConfig(configFile, repo, store);
-  const pDigest = packetDigest(repo, packet), baseCommit = git(repo, 'rev-parse', 'HEAD');
+  validatePacket(repo, packet);
+  const baseCommit = git(repo, 'rev-parse', 'HEAD'), pDigest = packetTree(repo, baseCommit, packet);
   const id = randomUUID(), root = path.join(store, id), workspace = path.join(root, 'workspace');
   fs.mkdirSync(root, { mode: 0o700 });
   try {
@@ -155,16 +178,19 @@ export async function run(root, { executor = execute, signal } = {}) {
     const config = currentConfig(m), jobs = [];
     m.state = 'running'; save(root, m, 'execution-started');
     try {
+      scanWorkspace(m.workspace);
       invariant(git(m.workspace, 'rev-parse', 'HEAD') === m.baseCommit &&
-        git(m.workspace, 'status', '--porcelain', '--untracked-files=all') === '', 'prepared worktree changed');
+        git(m.workspace, 'status', '--porcelain', '--untracked-files=all', '--ignore-submodules=all') === '', 'prepared worktree changed');
       assertSnapshot(m.workspace, m.baseCommit, git);
       for (const role of ['worker', 'verifier', 'reviewer']) {
         currentConfig(m);
         if (role !== 'worker') candidateUnchanged(m);
         const context = { schemaVersion: 1, runId: m.id, role, baseCommit: m.baseCommit,
           candidateCommit: m.candidateCommit ?? null, packet: m.packet, packetDigest: m.packetDigest };
-        if (role === 'reviewer') context.patch = git(m.workspace, 'diff', '--no-ext-diff', '--no-textconv',
-          '--binary', m.baseCommit, m.candidateCommit, '--');
+        // Untrimmed: a patch must keep its final newline. The buffer covers the snapshot limits
+        // (64 MiB of files) after base85 encoding of binary changes.
+        if (role === 'reviewer') context.patch = gitRaw(m.workspace, ['diff', '--no-ext-diff', '--no-textconv',
+          '--binary', m.baseCommit, m.candidateCommit, '--'], 256 * 1024 * 1024);
         const result = await executor(config, m.workspace, config[role], role === 'worker', context, signal);
         const { stdout, stderr, ...execution } = result;
         const evidence = { role, ...execution, command: config[role], context,
@@ -173,13 +199,16 @@ export async function run(root, { executor = execute, signal } = {}) {
         // Persist each completed job before advancing. Errors retain prior evidence.
         m.jobs = [...jobs]; save(root, m, `${role}-finished`);
         invariant(result.exitCode === 0 && !result.failure, `${role} failed: ${result.failure ?? result.exitCode}`);
-        invariant(packetDigest(m.workspace, m.packet) === m.packetDigest, 'worker changed feature packet');
         if (role === 'worker') {
+          // Reject nested repositories, special files and oversized output before host Git
+          // reads or stores any worker-written bytes.
+          scanWorkspace(m.workspace);
           invariant(git(m.workspace, 'rev-parse', 'HEAD') === m.baseCommit, 'worker changed Git HEAD');
           git(m.workspace, 'add', '--all');
           const tree = git(m.workspace, 'write-tree');
           m.candidateCommit = git(m.workspace, 'commit-tree', tree, '-p', m.baseCommit, '-m', `Local candidate ${m.id}`);
           git(m.workspace, 'reset', '--hard', m.candidateCommit);
+          invariant(packetTree(m.workspace, m.candidateCommit, m.packet) === m.packetDigest, 'worker changed feature packet');
           save(root, m, 'candidate-recorded');
         } else {
           candidateUnchanged(m);
@@ -243,6 +272,7 @@ export async function recordDecision(root, { statementFile, signatureFile, princ
     const bytes = fs.readFileSync(statementFile);
     let statement;
     try { statement = JSON.parse(bytes); } catch { invariant(false, 'decision statement is not JSON'); }
+    invariant(typeof statement === 'object' && statement !== null && !Array.isArray(statement), 'decision statement must be a JSON object');
     invariant(bytes.equals(Buffer.from(json(statement))), 'decision statement is not the canonical bytes');
     invariant(json(statement) === json(decisionStatement(m, statement.decision)), 'decision does not match run and evidence');
     const signature = fs.readFileSync(signatureFile);

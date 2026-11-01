@@ -152,7 +152,7 @@ test('ignored files cannot influence verified bytes without being in the candida
   const f = await completed(t);
   fs.writeFileSync(path.join(f.repo, '.git/info/exclude'), 'hidden.txt\n');
   fs.writeFileSync(path.join(f.workspace, 'hidden.txt'), 'uncommitted input');
-  await assert.rejects(requestDecision(f.root, 'accept'), /bytes differ|worktree changed/);
+  await assert.rejects(requestDecision(f.root, 'accept'), /not in the candidate commit|bytes differ|worktree changed/);
 });
 
 test('Git assume-unchanged flags cannot hide modified candidate bytes', async t => {
@@ -189,9 +189,9 @@ test('changed configuration and signer list invalidate a pending decision', asyn
 
 test('worktree, config, trust path and packet preparation boundaries', async t => {
   const f = fixture(t);
-  await assert.rejects(prepare({ ...f.args, store: path.join(f.repo, 'state') }), /outside source/);
-  // Remove the empty rejected store so the source is clean again.
-  fs.rmSync(path.join(f.repo, 'state'), { recursive: true });
+  await assert.rejects(prepare({ ...f.args, store: path.join(f.repo, 'state') }), /outside the source checkout/);
+  // A rejected store location is not created inside the source checkout.
+  assert.equal(fs.existsSync(path.join(f.repo, 'state')), false);
   fs.chmodSync(f.configFile, 0o666);
   await assert.rejects(prepare(f.args), /writable trust path/);
   fs.chmodSync(f.configFile, 0o600);
