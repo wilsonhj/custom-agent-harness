@@ -56,10 +56,15 @@ protection and compliance. Requirement statuses K-1, K-4, K-5, K-7..K-10, K-12, 
 now cite those pages. Not every page was read in full (permissions, sandbox, settings and
 CLI commands were searched, not read end to end). Changes versus the earlier research:
 
-- Hook failure semantics confirmed on kiro.dev: only exit 2 blocks (PreToolUse); other
-  non-zero exits are warnings. Fail-open confirmed; wrapper hook required.
-- Hook triggers are isolated in subagents (confirmed); subagents inherit parent permission
-  rules by deny-wins intersection, so permission deny rules are the subagent boundary.
+- Hook failure semantics (CORRECTED 2026-11-01): kiro.dev pages conflict. The exit-codes
+  page says only exit 2 blocks a PreToolUse hook and other non-zero exits are warnings;
+  the hooks actions page says any non-zero exit blocks a PreToolUse call. Not settled;
+  must be tested, and the wrapper must exit 2 on every error.
+- Subagents (CORRECTED 2026-11-01): on CLI V3 every subagent tool call is checked against
+  the parent session policy (intersection) and `toolsSettings` is ignored; on 2.x a
+  subagent's own pre-approved tools run even if the parent does not allow them. The docs
+  list "Hook triggers" as isolated per subagent; whether parent hooks fire in subagents
+  is not stated. `@builtin` and `*` in `tools` include `invoke_sub_agent`.
 - `managed-settings.json` supports enterprise deny/ask permission policies in an
   `administration` scope that deny-wins over all others; Kiro says admin controls are
   client-enforced and bypassable with local admin.
@@ -101,7 +106,24 @@ them, so details need re-checking on kiro.dev. Most consequential for the design
 
 - Provider approval (K-17), K-21 rule, any BAA use of Kiro, managed-config/MDM install — owner: TBD (human), in T3.
 
+## Bot review (cursor[bot], PR comment 2026-11-01)
+
+Treated as claims to verify against kiro.dev (re-fetched 2026-11-01). Result:
+
+| Finding | Verified? | Resolution |
+|---|---|---|
+| High: unattended runs are not gated by workspace trust | Yes (permissions page: non-interactive and V1/V2 load workspace config without asking) | K-8 rewritten: adapter-side neutralisation (clean checkout, strip `.kiro/`, harness-owned `HOME`) plus admin deny rules; test renamed `workspace-config` |
+| High: K-5/K-7 overstate subagent coverage; V3 vs 2.x; `@builtin`/`*` | Yes for V3 vs 2.x and `@builtin`/`*`; hook semantics conflict between pages | K-5 and K-7 rewritten; V3 pinned and 2.x unsupported; tests added (`subagent-tools`, updated `subagent-limits`) |
+| Medium: enabling Kiro is a human config change with no root-owned boundary | Yes (design gap) | Added K-22 and test `enable-flag-root-owned` |
+| Medium: T1 vs next action inconsistent; K-21 cites a missing assumption | Yes | Next action fixed; K-21 assumption added below |
+| Draft wording inconsistent | Yes | Banner changed to "proposed, not approved" |
+
 ## Assumptions made
+
+- K-21 (proposed, needs human confirmation): data-egress.md says an unpinned account is
+  both "refused" (L97) and "treated as any-provider" (L61). The packet resolves it as:
+  refuse Kiro jobs on `baa-covered-providers` and `local-only` content; allow
+  `any-provider` content only after the K-17 decision.
 
 - Packet ID `kiro-adapter` given by the user; scope is the Kiro CLI surface only.
 - `owner_role: human` for T3 and worktree name `kiro-adapter` in tasks.json are placeholders.
@@ -110,5 +132,7 @@ them, so details need re-checking on kiro.dev. Most consequential for the design
 
 ## Exact next action
 
-A human runs `/codex:adversarial-review` with the codex plugin on this packet and records
-the findings here (T2); then the T3 human decisions listed in requirements.md.
+Finish T1: re-check the remaining (M)/(S) items on kiro.dev, settle the hook failure
+semantics by test (not docs), and read the permissions, sandbox and settings pages end to
+end. Then a human runs `/codex:adversarial-review` with the codex plugin and records the
+findings here (T2), then makes the T3 decisions.

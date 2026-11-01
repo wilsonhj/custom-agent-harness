@@ -26,7 +26,7 @@ for the migration gate (`docs/architecture/release-gate.md`) to expand or contra
 
 - **Rollout:** adapter ships disabled. Enabling it for a project needs, in order: the
   human provider decision (K-17), the egress-profile entry and managed config, and a
-  passing `tests/kiro/*` suite. Enabling is a configuration change recorded by a human;
+  passing `tests/kiro/*` suite. Enabling is a configuration change recorded by a human in root-owned configuration the agent user cannot write (K-22);
   it is not a task-state transition, so the approval ledger (per-`task_id` transitions)
   is not used for it. The task that delivers the adapter still moves through the ledger
   as usual.

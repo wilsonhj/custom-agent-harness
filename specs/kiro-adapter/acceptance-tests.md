@@ -25,7 +25,7 @@ not exist and nothing here has been run. Do not report any item as passing befor
 - [ ] Canary `local-only` file is denied via file read, grep, glob, shell `cat`, symlink, `../` traversal, `$(...)`, interpreter one-liner, `git show`, MCP and retrieval — `tests/kiro/canary-read` — covers: K-5, K-9
 - [ ] The same canary is denied when Kiro runs with no `--agent`, with a different agent, with a subagent, and with a worktree-planted `.kiro/` agent, hook or MCP file — `tests/kiro/canary-agents` — covers: K-5, K-7, K-8
 - [ ] Canary content placed in steering or agent `resources` is not loaded into the session — `tests/kiro/canary-context` — covers: K-19
-- [ ] Subagent cannot use a tool its parent lacks and cannot exceed the delegation depth limit — `tests/kiro/subagent-limits` — covers: K-7
+- [ ] On V3, a subagent whose own rules allow a tool the parent denies is still blocked; on a 2.x engine the adapter refuses to run — `tests/kiro/subagent-limits` — covers: K-7
 - [ ] A worktree-planted `.kiro/` file cannot override managed config or the harness-supplied agent — `tests/kiro/config-precedence` — covers: K-4, K-8
 - [ ] An unpinned login/account is refused — `tests/kiro/unpinned-account` — covers: K-4
 - [ ] Launch against a `baa-covered-providers` or `local-only` fixture is refused; the class is assigned by the adapter, not the session — `tests/kiro/egress-gate` — covers: K-10, K-14, K-21
@@ -34,5 +34,7 @@ not exist and nothing here has been run. Do not report any item as passing befor
 - [ ] A crashing, timing-out or non-0/2-exiting PreToolUse hook still results in the tool call being blocked (wrapper exits 2 on any error); a read is denied by admin `deny` rules even with all hooks disabled — `tests/kiro/hook-failure` — covers: K-5
 - [ ] `--agent <missing>` exits 4 and the adapter treats any tool calls made by the built-in default agent before that as a failed, untrusted run — `tests/kiro/agent-missing` — covers: K-1, K-5
 - [ ] The run uses `--sandbox` and exits if the sandbox cannot start; MCP wrapping failure is fatal — `tests/kiro/sandbox-required` — covers: K-9, K-18
-- [ ] A hook or agent profile planted in the worktree `.kiro/` does not execute or load in an unattended run — `tests/kiro/workspace-trust` — covers: K-8
+- [ ] An unattended `--no-interactive --v3` run with a planted worktree `.kiro/` hook, agent, MCP server and steering file: the adapter's pre-launch step removes or rejects them, and a read of a canary is still denied by admin `deny` rules if the planted config does load — `tests/kiro/workspace-config` — covers: K-8
+- [ ] Enabling flag, provider decision and egress-profile entry are not writable by the Kiro process user — `tests/kiro/enable-flag-root-owned` — covers: K-22
+- [ ] A `tools` list containing `@builtin` or `*` is rejected by the adapter's agent validation; only `subagent/<name>` entries are accepted — `tests/kiro/subagent-tools` — covers: K-7
 - [ ] A hook run from a runtime-specific root-owned script identifies its runtime from the script, not from input — `tests/kiro/hook-identity` — covers: K-6

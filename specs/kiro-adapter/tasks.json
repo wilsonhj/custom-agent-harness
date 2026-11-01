@@ -1,7 +1,7 @@
 [
   {
     "id": "T1",
-    "title": "Read Kiro CLI primary docs and repos; resolve UNVERIFIED items in requirements.md with cited sources",
+    "title": "Finish reading Kiro CLI primary docs (permissions, sandbox, settings end to end) and re-check (M)/(S) items; settle hook failure semantics by test",
     "owner_role": "implementer",
     "worktree": "kiro-adapter",
     "status": "Planned",
