@@ -12,7 +12,7 @@
 - `specs/kiro-adapter/requirements.md` — K-14..K-21 added, K-1..K-13 tightened, Kiro claims graded (M)/(S)/UNVERIFIED with sources, questions re-pointed.
 - `specs/kiro-adapter/acceptance-tests.md` — one test per requirement; Migration/Preview sections removed.
 - `specs/kiro-adapter/design.md` — migration justification and rollout/rollback corrected.
-- `specs/kiro-adapter/tasks.json` — T1..T7: research, plan review, human decisions, prerequisite adapter/worktree work, adapter, tests, code review.
+- `specs/kiro-adapter/tasks.json` — T1-T5 and T7: research, plan review, human decisions, adapter, tests, code review (T6 moved to a separate packet, not yet created).
 
 ## Implemented requirements
 
