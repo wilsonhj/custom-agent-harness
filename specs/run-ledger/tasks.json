@@ -1,7 +1,7 @@
 [
   {
     "id": "T0",
-    "title": "Resolve blocking questions: test runner/toolchain, writer identity, file rotation",
+    "title": "Resolve blocking questions: writer identity, evidence location, file rotation",
     "owner_role": "human",
     "worktree": "none",
     "status": "Planned",
@@ -9,19 +9,23 @@
   },
   {
     "id": "T1",
-    "title": "Record types and JSON Schema (run-ledger/v1) in harness/ledger/run-record.ts, with valid and invalid fixtures",
+    "title": "Record schema (run-ledger/v1) and validator in harness/ledger/run-record.mjs, with valid and invalid fixtures; add harness/ledger to scripts/check-local.mjs",
     "owner_role": "implementer",
     "worktree": "<worktree-run-ledger>",
     "status": "Planned",
-    "depends_on": ["T0"]
+    "depends_on": [
+      "T0"
+    ]
   },
   {
     "id": "T2",
-    "title": "Writer: validation, lock, compare-and-append, fsync, evidence-digest lookup",
+    "title": "Writer: validation, lock, compare-and-append, fsync, evidence-digest lookup in the job's run store",
     "owner_role": "implementer",
     "worktree": "<worktree-run-ledger>",
     "status": "Planned",
-    "depends_on": ["T1"]
+    "depends_on": [
+      "T1"
+    ]
   },
   {
     "id": "T3",
@@ -29,7 +33,19 @@
     "owner_role": "implementer",
     "worktree": "<worktree-run-ledger>",
     "status": "Planned",
-    "depends_on": ["T2"]
+    "depends_on": [
+      "T2"
+    ]
+  },
+  {
+    "id": "T3b",
+    "title": "Local workflow as first producer: optional runLedger config path; emit job_start, decision and job_end records from harness/local/workflow.mjs",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": [
+      "T2"
+    ]
   },
   {
     "id": "T4",
@@ -37,7 +53,9 @@
     "owner_role": "implementer",
     "worktree": "<worktree-run-ledger>",
     "status": "Planned",
-    "depends_on": ["T2"]
+    "depends_on": [
+      "T2"
+    ]
   },
   {
     "id": "T5",
@@ -45,7 +63,11 @@
     "owner_role": "implementer",
     "worktree": "<worktree-run-ledger>",
     "status": "Planned",
-    "depends_on": ["T2", "T4"]
+    "depends_on": [
+      "T2",
+      "T3b",
+      "T4"
+    ]
   },
   {
     "id": "T6",
@@ -53,14 +75,21 @@
     "owner_role": "implementer",
     "worktree": "<worktree-run-ledger>",
     "status": "Planned",
-    "depends_on": ["T3"]
+    "depends_on": [
+      "T3"
+    ]
   },
   {
     "id": "T7",
-    "title": "Independent review of T1-T6 diff (/codex:review, plus /codex:adversarial-review on the schema)",
+    "title": "Independent review of T1-T6 diff, including T3b (/codex:review, plus /codex:adversarial-review on the schema)",
     "owner_role": "reviewer",
     "worktree": "<worktree-run-ledger>",
     "status": "Planned",
-    "depends_on": ["T3", "T5", "T6"]
+    "depends_on": [
+      "T3",
+      "T3b",
+      "T5",
+      "T6"
+    ]
   }
 ]

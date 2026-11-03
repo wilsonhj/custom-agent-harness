@@ -4,18 +4,24 @@
 
 | Field | Value |
 |---|---|
-| Base SHA | `0b9d58f7dfb1bf8a05b8726921628b56e8d63261` |
-| Head SHA | uncommitted (packet files only) |
+| Base SHA | `7fce6c645d7f37be1815a1a36619d7fa9095f134` (`main`, merged into the branch) |
+| Head SHA | see PR #7 (packet files only) |
 | Author (runtime / session ID) | Claude Code (cloud) / `session_01AaDiMJcmHQEvQBbrRCSVcB` |
 | Date | 2026-11-03 |
 | Task state | `Draft` (no approval-ledger record exists; none requested) |
 
 ## Changed files
 
+Second session: the first draft was written against a stale `main` (`0b9d58f`). After
+merging `main` (`7fce6c6`) the packet now uses the existing toolchain (`npm test`,
+`npm run check`, Node 24, no dependencies), makes the local evidence workflow the first
+producer (new task T3b), resolves evidence digests in its run store, and replaces the
+resolved test-runner question with an evidence-location question.
+
 - `specs/run-ledger/requirements.md`: behavior, non-goals, invariants, cited decisions, open questions
 - `specs/run-ledger/design.md`: record schema, storage, validation, termination rules, versioning
 - `specs/run-ledger/tasks.json`: T0 (human decisions) to T7 (independent review)
-- `specs/run-ledger/acceptance-tests.md`: tests per requirement and invariant (commands are placeholders)
+- `specs/run-ledger/acceptance-tests.md`: tests per requirement and invariant (`npm test` patterns; tests not written yet)
 - `specs/run-ledger/handoff.md`: this file
 
 No code changed.
@@ -28,7 +34,8 @@ No code changed.
 
 | Command | Result | Evidence |
 |---|---|---|
-| (none) | not run | No test runner exists yet (blocks T1, see requirements "Unresolved questions") |
+| `npm run check` | pass (cloud container, Node 22.22.0) | Syntax checks only; packet is docs |
+| `npm test` | 39 pass, 39 fail, 2 skipped (cloud container) | Same counts on unmodified `main` `7fce6c6` in the same container: the container has Node 22 (repo needs Node 24) and no bubblewrap. Not evidence either way; CI (`verify`, Node 24 + bubblewrap) is the record. No run-ledger tests exist yet. |
 
 ## Codex review
 
@@ -43,12 +50,13 @@ written in. Run `/codex:adversarial-review` on this packet locally before reques
   forged decision records.
 - The run ledger has tamper *evidence* (hash chain) but no anchor, so its tail can be
   truncated undetected. Acceptable only because it carries no authority.
-- The evidence store it depends on is designed but not implemented.
+- Evidence lives in two layouts (run store vs `<local-artifacts-directory>/evidence/`); the
+  packet picks the run store for local-workflow jobs pending a maintainer decision.
 
 ## Unresolved decisions
 
-- Test runner and toolchain: owner <maintainer> (blocks T1)
 - Writer OS identity: owner <maintainer> (blocks T2)
+- Evidence location: owner <maintainer> (blocks T2)
 - File rotation: owner <maintainer> (blocks T2)
 - Accept or exclude session-hook events: owner <maintainer> (blocks T4)
 - Retention, task-family taxonomy, split assignment: owner <maintainer> (non-blocking)
@@ -65,6 +73,6 @@ written in. Run `/codex:adversarial-review` on this packet locally before reques
 
 ## Exact next action
 
-Maintainer reviews `specs/run-ledger/` and answers the three T0 questions that block
-T1/T2, then runs `/codex:adversarial-review` on the packet and requests the
-`Draft -> Planned` transition.
+Maintainer reviews `specs/run-ledger/` and answers the three T0 questions (writer identity,
+evidence location, file rotation) that block T2, then runs `/codex:adversarial-review` on
+the packet and requests the `Draft -> Planned` transition.

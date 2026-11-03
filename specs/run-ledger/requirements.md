@@ -7,8 +7,14 @@
 The README "Run ledger" section lists what to record (task/job IDs, runtime and skill
 versions, permission profile, knowledge revision, session IDs, commit SHAs, evidence,
 approvals, timing, usage) but has no schema, storage, or writer. The approval ledger
-(`docs/architecture/approval-ledger.md`) records *who approved what*; nothing yet records
-*what a job did*.
+(`docs/architecture/approval-ledger.md`) records *who approved what*.
+
+The local evidence workflow pilot (`harness/local/`, `docs/local-workflow.md`) already
+records *one run* in detail: `run.json` plus content-addressed evidence objects (command,
+stage, times, exit code, output digests) in its run store. What is missing is a record
+*across* runs: which runs belong to a task, why each one moved on or stopped, and how each
+ended, in one place an operator or an analysis can read. The local workflow controller is
+the first producer of run-ledger records; its run store stays the source of evidence.
 
 This packet also shapes the record so that a later experiment can compare the current
 fixed repair policy (`execution.max_repair_rounds`) with alternatives using logged
@@ -72,13 +78,15 @@ possible. Learning anything from the data is out of scope here.
 
 | Constraint | Source (ADR / policy / brain doc ID @ revision) |
 |---|---|
-| Ledgers live outside every worktree; agents get no write access; enforcement is OS ownership, with managed hooks as defence in depth | `docs/architecture/approval-ledger.md` "Storage", "Who writes, and how it is enforced" @ `0b9d58f` |
-| Evidence is referenced by `{ name, digest.sha256 }` in the content-addressed store; contents never enter a ledger | `docs/architecture/approval-ledger.md` "Record schema" (`evidence_refs`) @ `0b9d58f`; `EvidenceRef` in `harness/policy/transitions.ts` @ `0b9d58f` |
-| Task states and allowed transitions | `harness/policy/transitions.ts` @ `0b9d58f` |
-| Derived artifacts inherit the most restrictive egress class of their inputs; unknown class means `local-only` | `docs/security/data-egress.md` "Egress classes" @ `0b9d58f` |
-| Completion requires validated evidence, not an assertion | `AGENTS.md` "Approvals and state" @ `0b9d58f` |
-| Fields the run ledger must cover | `README.md` "Run ledger" @ `0b9d58f` |
-| Fixed repair and budget limits (`max_repair_rounds`, `deadline_seconds`) | `README.md` "Example configuration contract" @ `0b9d58f` (proposed schema, not yet implemented) |
+| Ledgers live outside every worktree; agents get no write access; enforcement is OS ownership, with managed hooks as defence in depth | `docs/architecture/approval-ledger.md` "Storage", "Who writes, and how it is enforced" @ `7fce6c6` |
+| Evidence is referenced by `{ name, digest.sha256 }` in the content-addressed store; contents never enter a ledger | `docs/architecture/approval-ledger.md` "Record schema" (`evidence_refs`) @ `7fce6c6`; `EvidenceRef` in `harness/policy/transitions.ts` @ `7fce6c6` |
+| Task states and allowed transitions | `harness/policy/transitions.ts` @ `7fce6c6` |
+| Derived artifacts inherit the most restrictive egress class of their inputs; unknown class means `local-only` | `docs/security/data-egress.md` "Egress classes" @ `7fce6c6` |
+| Completion requires validated evidence, not an assertion | `AGENTS.md` "Approvals and state" @ `7fce6c6` |
+| Fields the run ledger must cover | `README.md` "Run ledger" @ `7fce6c6` |
+| Run states (`prepared`, `running`, `awaiting-decision`, `failed`, `decision-recorded`) are local execution facts, not `TaskState`; a run store lives outside the source checkout; interrupted runs are never replayed | `docs/local-workflow.md`, `specs/local-evidence-workflow/design.md` "Architecture" @ `7fce6c6` |
+| Node 24 ESM, no npm dependencies; tests run with `npm test` (`node --experimental-strip-types --test tests/*`), syntax checks with `npm run check` | `package.json`, `scripts/test.mjs`, `scripts/check-local.mjs`, `.github/workflows/local-workflow.yml` @ `7fce6c6` |
+| Fixed repair and budget limits (`max_repair_rounds`, `deadline_seconds`) | `README.md` "Example configuration contract" @ `7fce6c6` (proposed schema, not yet implemented) |
 
 Research input, **not** a company decision and not independently verified: the uploaded
 note "Reinforcement Learning for an Agent Harness" (2026-10-28) sections 5, 6 and 9
@@ -87,11 +95,16 @@ behavior probabilities). Nothing in this packet depends on its numerical claims.
 
 ## Unresolved questions
 
-- [ ] Test runner and TypeScript toolchain: the repository has no `package.json`, and the
-  README "Testing" commands are placeholders. Which runner (e.g. Node's built-in
-  `node --test` with type stripping, or vitest)? — owner: <maintainer>, blocks: T1
-- [ ] Writer identity: reuse the approval ledger's `<ledger-user>` or a separate
-  `<run-ledger-user>`? A separate user limits a writer bug to one ledger. — owner:
+- [x] Test runner and toolchain: resolved on `main` (`npm test`, `npm run check`, Node 24,
+  no npm dependencies; see Cited company decisions).
+- [ ] Writer identity: the local workflow's controller account, the approval ledger's
+  `<ledger-user>`, or a separate `<run-ledger-user>`? The controller account is simplest
+  (it already writes the run store); a separate user limits a writer bug to one ledger.
+  — owner: <maintainer>, blocks: T2
+- [ ] Evidence location: local-workflow evidence lives in `<store>/<run-id>/objects/<sha256>`,
+  not `<local-artifacts-directory>/evidence/sha256/` as the approval ledger assumes
+  (`docs/local-workflow.md` "Known limitations"). Draft assumes the run ledger resolves
+  digests in the run store named by the job. Should one layout win instead? — owner:
   <maintainer>, blocks: T2
 - [ ] Events from interactive sessions (Claude Code with the `codex` plugin) can only come
   from hooks that run as the session's user, so the session could forge them. Accept them

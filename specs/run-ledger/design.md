@@ -6,7 +6,7 @@ Status: Draft. Requirements: `requirements.md`.
 
 | Term | Meaning here | RL-note equivalent |
 |---|---|---|
-| Job | One bounded runtime invocation on one task in one worktree (one adapter call, or one interactive session) | Episode |
+| Job | One bounded run on one task in one worktree. Today: one local-workflow run (`job_id` = its `runId`). Later: one adapter call or one interactive session. | Episode |
 | Decision point | A moment where the controller chooses what happens next: after implementation, after a review, after a verifier run, on budget pressure | Step |
 | Controller | The code that makes that choice. Phase 1: the static rules in config (`max_repair_rounds`, `deadline_seconds`). | Policy |
 | Verifier | A command the control plane runs whose result is evidence: acceptance tests, a Codex review, a schema check | Verifier |
@@ -14,6 +14,23 @@ Status: Draft. Requirements: `requirements.md`.
 Decision points are **coarse**: one per controller choice, not one per tool call. Tool
 calls belong to the runtime's own loop, which this harness does not replace (README
 non-goal "Replacing vendor-provided agent loops").
+
+### First producer: the local evidence workflow
+
+The local workflow controller (`harness/local/workflow.mjs`) is already a trusted,
+non-agent process with a run lease and fsynced writes, so it emits the first records:
+
+| Local-workflow event | Run-ledger record |
+|---|---|
+| `prepare` completes | `job_start` (`runtime.name: "local-command"`; `controller.kind: "static"`, `config_digest` = the run's pinned `configDigest`) |
+| Worker exits, controller records the candidate commit | `decision` (`selected_action: "verify"`) |
+| Verifier exits | `decision` (`request_review` on exit 0, otherwise `stop`) |
+| Reviewer verdict recorded | `decision` (`escalate` to the human decision) |
+| Run reaches `failed` or `decision-recorded` | `job_end` |
+
+The pilot has no repair loop, so `repair` never appears in its records yet. Run states stay
+local execution facts: the run ledger copies them as `local_run_state`, never as `TaskState`.
+Evidence digests in these records resolve in that run's store (`<store>/<run-id>/objects/`).
 
 ## API and schema changes
 
@@ -35,7 +52,7 @@ New, nothing removed.
 | Field | Type | Notes |
 |---|---|---|
 | `schema_version` | `"run-ledger/v1"` | Readers reject unknown major versions. |
-| `id` | string (ULID) | |
+| `id` | string (UUID, `crypto.randomUUID`) | Same ID scheme as local-workflow runs; no dependency. |
 | `kind` | `"job_start"` \| `"decision"` \| `"job_end"` \| `"correction"` | |
 | `project_id`, `task_id`, `job_id` | string | `task_id` = `specs/<id>/`. |
 | `provenance` | `"control-plane"` \| `"session-hook"` | Who observed the event. Only `control-plane` records can carry outcomes (see Validation). |
@@ -46,7 +63,7 @@ New, nothing removed.
 
 | Field | Type |
 |---|---|
-| `runtime` | `{ name: "claude-code" \| "codex-cli" \| "cursor-agent", version }` |
+| `runtime` | `{ name: "local-command" \| "claude-code" \| "codex-cli" \| "cursor-agent", version }`. For `local-command` (the local workflow's worker), `version` is the SHA-256 of the executable, which the controller already pins. |
 | `adapter` | `{ name, version }` (e.g. `codex-plugin`, `1.0.6`) |
 | `model_id` | string \| null (as the runtime reports it; never inferred) |
 | `skills` | `{ name, version }[]` |
@@ -86,6 +103,7 @@ maps are not allowed.
 | `outcome_components` | `{ wall_seconds, cost_usd, repair_rounds, review_rounds, blocking_findings_open, policy_violations }` | Raw components. **No combined reward scalar** is stored; weighting is an analysis decision. |
 | `usage_total` | `{ input_tokens, output_tokens, cost_usd }` | Each number \| null. |
 | `approval_record_ids` | string[] | IDs of approval-ledger records written during the job; references only. |
+| `local_run_state` | `"failed"` \| `"decision-recorded"` \| null | Final local-workflow run state, for jobs it produced. Not a `TaskState`. |
 
 ### `correction`
 
@@ -116,18 +134,21 @@ for exclusion from any outcome comparison.
 - `decision` and `job_end` reference an existing open `job_start`; one `job_end` per job.
 - `provenance: "session-hook"` records may not carry `outcome`, `verifier` results, or
   `termination_reason: "succeeded"`.
-- Every `evidence_refs` digest resolves in `<local-artifacts-directory>/evidence/sha256/`.
+- Every `evidence_refs` digest resolves in the job's evidence store: `<store>/<run-id>/objects/` for local-workflow jobs (see requirements "Unresolved questions").
 
 ### Writer, reader, CLI
 
-New module `harness/ledger/` (TypeScript, alongside `harness/policy/`):
+New module `harness/ledger/`, Node 24 ESM `.mjs` with no npm dependencies, matching
+`harness/local/` (T1 adds the directory to `scripts/check-local.mjs`):
 
-- `run-record.ts`: types and JSON Schema.
-- `writer.ts`: validates, takes an exclusive lock on `<run-ledger-root>/<project-id>.lock`,
+- `run-record.mjs`: the v1 schema as data plus a hand-written validator (no JSON Schema
+  package, since the repo takes no dependencies). `TaskState` values are imported from
+  `harness/policy/transitions.ts` only in tests, to check the enum stays in sync.
+- `writer.mjs`: validates, takes an exclusive lock on `<run-ledger-root>/<project-id>.lock`,
   checks `prev_record_hash` against the head (compare-and-append), appends, fsyncs. Same
   serialization pattern as the approval ledger.
-- `reader.ts`: walks the chain, validates each line, applies corrections.
-- CLI (names provisional, under the README "Proposed CLI surface"):
+- `reader.mjs`: walks the chain, validates each line, applies corrections.
+- CLI subcommands of `harness/local/cli.mjs` (`npm run eng`), names provisional:
   `eng runs list <task-id>`, `eng runs show <job-id>`, `eng runs verify`,
   `eng runs export [--task <id>] --out <path>` (export header records the egress class).
 
@@ -150,10 +171,11 @@ evidence store (by digest), like any other file.
 ## Dependencies
 
 - `harness/policy/transitions.ts` (`TaskState`, `EvidenceRef` types).
-- Evidence store `<local-artifacts-directory>/evidence/sha256/` (designed in the approval
-  ledger; not yet implemented, so T2 includes a minimal store lookup).
-- A ULID generator and a JSON Schema validator (packages to be chosen and pinned in T1).
-- TypeScript toolchain and test runner (unresolved; blocks T1).
+- Local evidence workflow (`harness/local/`): first producer, and its run store holds the
+  evidence the records reference.
+- `harness/local/artifacts.mjs` helpers (`digest`, `atomic`, `trustedPath`) for hashing,
+  fsynced writes and trust-path checks; reuse rather than duplicate.
+- Node 24 and the existing `npm test` / `npm run check` scripts. No new packages.
 
 ## Migration plan
 
@@ -172,7 +194,8 @@ today. Future schema changes follow these rules, checked at review:
 
 ## Rollout and rollback
 
-- **Rollout:** ship writer, reader and CLI; enable the writer in the control plane behind
-  `run_ledger.enabled` (default off) in `config/harness.local.yaml`; then enable
-  session-hook spooling separately.
-- **Rollback:** set `run_ledger.enabled: false`. The file stays; nothing else reads it.
+- **Rollout:** ship writer, reader and CLI; enable the local workflow's writer with an
+  optional `runLedger` path in the operator config (`config/local-workflow.example.json`
+  shape; absent means off, so existing configs keep working); then enable session-hook
+  spooling separately.
+- **Rollback:** remove `runLedger` from the operator config. The file stays; nothing else reads it.
