@@ -1,0 +1,66 @@
+[
+  {
+    "id": "T0",
+    "title": "Resolve blocking questions: test runner/toolchain, writer identity, file rotation",
+    "owner_role": "human",
+    "worktree": "none",
+    "status": "Planned",
+    "depends_on": []
+  },
+  {
+    "id": "T1",
+    "title": "Record types and JSON Schema (run-ledger/v1) in harness/ledger/run-record.ts, with valid and invalid fixtures",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": ["T0"]
+  },
+  {
+    "id": "T2",
+    "title": "Writer: validation, lock, compare-and-append, fsync, evidence-digest lookup",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": ["T1"]
+  },
+  {
+    "id": "T3",
+    "title": "Reader and CLI: list, show, verify, export (with egress class header)",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": ["T2"]
+  },
+  {
+    "id": "T4",
+    "title": "Session-hook spool and writer ingestion as provenance=session-hook",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": ["T2"]
+  },
+  {
+    "id": "T5",
+    "title": "Write-boundary and egress tests: agent user cannot write; no free text accepted",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": ["T2", "T4"]
+  },
+  {
+    "id": "T6",
+    "title": "Docs: README Run ledger section and capability row, data-egress note for run-ledger exports",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": ["T3"]
+  },
+  {
+    "id": "T7",
+    "title": "Independent review of T1-T6 diff (/codex:review, plus /codex:adversarial-review on the schema)",
+    "owner_role": "reviewer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": ["T3", "T5", "T6"]
+  }
+]
