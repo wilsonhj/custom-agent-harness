@@ -23,7 +23,9 @@ yet; nothing below has been run.
   — covers: list jobs; see decision points
 - [ ] Each of the six termination reasons is produced by the classifier from a fixture
   event sequence, including precedence (a policy denial during a budget overrun is
-  `policy_violation`) — `test: termination` — covers: closed termination set
+  `policy_violation`; a job that passes acceptance on its last allowed repair round is
+  `succeeded`, not `budget_exhausted`; a job whose last verifier fails with no repair round
+  left is `budget_exhausted`) — `test: termination` — covers: closed termination set
 - [ ] A `job_end` with `outcome` but `provenance: "session-hook"` is rejected; so is
   `termination_reason: "succeeded"` from a session hook — `test: provenance`
   — covers: outcome from control-plane commands only

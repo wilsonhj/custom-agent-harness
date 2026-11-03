@@ -39,9 +39,13 @@ No code changed.
 
 ## Codex review
 
-Not run. The `codex` CLI and plugin are not installed in the cloud container this draft was
-written in. Run `/codex:adversarial-review` on this packet locally before requesting
-`Draft -> Planned`, and record findings and resolutions here.
+| Source | Finding | Resolution |
+|---|---|---|
+| Codex GitHub review on `110b431` (P2) | Termination order labelled a job that passes on its last allowed repair round `budget_exhausted` | Fixed: success is checked before budget; `budget_exhausted` now needs a limit that blocked a needed step. Fixture cases added to `test: termination`. |
+
+`/codex:adversarial-review` via the local plugin is still not run: the `codex` CLI and
+plugin are not installed in the cloud container this draft was written in. Run it locally
+before requesting `Draft -> Planned`, and record findings and resolutions here.
 
 ## Known limitations
 

@@ -119,8 +119,12 @@ Applied by the control plane, in this order (first match wins):
 2. Sandbox, dependency, runtime crash, network, or verifier malfunction (verifier result
    `error`) → `infrastructure_failure`.
 3. Operator or upstream cancel → `cancelled`.
-4. `deadline_seconds`, `max_repair_rounds`, or `max_cost_usd` reached → `budget_exhausted`.
-5. Acceptance commands all pass on `head_sha` → `succeeded`.
+4. Acceptance commands all pass on `head_sha` → `succeeded`, even if that was the last
+   allowed repair round or the budget is now used up.
+5. Acceptance did not pass **and** the controller could not take the next needed action
+   (another repair, review or verify) because `deadline_seconds`, `max_repair_rounds` or
+   `max_cost_usd` forbade it → `budget_exhausted`. Reaching a limit is not enough on its
+   own; the limit must have blocked a needed step.
 6. Otherwise → `task_failure`.
 
 `infrastructure_failure` and `policy_violation` jobs are kept for operations but flagged
