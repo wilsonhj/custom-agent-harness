@@ -1,0 +1,26 @@
+[
+  {
+    "id": "T1",
+    "title": "Implement ledger-guard hook and its node:test suite",
+    "owner_role": "implementer",
+    "worktree": "custom-agent-harness checkout, branch claude/amazing-goldberg-keg3dg",
+    "status": "Planned",
+    "depends_on": []
+  },
+  {
+    "id": "T2",
+    "title": "Add managed-settings and guard-config examples; verify deny-rule syntax in a real session",
+    "owner_role": "implementer",
+    "worktree": "custom-agent-harness checkout, branch claude/amazing-goldberg-keg3dg",
+    "status": "Planned",
+    "depends_on": ["T1"]
+  },
+  {
+    "id": "T3",
+    "title": "Independent review of T1-T2 diff (/codex:review or /codex:adversarial-review)",
+    "owner_role": "reviewer",
+    "worktree": "custom-agent-harness checkout, branch claude/amazing-goldberg-keg3dg",
+    "status": "Planned",
+    "depends_on": ["T2"]
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "toolsDirectory": "/absolute/operator-owned/local-tools",
+  "allowedSigners": "/absolute/operator-owned/trust/allowed_signers",
+  "runtimePaths": ["/usr", "/bin", "/lib", "/lib64"],
+  "worker": ["/usr/bin/node", "/absolute/operator-owned/local-tools/worker.mjs"],
+  "verifier": ["/usr/bin/node", "/absolute/operator-owned/local-tools/verify.mjs"],
+  "reviewer": ["/usr/bin/node", "/absolute/operator-owned/local-tools/review.mjs"],
+  "deadlineMs": 60000,
+  "maxOutputBytes": 1048576
+}

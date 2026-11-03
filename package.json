@@ -1,0 +1,12 @@
+{
+  "name": "custom-agent-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=24.0.0 <25"},
+  "scripts": {
+    "eng": "node harness/local/cli.mjs",
+    "test": "node scripts/test.mjs",
+    "check": "node scripts/check-local.mjs"
+  }
+}

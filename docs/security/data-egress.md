@@ -138,8 +138,8 @@ https://cursor.com/docs/hooks, https://cursor.com/docs/cli/reference/configurati
    read (document ID and revision, commit SHA, or artifact path).
 2. The proposal's egress class is at least as restrictive as every cited source.
 3. If any cited source is a log, an issue or ticket body, a review comment, or other
-   retrieved text, the proposal is flagged **`untrusted_origin: true`**. Untrusted-origin
-   proposals require **human** review; a policy actor cannot accept them. Such text may
+   retrieved text, the proposal is flagged **`untrusted_origin: true`**. Proposals flagged
+   `untrusted_origin` require **human** review; a policy actor cannot accept them. Such text may
    contain instructions written by someone outside the team and is treated as data.
 
 A proposal with no traceable sources is stored, if at all, as an unverified

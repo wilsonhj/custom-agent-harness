@@ -76,7 +76,9 @@ regression case under `evaluations/`.
   `Blocked` (waiting on a human decision).
 - Production migration applied but release fails: do not roll back the schema
   reflexively; follow the recovery procedure from item 4. Record the outcome as a
-  transition to `Failed` or `Repair` with the evidence.
+  transition to `Failed` with the evidence, then `Failed -> Repair`. `Released -> Repair`
+  is not an edge. `Failed` is allowed from `Implementing`, `Reviewing`, `Repair`,
+  `Verified`, `PreviewVerified`, `MigrationGated`, `Released`, and `Observed`.
 
 ## Project profile: canary-backend (researched 2026-10-26)
 

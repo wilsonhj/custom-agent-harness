@@ -39,6 +39,15 @@
 
 ## Overview
 
+### Runnable local pilot
+
+The first local evidence workflow is implemented under `harness/local/` (Node 24,
+Linux bubblewrap). It prepares an isolated worktree, runs operator-configured worker,
+verifier and reviewer processes, verifies an out-of-band human review decision, and
+writes a durable handoff. Start with [the local workflow guide](docs/local-workflow.md)
+and `npm test`. The remaining sections describe the broader design; this pilot does
+not implement task-phase approval, hosted adapters or production release authority.
+
 <Project Name> connects coding agents to a shared engineering workflow and an evolving company knowledge base.
 
 The system keeps agent sessions replaceable while preserving specifications, architectural decisions, operational procedures, reusable skills, and verification evidence.
@@ -88,6 +97,7 @@ These are configurable workflow assignments, not model-performance rankings.
 
 | Capability | Status | Implementation / evidence |
 |---|---|---|
+| Local evidence workflow | Implemented (pilot) | `harness/local/`, `tests/local-workflow.test.mjs`, [operator guide](docs/local-workflow.md). Offline Linux process interface; task-phase/release approval remains unimplemented. |
 | Claude adapter | Planned | <Path or issue> |
 | Codex adapter | Implemented (external) | Installed `codex` Claude Code plugin v1.0.6 (`openai-codex` marketplace), which talks to Codex through its app-server broker. Commands: `/codex:review`, `/codex:adversarial-review`, `/codex:status`, `/codex:result`, `/codex:cancel`. |
 | Cursor adapter | Planned | Cursor CLI (`agent`) installed; no harness wrapper yet. |
@@ -459,7 +469,7 @@ Completed work -> Candidate lesson -> Evidence and contradiction checks
 Provenance requirement for `brain.propose_update`:
 
 - Every proposal must cite source evidence in `evidence_refs`; proposals without it are rejected.
-- Lessons derived from logs, issues, or retrieved text are flagged `untrusted-origin` and require human review before publication.
+- Lessons derived from logs, issues, or retrieved text are flagged `untrusted_origin` and require human review before publication.
 
 This prevents prompt-injected content from becoming accepted knowledge.
 
@@ -508,11 +518,11 @@ Proposed successful path:
 
 ```text
 Draft -> Planned -> Approved -> Implementing -> Reviewing
-      -> Verified -> Preview verified -> Migration gated -> Released
+      -> Verified -> PreviewVerified -> MigrationGated -> Released
       -> Observed -> Closed
 ```
 
-Define blocked, failed, cancelled, repair, and superseded transitions in `harness/policy/transitions.ts`. Agents cannot approve their own transitions.
+Names above are the `TaskState` values. The `Blocked`, `Failed`, `Cancelled`, `Repair`, and `Superseded` transitions are defined in `harness/policy/transitions.ts`. Agents cannot approve their own transitions.
 
 The migration gate exists because some platforms (for example, Vercel auto-deploy) do not run migrations, and application rollback does not reverse schema changes. See `docs/architecture/release-gate.md`.
 
@@ -526,7 +536,7 @@ The migration gate exists because some platforms (for example, Vercel auto-deplo
 | Preview | Build, smoke/browser tests, bounded logs | Preview acceptance |
 | Migration | Reviewed migration plan, migration applied and verified in preview, old-code-on-new-schema compatibility check, recovery procedure | Release authorization |
 | Release | Approved target and recovery plan | Release authorization |
-| Observation | Deployment-specific health evidence | Close or escalate |
+| Observation | Deployment-specific health evidence | Close, or escalate (`Blocked`; `Failed` if the release is unhealthy) |
 | Learning | Candidate updates and source evidence | Knowledge review |
 
 ### Handoff checklist
@@ -638,7 +648,7 @@ Retention: <Policy>. Access: <Roles>. Redaction: <Policy>.
 Replace placeholders with implemented commands:
 
 ```bash
-<unit-test-command>
+node --experimental-strip-types --test tests/*.test.ts   # state machine (Node >= 22.6)
 <adapter-compatibility-test-command>
 <permission-policy-test-command>
 <retrieval-evaluation-command>
@@ -676,7 +686,7 @@ Replace placeholders with implemented commands:
 - [ ] Shared instructions.
 - [ ] Feature packets and handoffs.
 - [ ] One-writer worktrees.
-- [x] Independent Codex review. Satisfied by the external `codex` Claude Code plugin v1.0.6; not implemented in this repository.
+- [ ] Independent Codex review. The external `codex` Claude Code plugin v1.0.6 provides the review commands; nothing is implemented in this repository. Not done for `baa-covered-providers` content: the BAA configuration allowlist and the managed configuration are still placeholders (`docs/security/data-egress.md`, "BAA configuration allowlist" and "Open questions"), so until they exist a Codex session counts as `any-provider`.
 - [ ] Deterministic validation.
 - [ ] Git-backed company knowledge.
 - [ ] Migration-aware release gate with a fail-closed migration classifier.
@@ -685,8 +695,12 @@ Replace placeholders with implemented commands:
   them; `MigrationGated -> Released` cannot succeed without a valid human record for the
   exact commit and deployment target.
 
-The release *decision* is enforced from Phase 1. Later phases change where the ledger
-lives and who can execute a release, not whether approval is required.
+From Phase 1 the harness's control plane records and checks the release *decision*
+(`canTransition` against the ledger; today `canTransition` denies every transition except
+entering `Blocked`, pending the actor policy). That does not stop a release made outside the
+harness: only Phase 3 ("Provider-enforced production releases") confines production deploy
+credentials to the privileged release job. Later phases change where the ledger lives and who
+can execute a release, not whether approval is required.
 
 ### Phase 2 — Unified knowledge and orchestration
 
