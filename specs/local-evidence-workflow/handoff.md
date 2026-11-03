@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Base SHA | e769f18 (current main, merged into the branch at 3169e00) |
-| Head SHA | b515c37 plus the commit that adds this handoff update and the regression suite |
-| Author (runtime / session ID) | Claude Code (lead integration) / session_01AaDiMJVSVxQVfoGPARPgBn; original implementation by Codex |
-| Date | 2026-11-01 |
+| Base SHA | 7fce6c6 (main after PR #4 merged; the follow-up starts here) |
+| Head SHA | The follow-up commit on `claude/wizardly-allen-3ovt4w` that adds this line (direct child of 7fce6c6) |
+| Author (runtime / session ID) | Claude Code (lead integration) / session_01AaDiMJVSVxQVfoGPARPgBn; post-merge follow-up session_01AaDiMLni7kwVNftEwaHm1a; original implementation by Codex |
+| Date | 2026-11-03 |
 
 Branch: codex/local-evidence-workflow. Original base: upstream main 0b9d58f.
 
@@ -26,8 +26,10 @@ repository and PRs #2/#3 and packet-only branches were inspected before starting
 
 ## Exact next action
 
-Wait for CI (`verify`) to pass on the pushed head, then merge PR #4; afterwards a human
-configures real local worker/verifier/reviewer commands and runs `doctor` on the target host.
+PR #4 is merged. Open a pull request for the post-merge follow-up branch
+`claude/wizardly-allen-3ovt4w`, wait for CI (`verify`) to pass, and merge it; then a human
+configures real local worker/verifier/reviewer commands (entrypoints as absolute paths under
+`toolsDirectory`) and runs `doctor` on the target host.
 
 ## Implemented
 
@@ -90,6 +92,28 @@ worker `.gitattributes` can select filter drivers defined in the repository's ow
 Not changed (documented as known limitations in docs/local-workflow.md): reviewer prompt
 injection, unbound empty directories and non-exec mode bits, and the evidence-store layout
 that differs from approval-ledger.md.
+
+## Post-merge follow-up (2026-11-03)
+
+A `/code-review` of 5287b46 reported 8 unverified findings. Each was re-checked against
+main at 7fce6c6:
+
+| Finding | Status at 7fce6c6 | Resolution | Regression test |
+|---|---|---|---|
+| Packet digest taken from the source checkout | Already fixed (b515c37, 21364da) | none | bug2a, bug2b, bug8 |
+| `capture()` waits for 'close', so a `setsid` descendant holding a pipe keeps it past the deadline | Confirmed: a 500 ms deadline was still pending at 3 s | After 'exit', kill the group and force-close pipes after 1 s; the job fails with "descendant kept output open after exit" | bug10 (hangs 30 s on 7fce6c6) |
+| Verifier/reviewer "no workspace path" rule only rejected `{workspace}` | Confirmed: `['node', 'review.mjs']` ran a worker-written review that reached awaiting-decision; absolute `/work/...` also passed | Reject `/work` paths at config load; refuse relative arguments naming an existing candidate path before each verifier/reviewer run. cwd stays `/work`: moving it would make an `npm test` verifier silently test `/tools` | bug11a, bug11b (fail on 7fce6c6), bug11c |
+| `git()` trim corrupts `ls-tree -z` and the patch | Patch: already fixed (b515c37). `ls-tree -z`: not a bug, the output ends in NUL, which `trim()` keeps | none | bug4 |
+| Snapshot exec bit differs from Git | Already fixed (b515c37) | none | bug3 |
+| Agent-set task statuses in tasks.json | Statuses were already changed to `Reviewing`/`Planned` | Not changed: editing them again would be an agent recording a transition; a human should set them | n/a |
+| Full candidate re-hash before the reviewer, right after the post-verifier check, and again at the end | Confirmed | Each role's candidate is checked once, right after it (the worker's after `reset --hard`) | covered by existing candidate-tamper tests |
+| `doctor()` duplicates the bwrap argv | Confirmed | Shared `bwrapPrefix()`; `doctor` reports the constant path | existing doctor and real-sandbox tests |
+
+Validation on this host (Node 24.22.1 under /opt, bubblewrap and ssh-keygen installed as in
+CI): `HARNESS_REQUIRE_SANDBOX=1 npm test` 84 tests, 83 pass, 0 fail, 1 skip (the
+restricted-host denial test, skipped because the sandbox is available); `npm run check`
+passed; `node harness/local/cli.mjs doctor` ok; `git diff --check` passed. Before the change
+the same suite gave 80 tests, 79 pass, 1 skip. No Codex review of this follow-up has run.
 
 ## Review and limitations
 

@@ -263,3 +263,48 @@ test('bug9: a store reached through a symlink into the repository is rejected be
   await assert.rejects(prepare({ ...f.args, store: path.join(link, 'state') }), /outside the source checkout/);
   assert.equal(fs.existsSync(path.join(f.repo, 'state')), false);
 });
+
+// ===========================================================================
+// 10. A descendant that leaves the process group and keeps the output pipe open cannot
+//     hold the bounded runner past its deadline.
+// ===========================================================================
+test('bug10: capture resolves soon after exit when a setsid descendant holds stdout', async t => {
+  const started = Date.now();
+  // The deadline is well after the exit, so only the pipe drain can end the wait.
+  const r = await capture(['/usr/bin/sh', '-c', 'setsid sleep 30 & exit 0'], { deadlineMs: 10000 });
+  assert.ok(Date.now() - started < 5000, `capture took ${Date.now() - started} ms`);
+  assert.equal(r.exitCode, 0);
+  assert.match(r.failure, /kept output open/);
+});
+
+// ===========================================================================
+// 11. Verifier and reviewer entrypoints cannot be candidate files.
+// ===========================================================================
+test('bug11a: a reviewer run by relative path cannot execute a worker-written review', async t => {
+  const worker = "fs.writeFileSync('answer.txt','after\\n');\n" +
+    "fs.writeFileSync('review.mjs', \"import * as fs from 'node:fs';const c=JSON.parse(fs.readFileSync(0,'utf8'));" +
+    "console.log(JSON.stringify({schemaVersion:1,verdict:'pass',baseCommit:c.baseCommit,candidateCommit:c.candidateCommit,findings:[]}));\");";
+  const f = fixture(t, { worker, reviewer: "process.exit(1);" });
+  fs.writeFileSync(f.configFile, json({ ...f.config, reviewer: [process.execPath, 'review.mjs'] }), { mode: 0o600 });
+  const p = await prepare(f.args);
+  const r = await run(p.root, { executor: fixtureExecutor });
+  assert.equal(r.state, 'failed', 'a forged candidate review must not reach awaiting-decision');
+  assert.match(r.failure, /reviewer argument names a candidate file.*: review\.mjs$/);
+});
+
+test('bug11b: a verifier/reviewer argument under the sandbox /work path is rejected', async t => {
+  for (const arg of ['/work/check.mjs', '--script=/work/check.mjs']) {
+    const f = fixture(t);
+    fs.writeFileSync(f.configFile, json({ ...f.config, verifier: [process.execPath, arg] }), { mode: 0o600 });
+    await assert.rejects(prepare(f.args), /verifier must not run a workspace path/, arg);
+  }
+});
+
+test('bug11c: verifier options that do not name candidate files still run', async t => {
+  const f = fixture(t);
+  fs.writeFileSync(f.configFile, json({ ...f.config,
+    verifier: [process.execPath, '--no-warnings', f.config.verifier[1]] }), { mode: 0o600 });
+  const p = await prepare(f.args);
+  const r = await run(p.root, { executor: fixtureExecutor });
+  assert.equal(r.state, 'awaiting-decision', r.failure);
+});

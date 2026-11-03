@@ -49,6 +49,24 @@ function validatePacket(workspace, packet) {
   invariant(Array.isArray(JSON.parse(fs.readFileSync(path.join(dir, 'tasks.json'), 'utf8'))), 'tasks.json must be an array');
 }
 
+// An argument and, for `--name=value`, its value: both can name a path.
+const argumentValues = a => a.includes('=') ? [a, a.slice(a.indexOf('=') + 1)] : [a];
+const SANDBOX_WORKSPACE = '/work';
+
+// Verifier and reviewer entrypoints must stay outside the candidate. They start in the
+// workspace, so a relative argument (`review.mjs`, `.`) would resolve to worker-written
+// files; refuse any argument that names an existing candidate path.
+function assertNoCandidateArguments(workspace, role, argv) {
+  for (const value of argv.slice(1).flatMap(argumentValues)) {
+    if (!value || path.isAbsolute(value)) continue;
+    const target = path.resolve(workspace, value);
+    if (!inside(workspace, target)) continue;
+    let exists = true;
+    try { fs.lstatSync(target); } catch { exists = false; }
+    invariant(!exists, `${role} argument names a candidate file; keep its entrypoint outside the candidate: ${value}`);
+  }
+}
+
 function loadConfig(file, repo, store) {
   trustedPath(file);
   invariant(!inside(repo, file) && !inside(store, file), 'config must be outside repository and store');
@@ -81,7 +99,8 @@ function loadConfig(file, repo, store) {
     invariant(Array.isArray(argv) && argv.length > 0 && argv.every(a => typeof a === 'string' && !a.includes('\0')), `invalid ${role} argv`);
     invariant(path.isAbsolute(argv[0]) && c.runtimePaths.some(p => inside(p, argv[0])), `${role} executable must be absolute in runtime mount`);
     if (role !== 'worker') {
-      invariant(argv.every(a => !a.includes('{workspace}')), `${role} must not run a workspace path`);
+      invariant(argv.every(a => !a.includes('{workspace}') && argumentValues(a).every(v =>
+        !(path.isAbsolute(v) && inside(SANDBOX_WORKSPACE, path.resolve(v))))), `${role} must not run a workspace path`);
     }
     for (const arg of argv.filter(a => path.isAbsolute(a))) {
       const resolved = path.resolve(arg);
@@ -190,7 +209,9 @@ export async function run(root, { executor = execute, signal } = {}) {
       assertSnapshot(m.workspace, m.baseCommit, git);
       for (const role of ['worker', 'verifier', 'reviewer']) {
         currentConfig(m);
-        if (role !== 'worker') candidateUnchanged(m);
+        // The candidate was checked in full right after the previous role, and only controller
+        // code runs in between, so it is not re-hashed here.
+        if (role !== 'worker') assertNoCandidateArguments(m.workspace, role, config[role]);
         const context = { schemaVersion: 1, runId: m.id, role, baseCommit: m.baseCommit,
           candidateCommit: m.candidateCommit ?? null, packet: m.packet, packetDigest: m.packetDigest };
         // Untrimmed: a patch must keep its final newline. The buffer covers the snapshot limits
@@ -216,6 +237,7 @@ export async function run(root, { executor = execute, signal } = {}) {
           git(m.workspace, 'reset', '--hard', m.candidateCommit);
           invariant(packetTree(m.workspace, m.candidateCommit, m.packet) === m.packetDigest, 'worker changed feature packet');
           save(root, m, 'candidate-recorded');
+          candidateUnchanged(m);
         } else {
           candidateUnchanged(m);
           if (role === 'reviewer') {
@@ -224,7 +246,7 @@ export async function run(root, { executor = execute, signal } = {}) {
           }
         }
       }
-      currentConfig(m); candidateUnchanged(m);
+      currentConfig(m);
       m.evidence = put(root, { schemaVersion: 1, runId: m.id, baseCommit: m.baseCommit,
         candidateCommit: m.candidateCommit, packetDigest: m.packetDigest, configDigest: m.configDigest,
         toolsDigest: m.toolsDigest, jobs });
