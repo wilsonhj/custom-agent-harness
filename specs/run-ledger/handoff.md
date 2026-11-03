@@ -42,6 +42,7 @@ No code changed.
 | Source | Finding | Resolution |
 |---|---|---|
 | Codex GitHub review on `110b431` (P2) | Termination order labelled a job that passes on its last allowed repair round `budget_exhausted` | Fixed: success is checked before budget; `budget_exhausted` now needs a limit that blocked a needed step. Fixture cases added to `test: termination`. |
+| Codex GitHub review on `5601cb1` (P2) | Passing acceptance then a `changes_requested` review was classified `succeeded`, though `harness/local/workflow.mjs` fails that run | Fixed: `succeeded` requires every producer gate (acceptance, review `pass`, human `accept` where recorded); producer maps `changes_requested` to `stop`. Fixtures for rejected review and rejected decision added. |
 
 `/codex:adversarial-review` via the local plugin is still not run: the `codex` CLI and
 plugin are not installed in the cloud container this draft was written in. Run it locally

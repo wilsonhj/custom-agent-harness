@@ -25,7 +25,7 @@ non-agent process with a run lease and fsynced writes, so it emits the first rec
 | `prepare` completes | `job_start` (`runtime.name: "local-command"`; `controller.kind: "static"`, `config_digest` = the run's pinned `configDigest`) |
 | Worker exits, controller records the candidate commit | `decision` (`selected_action: "verify"`) |
 | Verifier exits | `decision` (`request_review` on exit 0, otherwise `stop`) |
-| Reviewer verdict recorded | `decision` (`escalate` to the human decision) |
+| Reviewer verdict recorded | `decision` (`escalate` to the human decision on `pass`; `stop` on `changes_requested`, which fails the run) |
 | Run reaches `failed` or `decision-recorded` | `job_end` |
 
 The pilot has no repair loop, so `repair` never appears in its records yet. Run states stay
@@ -119,9 +119,12 @@ Applied by the control plane, in this order (first match wins):
 2. Sandbox, dependency, runtime crash, network, or verifier malfunction (verifier result
    `error`) → `infrastructure_failure`.
 3. Operator or upstream cancel → `cancelled`.
-4. Acceptance commands all pass on `head_sha` → `succeeded`, even if that was the last
-   allowed repair round or the budget is now used up.
-5. Acceptance did not pass **and** the controller could not take the next needed action
+4. Every gate the producer requires passed on `head_sha` → `succeeded`, even if that was
+   the last allowed repair round or the budget is now used up. Gates: the acceptance
+   commands, the required review verdict (`pass`; `changes_requested` fails it, as
+   `harness/local/workflow.mjs` does), and, where the producer records one, the human
+   decision (`accept`; `reject` fails it). A gate that did not run counts as not passed.
+5. A gate did not pass **and** the controller could not take the next needed action
    (another repair, review or verify) because `deadline_seconds`, `max_repair_rounds` or
    `max_cost_usd` forbade it → `budget_exhausted`. Reaching a limit is not enough on its
    own; the limit must have blocked a needed step.

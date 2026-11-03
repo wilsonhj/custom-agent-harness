@@ -25,7 +25,9 @@ yet; nothing below has been run.
   event sequence, including precedence (a policy denial during a budget overrun is
   `policy_violation`; a job that passes acceptance on its last allowed repair round is
   `succeeded`, not `budget_exhausted`; a job whose last verifier fails with no repair round
-  left is `budget_exhausted`) — `test: termination` — covers: closed termination set
+  left is `budget_exhausted`; passing acceptance followed by a `changes_requested` review,
+  or by a human `reject` decision, is `task_failure`, not `succeeded`) —
+  `test: termination` — covers: closed termination set
 - [ ] A `job_end` with `outcome` but `provenance: "session-hook"` is rejected; so is
   `termination_reason: "succeeded"` from a session hook — `test: provenance`
   — covers: outcome from control-plane commands only
