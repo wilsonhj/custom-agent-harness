@@ -113,7 +113,14 @@ Validation on this host (Node 24.22.1 under /opt, bubblewrap and ssh-keygen inst
 CI): `HARNESS_REQUIRE_SANDBOX=1 npm test` 84 tests, 83 pass, 0 fail, 1 skip (the
 restricted-host denial test, skipped because the sandbox is available); `npm run check`
 passed; `node harness/local/cli.mjs doctor` ok; `git diff --check` passed. Before the change
-the same suite gave 80 tests, 79 pass, 1 skip. No Codex review of this follow-up has run.
+the same suite gave 80 tests, 79 pass, 1 skip.
+
+Codex review (chatgpt-codex-connector on PR #8, commit d8fc97a), one P2 finding: `bug10` let
+the shell exit before its background child called `setsid`, so the exit-time group kill
+could reach the child and the pipe closed normally (it also failed the first CI run).
+Resolved in 72966ed: the grandchild is spawned detached from Node (setsid before exec) and
+the child exits only after its `spawn` event. The test fails after 30 s on 7fce6c6 and
+passes in about 1 s with the fix; CI `verify` passed on 72966ed.
 
 ## Review and limitations
 
