@@ -269,10 +269,17 @@ test('bug9: a store reached through a symlink into the repository is rejected be
 //     hold the bounded runner past its deadline.
 // ===========================================================================
 test('bug10: capture resolves soon after exit when a setsid descendant holds stdout', async t => {
+  // The grandchild is in its own session (detached: setsid before exec) before the child
+  // exits, so killing the child's process group cannot reach it and it keeps stdout open.
+  const script = "const p=require('node:child_process').spawn(process.execPath,['-e','setTimeout(()=>{},30000)']," +
+    "{detached:true,stdio:'inherit'});p.on('spawn',()=>{process.stderr.write(String(p.pid));process.exit(0);});";
   const started = Date.now();
   // The deadline is well after the exit, so only the pipe drain can end the wait.
-  const r = await capture(['/usr/bin/sh', '-c', 'setsid sleep 30 & exit 0'], { deadlineMs: 10000 });
-  assert.ok(Date.now() - started < 5000, `capture took ${Date.now() - started} ms`);
+  const r = await capture([process.execPath, '-e', script], { deadlineMs: 10000 });
+  const elapsed = Date.now() - started, pid = Number(r.stderr);
+  t.after(() => { try { process.kill(pid, 'SIGKILL'); } catch {} });
+  assert.ok(pid > 0, `grandchild pid not reported: ${r.stderr}`);
+  assert.ok(elapsed < 5000, `capture took ${elapsed} ms`);
   assert.equal(r.exitCode, 0);
   assert.match(r.failure, /kept output open/);
 });
