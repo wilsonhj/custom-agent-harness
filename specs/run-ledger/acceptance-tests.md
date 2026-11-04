@@ -59,13 +59,17 @@ yet; nothing below has been run.
 - [ ] A session-hook `correction` is rejected; a control-plane correction whose
   replacement changes `job_id`, `task_id`, `kind` or `provenance`, or adds an outcome that
   fails the evidence check, is rejected — `test: correction-forgery`
-- [ ] An outcome citing a digest of worker output, or of a verifier job with nonzero exit,
-  is rejected — `test: evidence-meaning`
+- [ ] An outcome citing a digest of worker output is rejected; `passed` counts citing a
+  verifier job with nonzero exit are rejected; `failed` counts citing that same failing
+  verifier job are accepted — `test: evidence-meaning`
 - [ ] Appending the same record twice (simulated crash after fsync) leaves one copy and
   returns success; same `id` with different bytes is rejected — `test: idempotent`
 - [ ] A file ending in a partial line: the next append quarantines the tail, the chain
   verifies, and `verify` reports the quarantined bytes; a lock left by a dead PID blocks
   appends until `eng runs unlock` — `test: torn-tail`, `test: stale-lock`
+- [ ] An append failure on a job's second `decision`: the producer writes none of that job's
+  later records, and `reconcile` then appends the missing `decision`, the rest, and
+  `job_end` in order, with the chain and `step_index` checks passing — `test: reconcile-order`
 - [ ] `reconcile` on a run whose ledger append failed adds exactly the missing records and is
   a no-op on a second run; it writes no `job_end` for `running` or `awaiting-decision`
   without `--confirm-dead` — `test: reconcile`

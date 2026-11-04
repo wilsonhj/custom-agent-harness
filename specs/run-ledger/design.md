@@ -189,9 +189,13 @@ for exclusion from any outcome comparison. The rules live in `harness/ledger/cla
 - `provenance: "session-hook"` records may not carry `outcome`, `verifier` results, or
   `termination_reason: "succeeded"`, and may not be `correction` records.
 - Outcome evidence is checked for meaning, not only existence: every `outcome.evidence_refs`
-  digest must resolve, in the store named by `evidence_store_id`, to a verifier job record
-  of that run (`role: "verifier"`, `exitCode: 0`, no failure). A digest of worker output,
-  which lives in the same object directory, does not qualify.
+  digest must resolve, in the store named by `evidence_store_id`, to a job record listed in
+  that run's `run.json` `jobs` with `role: "verifier"`. A digest of worker output, which
+  lives in the same object directory, does not qualify. The evidence must **agree with** the
+  outcome: `passed` counts need a verifier job with `exitCode: 0` and no failure; `failed`
+  counts need one with a nonzero exit or a candidate-attributed failure code. The workflow
+  saves each job's evidence before it checks the exit code (`workflow.mjs`, `run()`), so a
+  failed outcome always has its own evidence.
 
 ### Writer, reader, CLI
 
@@ -222,9 +226,13 @@ New module `harness/ledger/`, Node 24 ESM `.mjs` with no npm dependencies, match
   `eng runs reconcile --run <run-dir>`, `eng runs unlock`.
 
 **Producer write order and failure.** The run ledger has no authority, so a ledger failure
-never fails a run. The producer saves `run.json` first, then appends. `reconcile` derives the
-records a run should have from its `run.json` and appends any that are missing; deterministic
-IDs make it safe to run repeatedly. It never invents a `job_end` for a run still in
+never fails a run. The producer saves `run.json` first, then appends. Records of one job are
+appended **strictly in order**: once an append for a job fails, the producer appends nothing
+more for that job, so no later `decision` or `job_end` can land ahead of a missing one.
+`reconcile` derives the records a run should have from its `run.json`, finds the first one
+missing from the ledger, and appends from there in order; deterministic IDs make it safe to
+run repeatedly. Because nothing later was written, the open-job and `step_index` rules
+still hold and no backfill exception is needed. It never invents a `job_end` for a run still in
 `running` or `awaiting-decision`; those stay open in `list`. For a `running` run whose
 controller is gone, `reconcile --confirm-dead` (after the operator has checked the PID, as
 for the lease) writes `job_end` with `infrastructure_failure` and `local_run_state:
