@@ -12,8 +12,10 @@ yet; nothing below has been run.
 ## Behavior
 
 - [ ] A fixture local-workflow run (prepare, worker, verifier, reviewer, recorded decision)
-  produces `job_start`, three `decision` records and one `job_end` with
-  `local_run_state: "decision-recorded"`; a failing verifier produces `job_end` with
+  produces `job_start`, exactly four `decision` records in order (`verify`,
+  `request_review`, `escalate`, then `stop` with `decided_by: "human"` and the recorded
+  `human_decision`) and one `job_end` with `local_run_state: "decision-recorded"` and the
+  same `human_decision`; a failing verifier produces `verify`, `stop`, then `job_end` with
   `local_run_state: "failed"` — `test: local-workflow-producer` — covers: list jobs; see
   decision points
 - [ ] A local-workflow config without `runLedger` behaves exactly as before (existing
