@@ -56,6 +56,9 @@ yet; nothing below has been run.
 - [ ] A session-hook `decision` or `job_end` naming a control-plane job's `job_id` is
   rejected, and the control plane's own next record for that job is still accepted —
   `test: hijack`
+- [ ] Two successive corrections of one record (revisions 1 and 2) are both accepted and
+  `show` uses revision 2; a retried revision 2 is a no-op; a skipped or repeated revision
+  with different bytes is rejected — `test: correction-revisions`
 - [ ] A session-hook `correction` is rejected; a control-plane correction whose
   replacement changes `job_id`, `task_id`, `kind` or `provenance`, or adds an outcome that
   fails the evidence check, is rejected — `test: correction-forgery`

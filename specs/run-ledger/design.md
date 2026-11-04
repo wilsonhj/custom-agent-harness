@@ -74,7 +74,7 @@ New, nothing removed.
 | Field | Type | Notes |
 |---|---|---|
 | `schema_version` | `"run-ledger/v1"` | Readers reject unknown major versions. |
-| `id` | SHA-256 hex of `job_id`, `kind`, `step_index` (or `""`), and for `correction` the corrected `id` | Deterministic, so a retried append of the same record is recognised (see Writer). |
+| `id` | SHA-256 hex of `job_id`, `kind`, `step_index` (or `""`), and for `correction` the corrected `id` and the correction's `revision` | Deterministic, so a retried append of the same record is recognised (see Writer). |
 | `kind` | `"job_start"` \| `"decision"` \| `"job_end"` \| `"correction"` | |
 | `project_id`, `task_id`, `job_id` | string | `task_id` = `specs/<id>/`. |
 | `provenance` | `"control-plane"` \| `"session-hook"` | Who observed the event. Fixed per job by its `job_start`; every later record of the job must match (see Validation). Only `control-plane` records can carry outcomes. |
@@ -134,8 +134,10 @@ maps are not allowed.
 
 ### `correction`
 
-`{ corrects: <record id>, reason_code: enum, replacement: <full record of the same kind> }`.
-Readers use the latest correction for a record. `reason_code` is an enum
+`{ corrects: <record id>, revision: <integer from 1>, reason_code: enum, replacement: <full record of the same kind> }`.
+`revision` counts corrections of the same record: each must be exactly one more than the
+highest already in the ledger for that record, so successive corrections get distinct IDs
+while a retry of the same correction keeps its ID. Readers use the highest revision. `reason_code` is an enum
 (`misclassified_termination`, `writer_bug`, `late_usage_report`), not text.
 
 A correction is itself a `control-plane` record; session hooks cannot write one. Its
