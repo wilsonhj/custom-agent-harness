@@ -47,6 +47,7 @@ a structured `failureCode` to the run manifest; the mapping below is over those 
 | `failureCode` (added by T2b) | Where | `termination_reason` |
 |---|---|---|
 | `cancelled` | any stage | `cancelled` |
+| `exit_nonzero` | worker | `task_failure` (the worker is the agent producing the candidate; its failing to finish is a task outcome, like its timeout) |
 | `exit_nonzero` | verifier | `task_failure` (the candidate failed acceptance; the pilot cannot tell a test failure from a broken test, so it does not claim `error`) |
 | `deadline_exceeded`, `output_limit_exceeded` | worker or verifier on the candidate | `task_failure`. A candidate that makes acceptance hang or flood output has failed; labelling it infrastructure would drop it from outcome comparisons. |
 | `exit_nonzero`, `deadline_exceeded`, `output_limit_exceeded` | reviewer | `infrastructure_failure` (the reviewer is operator-supplied, not the candidate) |
@@ -141,9 +142,13 @@ while a retry of the same correction keeps its ID. Readers use the highest revis
 (`misclassified_termination`, `writer_bug`, `late_usage_report`), not text.
 
 A correction is itself a `control-plane` record; session hooks cannot write one. Its
-`replacement` is validated exactly like a new record (schema, provenance rules, evidence
-checks) and must keep the corrected record's `id`, `kind`, `job_id`, `task_id` and
-`provenance`. Otherwise a correction could turn a failed job into a success, or move a
+`replacement` gets the record-level checks of a new record (schema, field patterns,
+provenance rules, outcome-evidence checks) and must keep the corrected record's `id`, `kind`,
+`job_id`, `task_id` and `provenance`, plus its `step_index` for a `decision`. Append-order
+checks (open job, one `job_end`, next `step_index`) are **not** reapplied against the current
+tail: they were checked when the original was appended, and a replacement occupies the
+original's position. So a `job_end` of a closed job and an earlier `decision` can both be
+corrected. Otherwise a correction could turn a failed job into a success, or move a
 record to another job.
 
 ### Termination classification

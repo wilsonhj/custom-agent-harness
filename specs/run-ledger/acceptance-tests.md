@@ -33,7 +33,8 @@ yet; nothing below has been run.
   passing is `succeeded` with `policy_violations: 1`; a verifier `deadline_exceeded` or
   `output_limit_exceeded` on the candidate is `task_failure`; a pilot verifier failure with
   null repair budget is `task_failure`, not `budget_exhausted`; an unknown failure code is
-  `infrastructure_failure` with `failure_code_known: false` — `test: classify-history`
+  `infrastructure_failure` with `failure_code_known: false`; a worker that exits nonzero
+  (the existing `process.exit(7)` fixture) is `task_failure` — `test: classify-history`
 - [ ] Each local-workflow failure path (one per `failureCode`) records that code in
   `run.json`, and no run-ledger code reads `m.failure` — `test: failure-code`,
   `grep -rn "\.failure" harness/ledger/` returns nothing
@@ -56,6 +57,9 @@ yet; nothing below has been run.
 - [ ] A session-hook `decision` or `job_end` naming a control-plane job's `job_id` is
   rejected, and the control plane's own next record for that job is still accepted —
   `test: hijack`
+- [ ] A correction of a closed job's `job_end` and a correction of its first `decision`
+  (same `step_index`) are both accepted; a replacement that changes `step_index` is
+  rejected — `test: correction-position`
 - [ ] Two successive corrections of one record (revisions 1 and 2) are both accepted and
   `show` uses revision 2; a retried revision 2 is a no-op; a skipped or repeated revision
   with different bytes is rejected — `test: correction-revisions`
