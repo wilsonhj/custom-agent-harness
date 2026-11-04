@@ -22,15 +22,37 @@ non-agent process with a run lease and fsynced writes, so it emits the first rec
 
 | Local-workflow event | Run-ledger record |
 |---|---|
-| `prepare` completes | `job_start` (`runtime.name: "local-command"`; `controller.kind: "static"`, `config_digest` = the run's pinned `configDigest`) |
+| `prepare` completes | `job_start` (`runtime.name: "local-command"`, `runtime.version` = the run's pinned `toolsDigest`; `controller.kind: "static"`, `config_digest` = the pinned `configDigest`) |
 | Worker exits, controller records the candidate commit | `decision` (`selected_action: "verify"`) |
 | Verifier exits | `decision` (`request_review` on exit 0, otherwise `stop`) |
 | Reviewer verdict recorded | `decision` (`escalate` to the human decision on `pass`; `stop` on `changes_requested`, which fails the run) |
-| Run reaches `failed` or `decision-recorded` | `job_end` |
+| Human decision recorded | `decision` (`decided_by: "human"`, `human_decision: "accept"` \| `"reject"`, `selected_action: "stop"`) |
+| Run reaches `failed` or `decision-recorded` | `job_end` (`human_decision` copied from the run's decision statement) |
 
 The pilot has no repair loop, so `repair` never appears in its records yet. Run states stay
 local execution facts: the run ledger copies them as `local_run_state`, never as `TaskState`.
 Evidence digests in these records resolve in that run's store (`<store>/<run-id>/objects/`).
+
+`runtime.version` is the tools digest, not a hash of `argv[0]`: the pilot pins
+`configDigest`, `toolsDigest` and `signersDigest` (`workflow.mjs`, `frozenConfig`), and
+`argv[0]` is typically `/usr/bin/node`, whose hash identifies Node rather than the worker.
+
+#### Pilot failure mapping
+
+Today the pilot records a failure only as an error message (`m.failure = e.message` in
+`workflow.mjs`; `process.mjs` produces `cancelled`, `deadline exceeded`, `output limit
+exceeded` or a spawn error). The producer **must not parse these strings**. Task T2b first adds
+a structured `failureCode` to the run manifest; the mapping below is over those codes:
+
+| `failureCode` (added by T2b) | Where | `termination_reason` |
+|---|---|---|
+| `cancelled` | any stage | `cancelled` |
+| `exit_nonzero` | verifier | `task_failure` (the candidate failed acceptance; the pilot cannot tell a test failure from a broken test, so it does not claim `error`) |
+| `deadline_exceeded`, `output_limit_exceeded` | worker or verifier on the candidate | `task_failure`. A candidate that makes acceptance hang or flood output has failed; labelling it infrastructure would drop it from outcome comparisons. |
+| `exit_nonzero`, `deadline_exceeded`, `output_limit_exceeded` | reviewer | `infrastructure_failure` (the reviewer is operator-supplied, not the candidate) |
+| `review_changes_requested`, `packet_changed`, `candidate_changed`, `snapshot_limit` | controller check on the candidate | `task_failure` |
+| `spawn_error`, `sandbox_unavailable`, `config_changed`, `invalid_review_output` | controller or environment | `infrastructure_failure` |
+| missing or unknown code | any | `infrastructure_failure`, and the record carries `failure_code_known: false` so it is visibly unclassified |
 
 ## API and schema changes
 
@@ -52,10 +74,10 @@ New, nothing removed.
 | Field | Type | Notes |
 |---|---|---|
 | `schema_version` | `"run-ledger/v1"` | Readers reject unknown major versions. |
-| `id` | string (UUID, `crypto.randomUUID`) | Same ID scheme as local-workflow runs; no dependency. |
+| `id` | SHA-256 hex of `job_id`, `kind`, `step_index` (or `""`), and for `correction` the corrected `id` | Deterministic, so a retried append of the same record is recognised (see Writer). |
 | `kind` | `"job_start"` \| `"decision"` \| `"job_end"` \| `"correction"` | |
 | `project_id`, `task_id`, `job_id` | string | `task_id` = `specs/<id>/`. |
-| `provenance` | `"control-plane"` \| `"session-hook"` | Who observed the event. Only `control-plane` records can carry outcomes (see Validation). |
+| `provenance` | `"control-plane"` \| `"session-hook"` | Who observed the event. Fixed per job by its `job_start`; every later record of the job must match (see Validation). Only `control-plane` records can carry outcomes. |
 | `timestamp` | ISO 8601 UTC | Informational. |
 | `prev_record_hash` | SHA-256 hex | Of the previous line's exact bytes; 64 zeros first. Tamper *evidence* only (no anchor, no signature). |
 
@@ -67,26 +89,29 @@ New, nothing removed.
 | `adapter` | `{ name, version }` (e.g. `codex-plugin`, `1.0.6`) |
 | `model_id` | string \| null (as the runtime reports it; never inferred) |
 | `skills` | `{ name, version }[]` |
-| `permission_profile` | `"analysis"` \| `"workspace"` \| `"preview-ops"` \| `"release"` |
+| `permission_profile` | `"analysis"` \| `"workspace"` \| `"preview-ops"` \| `"release"` \| null (null when the producer has no profile; the pilot does not) |
 | `egress_ceiling` | egress class the session was allowed to read |
-| `session_id` | string (explicit, as recorded by the adapter) |
-| `worktree_id`, `base_sha` | string |
+| `session_id` | UUID \| null (as recorded by the adapter; the pilot has none) |
+| `worktree_id` | string \| null |
+| `base_sha` | string |
+| `evidence_store_id` | SHA-256 hex of the run store's real path, so `verify` can be pointed at the right store later without the path entering the ledger |
 | `harness_sha` | commit of this repository the control plane ran from |
 | `knowledge_revision` | string \| null |
 | `task_family` | string \| null (taxonomy is an open question) |
-| `task_state_at_start` | `TaskState`, read from the verified approval ledger |
+| `task_state_at_start` | `TaskState` \| null. Only from an approval ledger the producer has verified; otherwise null. The pilot never reads the approval ledger, so it always writes null. |
 | `controller` | `{ kind: "static" \| "learned", version, config_digest: { sha256 } }` |
-| `budget` | `{ deadline_seconds, max_repair_rounds, max_cost_usd: number \| null }` |
+| `budget` | `{ deadline_seconds, max_repair_rounds, max_cost_usd, per_process_deadline_ms }`, each number \| null. A null limit never triggers rule 5. The pilot has only `per_process_deadline_ms` (its `deadlineMs`). |
 
 ### `decision`
 
 | Field | Type | Notes |
 |---|---|---|
 | `step_index` | integer, from 0 | Strictly increasing per job. |
-| `observation` | object, fixed fields only | `phase` (`TaskState`), `repair_rounds_used`, `elapsed_seconds`, `budget_remaining_seconds`, `cost_so_far_usd` (number \| null), `head_sha`, `last_verifier` (`{ name, result: "pass" \| "fail" \| "error" \| "not_run", blocking_findings, nonblocking_findings }` \| null), `tool_error_count` (integer \| null) |
+| `observation` | object, fixed fields only | `phase` (`TaskState` \| null, same rule as `task_state_at_start`), `repair_rounds_used`, `elapsed_seconds`, `budget_remaining_seconds`, `cost_so_far_usd` (number \| null), `head_sha`, `last_verifier` (`{ name, result: "pass" \| "fail" \| "error" \| "not_run", blocking_findings, nonblocking_findings }` \| null), `tool_error_count` (integer \| null) |
 | `available_actions` | enum[] | Subset of `continue`, `request_review`, `repair`, `verify`, `stop`, `escalate`. |
 | `selected_action` | enum | Must be in `available_actions`. |
 | `decided_by` | `"controller"` \| `"human"` | A human override is logged, not hidden. |
+| `human_decision` | `"accept"` \| `"reject"` \| null | Set only when `decided_by: "human"`. |
 | `behavior` | `{ policy_kind: "deterministic" }` \| `{ policy_kind: "stochastic", probability: number in (0,1] }` | |
 | `result` | `{ verifier: { name, result, evidence_refs } \| null, latency_ms, usage: { input_tokens, output_tokens, cost_usd } }` | Each usage field number \| null. |
 
@@ -100,10 +125,12 @@ maps are not allowed.
 | `head_sha` | string | |
 | `termination_reason` | `"succeeded"` \| `"task_failure"` \| `"budget_exhausted"` \| `"infrastructure_failure"` \| `"policy_violation"` \| `"cancelled"` | Classification rules below. |
 | `outcome` | `{ acceptance: { passed, failed, not_run }, evidence_refs }` \| null | Counts from control-plane-run commands only. |
-| `outcome_components` | `{ wall_seconds, cost_usd, repair_rounds, review_rounds, blocking_findings_open, policy_violations }` | Raw components. **No combined reward scalar** is stored; weighting is an analysis decision. |
+| `outcome_components` | `{ wall_seconds, cost_usd (number \| null), repair_rounds, review_rounds, blocking_findings_open, policy_violations }` | Raw components. `policy_violations` counts every denied attempt, including recovered ones. **No combined reward scalar** is stored; weighting is an analysis decision. |
 | `usage_total` | `{ input_tokens, output_tokens, cost_usd }` | Each number \| null. |
 | `approval_record_ids` | string[] | IDs of approval-ledger records written during the job; references only. |
-| `local_run_state` | `"failed"` \| `"decision-recorded"` \| null | Final local-workflow run state, for jobs it produced. Not a `TaskState`. |
+| `local_run_state` | `"failed"` \| `"decision-recorded"` \| `"running"` \| null | Final local-workflow run state, for jobs it produced. `"running"` only for an interrupted run closed by `reconcile` (see Writer). Not a `TaskState`. |
+| `human_decision` | `"accept"` \| `"reject"` \| null | The recorded human decision, if any. |
+| `failure_code`, `failure_code_known` | enum \| null, boolean | From the producer's structured failure (see Pilot failure mapping). |
 
 ### `correction`
 
@@ -111,37 +138,60 @@ maps are not allowed.
 Readers use the latest correction for a record. `reason_code` is an enum
 (`misclassified_termination`, `writer_bug`, `late_usage_report`), not text.
 
+A correction is itself a `control-plane` record; session hooks cannot write one. Its
+`replacement` is validated exactly like a new record (schema, provenance rules, evidence
+checks) and must keep the corrected record's `id`, `kind`, `job_id`, `task_id` and
+`provenance`. Otherwise a correction could turn a failed job into a success, or move a
+record to another job.
+
 ### Termination classification
 
 Applied by the control plane, in this order (first match wins):
 
-1. A policy denial or managed-hook block of a prohibited action → `policy_violation`.
-2. Sandbox, dependency, runtime crash, network, or verifier malfunction (verifier result
-   `error`) → `infrastructure_failure`.
-3. Operator or upstream cancel → `cancelled`.
+1. Operator or upstream cancel → `cancelled`. Checked first, because a cancel kills the
+   running process and can look like a malfunction.
+2. The job **ended because of** a denied or blocked prohibited action → `policy_violation`.
+   A denial the agent recovered from does not end the job; it is counted in
+   `outcome_components.policy_violations` and classification continues.
+3. A malfunction outside the candidate (sandbox, spawn, controller environment, reviewer
+   process, verifier result `error` where the producer can tell `error` from `fail`) →
+   `infrastructure_failure`. A verifier timeout or output overflow on the candidate is
+   **not** a malfunction (see Pilot failure mapping).
 4. Every gate the producer requires passed on `head_sha` → `succeeded`, even if that was
    the last allowed repair round or the budget is now used up. Gates: the acceptance
    commands, the required review verdict (`pass`; `changes_requested` fails it, as
    `harness/local/workflow.mjs` does), and, where the producer records one, the human
    decision (`accept`; `reject` fails it). A gate that did not run counts as not passed.
 5. A gate did not pass **and** the controller could not take the next needed action
-   (another repair, review or verify) because `deadline_seconds`, `max_repair_rounds` or
-   `max_cost_usd` forbade it → `budget_exhausted`. Reaching a limit is not enough on its
-   own; the limit must have blocked a needed step.
+   (another repair, review or verify) because a **non-null** `deadline_seconds`,
+   `max_repair_rounds` or `max_cost_usd` forbade it → `budget_exhausted`. Reaching a limit
+   is not enough on its own; the limit must have blocked a needed step. A producer with no
+   repair loop (the pilot) never blocks a repair, so its failures fall to rule 6.
 6. Otherwise → `task_failure`.
 
 `infrastructure_failure` and `policy_violation` jobs are kept for operations but flagged
-for exclusion from any outcome comparison.
+for exclusion from any outcome comparison. The rules live in `harness/ledger/classify.mjs`
+(task T2) as a pure function from a job's records to a reason, so they are tested directly.
 
 ### Validation (writer rejects the record if any fails)
 
 - JSON Schema for the declared `schema_version`, `additionalProperties: false` at every level.
-- String length cap per field type (IDs, versions, SHAs); no field accepts arbitrary text.
+- Every string field has a **pattern or allowlist**, not only a length cap: SHAs and IDs
+  are hex or UUID; versions match `^[0-9A-Za-z.+-]{1,64}$`; names (`skills.name`,
+  `adapter.name`, `verifier.name`, `model_id`, `task_family`) must appear in a reviewed
+  registry file in the repository (`harness/ledger/registry.json`). A name-shaped value
+  that is not registered, such as `smith-john-19610302`, is rejected.
 - `selected_action ∈ available_actions`; `step_index` follows the job's last one.
-- `decision` and `job_end` reference an existing open `job_start`; one `job_end` per job.
+- `decision` and `job_end` reference an existing open `job_start` **with the same
+  provenance**; one `job_start` and one `job_end` per job. A session hook therefore cannot
+  append to, end, or block a control-plane job even if it learns the run ID (which every
+  job receives on stdin).
 - `provenance: "session-hook"` records may not carry `outcome`, `verifier` results, or
-  `termination_reason: "succeeded"`.
-- Every `evidence_refs` digest resolves in the job's evidence store: `<store>/<run-id>/objects/` for local-workflow jobs (see requirements "Unresolved questions").
+  `termination_reason: "succeeded"`, and may not be `correction` records.
+- Outcome evidence is checked for meaning, not only existence: every `outcome.evidence_refs`
+  digest must resolve, in the store named by `evidence_store_id`, to a verifier job record
+  of that run (`role: "verifier"`, `exitCode: 0`, no failure). A digest of worker output,
+  which lives in the same object directory, does not qualify.
 
 ### Writer, reader, CLI
 
@@ -151,13 +201,36 @@ New module `harness/ledger/`, Node 24 ESM `.mjs` with no npm dependencies, match
 - `run-record.mjs`: the v1 schema as data plus a hand-written validator (no JSON Schema
   package, since the repo takes no dependencies). `TaskState` values are imported from
   `harness/policy/transitions.ts` only in tests, to check the enum stays in sync.
+- `classify.mjs`: the termination rules as a pure function (see above).
 - `writer.mjs`: validates, takes an exclusive lock on `<run-ledger-root>/<project-id>.lock`,
   checks `prev_record_hash` against the head (compare-and-append), appends, fsyncs. Same
-  serialization pattern as the approval ledger.
+  serialization pattern as the approval ledger, with these additions:
+  - **Idempotent retries.** IDs are deterministic. If a record with the same `id` and
+    identical bytes is already present, the writer returns it instead of failing; same `id`
+    with different bytes is rejected. A producer that crashed after the fsync can retry.
+  - **Stale lock.** The lock file records the holder's PID, as `leased()` does. Node has no
+    `flock`, so a killed writer leaves the lock behind; `eng runs unlock` removes it only
+    after checking the PID is dead, the same manual rule as the local workflow's lease.
+  - **Torn tail.** Before appending, the writer (holding the lock) checks the file ends in a
+    newline. If not, it copies the unterminated bytes to `<project-id>.torn/<offset>` and
+    truncates to the last newline. Those bytes never formed a record, so no record is
+    edited; `verify` reports every quarantined tail.
 - `reader.mjs`: walks the chain, validates each line, applies corrections.
 - CLI subcommands of `harness/local/cli.mjs` (`npm run eng`), names provisional:
-  `eng runs list <task-id>`, `eng runs show <job-id>`, `eng runs verify`,
-  `eng runs export [--task <id>] --out <path>` (export header records the egress class).
+  `eng runs list <task-id>`, `eng runs show <job-id>`, `eng runs verify --store <path>`,
+  `eng runs export [--task <id>] --out <path>` (export header records `local-only`),
+  `eng runs reconcile --run <run-dir>`, `eng runs unlock`.
+
+**Producer write order and failure.** The run ledger has no authority, so a ledger failure
+never fails a run. The producer saves `run.json` first, then appends. `reconcile` derives the
+records a run should have from its `run.json` and appends any that are missing; deterministic
+IDs make it safe to run repeatedly. It never invents a `job_end` for a run still in
+`running` or `awaiting-decision`; those stay open in `list`. For a `running` run whose
+controller is gone, `reconcile --confirm-dead` (after the operator has checked the PID, as
+for the lease) writes `job_end` with `infrastructure_failure` and `local_run_state:
+"running"`, matching the workflow's rule that interrupted runs are never replayed.
+Contention on the per-project file: a stale-head rejection is retried by the producer up to
+a fixed count, then left to `reconcile`.
 
 Session-hook events (interactive Claude Code / Codex plugin use) are written by hooks to a
 spool `<local-artifacts-directory>/run-events/` and appended by the writer as
@@ -180,6 +253,8 @@ evidence store (by digest), like any other file.
 - `harness/policy/transitions.ts` (`TaskState`, `EvidenceRef` types).
 - Local evidence workflow (`harness/local/`): first producer, and its run store holds the
   evidence the records reference.
+- A structured `failureCode` in the local workflow's run manifest (task T2b); today it records
+  only `e.message`.
 - `harness/local/artifacts.mjs` helpers (`digest`, `atomic`, `trustedPath`) for hashing,
   fsynced writes and trust-path checks; reuse rather than duplicate.
 - Node 24 and the existing `npm test` / `npm run check` scripts. No new packages.

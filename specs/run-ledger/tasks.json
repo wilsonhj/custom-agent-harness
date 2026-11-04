@@ -9,7 +9,7 @@
   },
   {
     "id": "T1",
-    "title": "Record schema (run-ledger/v1) and validator in harness/ledger/run-record.mjs, with valid and invalid fixtures; add harness/ledger to scripts/check-local.mjs",
+    "title": "Record schema (run-ledger/v1), validator with per-field patterns and harness/ledger/registry.json allowlist, valid and invalid fixtures; add harness/ledger to scripts/check-local.mjs",
     "owner_role": "implementer",
     "worktree": "<worktree-run-ledger>",
     "status": "Planned",
@@ -19,7 +19,7 @@
   },
   {
     "id": "T2",
-    "title": "Writer: validation, lock, compare-and-append, fsync, evidence-digest lookup in the job's run store",
+    "title": "Writer (lock, compare-and-append, idempotent deterministic IDs, torn-tail quarantine, fsync, outcome-evidence check) and classify.mjs termination rules",
     "owner_role": "implementer",
     "worktree": "<worktree-run-ledger>",
     "status": "Planned",
@@ -28,8 +28,18 @@
     ]
   },
   {
+    "id": "T2b",
+    "title": "Local workflow: add a structured failureCode to the run manifest (no string parsing downstream), with tests for each code",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": [
+      "T0"
+    ]
+  },
+  {
     "id": "T3",
-    "title": "Reader and CLI: list, show, verify, export (with egress class header)",
+    "title": "Reader and CLI: list, show, verify --store, export, reconcile (incl. --confirm-dead), unlock",
     "owner_role": "implementer",
     "worktree": "<worktree-run-ledger>",
     "status": "Planned",
@@ -44,7 +54,8 @@
     "worktree": "<worktree-run-ledger>",
     "status": "Planned",
     "depends_on": [
-      "T2"
+      "T2",
+      "T2b"
     ]
   },
   {
@@ -81,7 +92,7 @@
   },
   {
     "id": "T7",
-    "title": "Independent review of T1-T6 diff, including T3b (/codex:review, plus /codex:adversarial-review on the schema)",
+    "title": "Independent review of T1-T6 diff, including T2b and T3b (/codex:review, plus /codex:adversarial-review on the schema)",
     "owner_role": "reviewer",
     "worktree": "<worktree-run-ledger>",
     "status": "Planned",

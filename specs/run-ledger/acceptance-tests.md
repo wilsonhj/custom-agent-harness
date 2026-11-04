@@ -28,6 +28,15 @@ yet; nothing below has been run.
   left is `budget_exhausted`; passing acceptance followed by a `changes_requested` review,
   or by a human `reject` decision, is `task_failure`, not `succeeded`) —
   `test: termination` — covers: closed termination set
+- [ ] Classifier precedence on realistic histories: cancel during the verifier is
+  `cancelled`, not `infrastructure_failure`; a recovered policy denial followed by all gates
+  passing is `succeeded` with `policy_violations: 1`; a verifier `deadline_exceeded` or
+  `output_limit_exceeded` on the candidate is `task_failure`; a pilot verifier failure with
+  null repair budget is `task_failure`, not `budget_exhausted`; an unknown failure code is
+  `infrastructure_failure` with `failure_code_known: false` — `test: classify-history`
+- [ ] Each local-workflow failure path (one per `failureCode`) records that code in
+  `run.json`, and no run-ledger code reads `m.failure` — `test: failure-code`,
+  `grep -rn "\.failure" harness/ledger/` returns nothing
 - [ ] A `job_end` with `outcome` but `provenance: "session-hook"` is rejected; so is
   `termination_reason: "succeeded"` from a session hook — `test: provenance`
   — covers: outcome from control-plane commands only
@@ -36,20 +45,37 @@ yet; nothing below has been run.
 - [ ] `eng runs verify` passes on an intact file and fails, naming the first bad line, after
   (a) editing a byte, (b) deleting a middle line, (c) swapping two lines —
   `test: verify` — covers: verify command
-- [ ] `eng runs export --task <id>` writes only that task's records and a header with the
-  most restrictive egress class among them — `test: export` — covers: export
+- [ ] `eng runs export --task <id>` writes only that task's records and a `local-only`
+  header — `test: export` — covers: export
 - [ ] A correction record supersedes the original in `show` and `list` output while the
   original line stays in the file — `test: correction` — covers: append-only
   corrections
 
 ## Invariants
 
+- [ ] A session-hook `decision` or `job_end` naming a control-plane job's `job_id` is
+  rejected, and the control plane's own next record for that job is still accepted —
+  `test: hijack`
+- [ ] A session-hook `correction` is rejected; a control-plane correction whose
+  replacement changes `job_id`, `task_id`, `kind` or `provenance`, or adds an outcome that
+  fails the evidence check, is rejected — `test: correction-forgery`
+- [ ] An outcome citing a digest of worker output, or of a verifier job with nonzero exit,
+  is rejected — `test: evidence-meaning`
+- [ ] Appending the same record twice (simulated crash after fsync) leaves one copy and
+  returns success; same `id` with different bytes is rejected — `test: idempotent`
+- [ ] A file ending in a partial line: the next append quarantines the tail, the chain
+  verifies, and `verify` reports the quarantined bytes; a lock left by a dead PID blocks
+  appends until `eng runs unlock` — `test: torn-tail`, `test: stale-lock`
+- [ ] `reconcile` on a run whose ledger append failed adds exactly the missing records and is
+  a no-op on a second run; it writes no `job_end` for `running` or `awaiting-decision`
+  without `--confirm-dead` — `test: reconcile`
 - [ ] Records with an unknown field, a field over its length cap, a non-enum action, or
   `selected_action` outside `available_actions` are rejected with a reason —
   `test: schema-reject`
-- [ ] Planting a canary string (e.g. a fake PHI line) in any string field of a fixture is
-  rejected by the schema, for every string field the schema defines (generated test, not
-  hand-picked fields) — `test: no-free-text`
+- [ ] For every string field the schema defines (generated, not hand-picked), two canaries
+  are rejected: one with spaces (a fake PHI line) and one that fits the field's character
+  pattern but is not a valid value (e.g. `smith-john-19610302` in a name field) —
+  `test: no-free-text`
 - [ ] Missing usage stays `null` in the written record and in `show` output, never `0` —
   `test: null-usage`
 - [ ] A deterministic decision with a `probability` field is rejected; a stochastic one
@@ -59,8 +85,9 @@ yet; nothing below has been run.
 - [ ] As the agent OS user, opening `<run-ledger-root>/<project-id>.jsonl` for append fails
   with a permission error (procedure on the development machine, output saved to the
   evidence store) — `<write-boundary-check-command>`
-- [ ] `harness/policy/transitions.ts` has no import from `harness/ledger/` —
-  `grep -rn "ledger/" harness/policy/` returns nothing
+- [ ] `harness/policy/transitions.ts` has no import from `harness/ledger/` and no filesystem
+  access, so `canTransition` cannot read the run ledger —
+  `grep -rnE "ledger/|node:fs|from 'fs'" harness/policy/` returns nothing
 
 ## Migration
 

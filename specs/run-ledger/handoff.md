@@ -37,12 +37,13 @@ No code changed.
 | `npm run check` | pass (cloud container, Node 22.22.0) | Syntax checks only; packet is docs |
 | `npm test` | 39 pass, 39 fail, 2 skipped (cloud container) | Same counts on unmodified `main` `7fce6c6` in the same container: the container has Node 22 (repo needs Node 24) and no bubblewrap. Not evidence either way; CI (`verify`, Node 24 + bubblewrap) is the record. No run-ledger tests exist yet. |
 
-## Codex review
+## Independent reviews
 
 | Source | Finding | Resolution |
 |---|---|---|
 | Codex GitHub review on `110b431` (P2) | Termination order labelled a job that passes on its last allowed repair round `budget_exhausted` | Fixed: success is checked before budget; `budget_exhausted` now needs a limit that blocked a needed step. Fixture cases added to `test: termination`. |
 | Codex GitHub review on `5601cb1` (P2) | Passing acceptance then a `changes_requested` review was classified `succeeded`, though `harness/local/workflow.mjs` fails that run | Fixed: `succeeded` requires every producer gate (acceptance, review `pass`, human `accept` where recorded); producer maps `changes_requested` to `stop`. Fixtures for rejected review and rejected decision added. |
+| Independent Claude adversarial review (fresh subagent, read-only), 2026-11-04. **Not a Codex review.** | H1 correction could forge success; H2 session hooks could hijack or block control-plane jobs; H3 classification depended on free-text `m.failure`, and a candidate could dodge statistics via verifier timeout; H4 null pilot budget turned every verifier failure into `budget_exhausted`; M1 no `job_end` for interrupted runs, human decision not recorded; M2 retries duplicated records; M3 stale lock and torn line could block the ledger; M4 evidence check was existence-only, store unnamed, controller-only access; M5 false claim that the worker executable is pinned, fields with no pilot source; M6 cancel and recovered-denial precedence; L1 length-capped names leak; L2 export test could not fail; L3 untethered tests | All fixed in the packet: correction and provenance rules, structured `failureCode` (new task T2b) and pilot failure mapping, nullable budgets, human-decision record, deterministic IDs, unlock and torn-tail quarantine, `reconcile`, evidence-meaning check and `evidence_store_id`, `toolsDigest` as worker version, reordered precedence, registry allowlist, `classify.mjs` owned by T2, new tests. M4's access constraint is recorded under the writer-identity question. |
 
 `/codex:adversarial-review` via the local plugin is still not run: the `codex` CLI and
 plugin are not installed in the cloud container this draft was written in. Run it locally
@@ -51,8 +52,10 @@ before requesting `Draft -> Planned`, and record findings and resolutions here.
 ## Known limitations
 
 - Session-hook events can be forged by the session that emits them; the design marks them
-  `provenance: "session-hook"` and bars them from carrying outcomes, but does not prevent
-  forged decision records.
+  `provenance: "session-hook"`, bars them from outcomes and corrections, and confines them
+  to jobs they started, but a session can still forge records for its own jobs.
+- The pilot cannot tell a failing acceptance test from a broken one (both exit nonzero), so
+  every verifier nonzero exit is `task_failure`.
 - The run ledger has tamper *evidence* (hash chain) but no anchor, so its tail can be
   truncated undetected. Acceptable only because it carries no authority.
 - Evidence lives in two layouts (run store vs `<local-artifacts-directory>/evidence/`); the

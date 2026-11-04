@@ -39,7 +39,13 @@ possible. Learning anything from the data is out of scope here.
 - An operator can run a verify command that reports whether the ledger's hash chain is
   intact and whether every line validates against its declared schema version.
 - An operator can export a task's or project's records as JSONL for offline analysis; the
-  export carries the most restrictive egress class of its inputs.
+  export header records `local-only`, the ledger's class (records carry no class of their
+  own, so the export can never be wider than the file).
+- A record from a session hook cannot append to, end, block, or correct a job started by
+  the control plane, and no correction can change a record's job, task, kind or
+  provenance.
+- A retried append of a record already written (same deterministic ID, same bytes) succeeds
+  without duplicating it; a crashed or torn write never blocks later appends permanently.
 - A write attempted from an agent process is refused, and a record that fails schema
   validation (including any unknown field) is refused, with the reason reported to the
   caller.
@@ -100,7 +106,10 @@ behavior probabilities). Nothing in this packet depends on its numerical claims.
 - [ ] Writer identity: the local workflow's controller account, the approval ledger's
   `<ledger-user>`, or a separate `<run-ledger-user>`? The controller account is simplest
   (it already writes the run store); a separate user limits a writer bug to one ledger.
-  — owner: <maintainer>, blocks: T2
+  Constraint found in review: run-store objects are mode 0600 and `get()` requires the
+  current user to own them (`harness/local/artifacts.mjs`), so only the controller account
+  can perform the outcome-evidence check. A separate writer would need a read path the
+  pilot does not have. — owner: <maintainer>, blocks: T2
 - [ ] Evidence location: local-workflow evidence lives in `<store>/<run-id>/objects/<sha256>`,
   not `<local-artifacts-directory>/evidence/sha256/` as the approval ledger assumes
   (`docs/local-workflow.md` "Known limitations"). Draft assumes the run ledger resolves
