@@ -67,7 +67,9 @@ function assertNoCandidateArguments(workspace, role, argv) {
     const target = path.join(workspace, path.relative(SANDBOX_WORKSPACE, sandboxTarget));
     const exists = ['', '.js', '.json', '.node'].some(suffix => {
       try { fs.lstatSync(target + suffix); return true; }
-      catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return false; throw e; }
+      // ENAMETOOLONG: an inline script or other operand longer than the filesystem allows
+      // cannot name a file the worker wrote either.
+      catch (e) { if (['ENOENT', 'ENOTDIR', 'ENAMETOOLONG'].includes(e.code)) return false; throw e; }
     });
     invariant(!exists, `${role} argument names a candidate file; keep its entrypoint outside the candidate: ${value}`);
   }

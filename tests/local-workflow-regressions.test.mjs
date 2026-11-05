@@ -316,6 +316,16 @@ test('bug11c: verifier options that do not name candidate files still run', asyn
   assert.equal(r.state, 'awaiting-decision', r.failure);
 });
 
+test('bug11d: an inline script longer than a filename is not treated as a candidate path', async t => {
+  const f = fixture(t);
+  // Over NAME_MAX (255) bytes in one path component: lstat would throw ENAMETOOLONG.
+  const script = ';'.repeat(300) + "if(require('node:fs').readFileSync('answer.txt','utf8')!=='after\\n')process.exit(1);";
+  fs.writeFileSync(f.configFile, json({ ...f.config, verifier: [process.execPath, '-e', script] }), { mode: 0o600 });
+  const p = await prepare(f.args);
+  const r = await run(p.root, { executor: fixtureExecutor });
+  assert.equal(r.state, 'awaiting-decision', r.failure);
+});
+
 test('bug12: extensionless Node entrypoints cannot execute candidate files', async t => {
   const capability = await doctor();
   assert.ok(capability.ok || process.env.HARNESS_REQUIRE_SANDBOX !== '1', capability.reason);

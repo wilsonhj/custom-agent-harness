@@ -150,6 +150,14 @@ implementation change, all four extensionless cases reached `awaiting-decision` 
 absolute-alias configuration test failed with a missing expected rejection. The valid
 argument case passed.
 
+Codex review of c7bf209 (PR #8), one P2 finding: an operand longer than the filename limit
+(for example a `node -e` script of 300+ characters with no `/`) made `lstat` throw
+`ENAMETOOLONG`, failing the run before the trusted command started. Such a name cannot be a
+worker-written file, so the check now treats `ENAMETOOLONG` like `ENOENT`. Regression test
+bug11d failed with ENAMETOOLONG before the change and passes after it;
+`HARNESS_REQUIRE_SANDBOX=1 npm test` 96 tests, 95 pass, 0 fail, 1 skip (the
+restricted-host denial test); `npm run check` and `git diff --check` passed.
+
 Validation of the fixes on Node 24.22.1: `HARNESS_REQUIRE_SANDBOX=1 npm test` reports
 95 tests, 94 pass, 0 fail, 1 expected restricted-host skip. This includes both roles and
 the ../work variants in real bubblewrap. `npm run check`, `git diff --check`, and
