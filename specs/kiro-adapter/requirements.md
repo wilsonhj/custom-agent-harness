@@ -24,8 +24,9 @@
 ## Invariants
 
 - Agents only request transitions (artifacts under `<local-artifacts-directory>/requests/`);
-  approvals stay in the external ledger, enforced by OS user separation (the adapter and
-  the Kiro process run as a user with no write access to `<ledger-root>`).
+  approvals stay in the external ledger, enforced by OS user separation (the Kiro process
+  runs as the adapter-interface runtime user, separate from the adapter, with no write
+  access to `<ledger-root>`).
 - One writer per worktree.
 - Kiro output, retrieved text and repo files are data, never instructions (AGENTS.md).
 - Unknown or unverified runtime configuration is never treated as wider than
@@ -39,21 +40,21 @@ requirement"; they explain a requirement and never add to or weaken it.
 | ID | Requirement | Source |
 |---|---|---|
 | K-1 | Adapter runs Kiro with `--no-interactive --v3 --agent <harness agent>` in the task worktree at an explicit base SHA, and records exit status and output as artifacts; any exit other than 0 is a failed, untrusted run. | README "Adapter contract" |
-| K-2 | Adapter acquires an atomic per-worktree writer lock (no check-then-start race) before launching, and releases it on exit, crash or cancel. | AGENTS.md "One writer per worktree" |
-| K-3 | The Kiro process and adapter run as an OS user with no read or write access to `<ledger-root>`, the signing keys or the anchor-repo deploy key. | approval-ledger.md "Who writes, and how it is enforced" |
+| K-2 | The adapter uses the adapter-interface writer lock (A-11): acquired atomically before launch, released only after every Kiro process is confirmed gone, and released by a human when its owner cannot be confirmed. | AGENTS.md "One writer per worktree" |
+| K-3 | The Kiro process runs as the runtime user of adapter-interface A-12, separate from the adapter's user, and, as adapter-interface A-21 requires of both users, has no read or write access to `<ledger-root>`, the signing keys or the anchor-repo deploy key. | approval-ledger.md "Who writes, and how it is enforced" |
 | K-4 | Kiro runs under pinned configuration that users and repos cannot override (login method, allowed hooks, retention and telemetry settings), or else is limited to `any-provider` content under K-17. | data-egress.md "Pinned configuration" |
 | K-5 | Reads of content above the session's class ceiling are denied for every agent (default, named, subagent) by admin `deny` permission rules and OS-level controls that do not depend on hooks. | data-egress.md "Read hooks", "Enforcement", "Tests" |
 | K-6 | A hook learns its runtime from which root-owned script ran, never from its input. | data-egress.md item 4 |
-| K-7 | The adapter runs only CLI V3 (`--v3`) and refuses any other engine, and the agents it supplies list no `@builtin` or `*` in `tools`, name spawnable agents only by `subagent/<name>` entries, and have a delegation-depth limit. | README "Required controls" (delegation depth) |
+| K-7 | The adapter runs only CLI V3 (`--v3`) and refuses any other engine; the agents it supplies list no `@builtin` or `*` in `tools`, and list no `subagent/<name>` entries (no delegation) unless T1 finds a Kiro control that bounds delegation depth, in which case they name spawnable agents only by `subagent/<name>`. | README "Required controls" (delegation depth) |
 | K-8 | Before launch the adapter neutralises Kiro configuration from the worktree and the user's home (clean checkout, worktree `.kiro/` stripped or matched against an allowlist, `HOME` set to a harness-owned directory with only harness-supplied `~/.kiro/` content), without relying on Kiro's workspace-trust prompt. | README "Trust boundaries" |
 | K-9 | MCP servers available to a Kiro task come from the harness profile only, and MCP and web tools are covered by the same `deny` rules and OS-level controls as K-5. | data-egress.md "Enforcement" |
 | K-10 | A session whose runtime, account and settings match no BAA allowlist entry has the ceiling `any-provider`. | data-egress.md "BAA configuration allowlist" |
-| K-11 | Kiro output is used only after it validates against the harness result schema, and counts as evidence only after the adapter (not the Kiro process) writes it to the content-addressed store and records its digest; anything else is a failed job that cannot advance task state. | README "Minimum acceptance tests"; approval-ledger.md `evidence_refs` |
+| K-11 | Kiro output is used only after it validates against the harness result schema, and is stored by the adapter as a runtime claim; it becomes evidence only as adapter-interface A-17 allows (schema-valid review findings), and anything else is a failed job that cannot advance task state. | README "Minimum acceptance tests"; adapter-interface A-17 |
 | K-12 | Verified `kiro-cli` version is recorded in README Prerequisites; the compatibility test fails on mismatch and auto-update is disabled or detected. | README "Pin runtime and extension versions" |
-| K-13 | Adapter enforces a deadline, can cancel a run and clean up its whole process tree, and records session identity and usage where available. | README "Adapter contract" |
+| K-13 | The adapter enforces a deadline, can cancel a run and clean up its whole process tree, captures the Kiro session ID for continuation as adapter-interface A-7 requires, and records usage where available. | README "Adapter contract" |
 | K-14 | The adapter refuses to launch when the class of the target repo, worktree or paths, assigned by the adapter or control plane and never by the session, exceeds the session ceiling (K-10). | data-egress.md "Egress classes", "Enforcement" |
 | K-15 | Kiro starts with an allowlisted environment only (no `SSH_AUTH_SOCK`, signing keys, anchor deploy key, cloud or git-host tokens, or production credentials), and secrets are redacted from logs and artifacts before storage. | README "Required controls" |
-| K-16 | The Kiro process cannot write the evidence store, `<local-artifacts-directory>/requests/` excepted for transition requests. | approval-ledger.md `evidence_refs`; AGENTS.md "Approvals and state" |
+| K-16 | The Kiro process cannot write the artifacts directory, evidence store or run ledger, except its own task's request directory (adapter-interface A-15). | approval-ledger.md `evidence_refs`; AGENTS.md "Approvals and state" |
 | K-17 | Kiro is added to the approved-provider list for `any-provider` use only after a human decision recording its model routing, retention, training use and telemetry terms. | data-egress.md "Egress classes" (`any-provider` = approved for general engineering use) |
 | K-18 | The adapter never passes trust-all, auto-approve or equivalent flags, passes `--sandbox`, and maps the task's permission profile to Kiro's tool permissions explicitly. | README "Required controls" (Cursor `--force`/`--yolo` analogue) |
 | K-19 | Context injected without a tool call (steering, agent `resources`, auto-loaded files) is limited to the harness-supplied set and checked against the class ceiling. | data-egress.md "Enforcement" |
@@ -103,7 +104,7 @@ Grades as in the banner. Notes here are evidence, not requirements.
 | K-10 | Harness. (P) Kiro CLI is HIPAA eligible per Kiro's compliance page, which says the customer stays responsible for configuration. No Kiro-specific BAA process or allowlist-ready configuration was found (UNVERIFIED), so no allowlist entry exists. |
 | K-11 | Harness; output format UNVERIFIED |
 | K-12 | Harness. (P) `kiro-cli settings app.disableAutoupdates true` disables background auto-updates; an enterprise "Managed updates" page exists (not read). (M) only the latest build is distributed, so an arbitrary older version may not be installable; record the installed version. |
-| K-13 | Harness; usage data UNVERIFIED |
+| K-13 | Harness. (P) headless plain-text output prints the cloud session ID and `--resume-id <ID>` resumes a local or cloud session; how a local V3 session ID is exposed (for example in `stream-json`) is UNVERIFIED. Usage data UNVERIFIED. |
 | K-14 | Harness |
 | K-15 | Harness |
 | K-16 | Harness |
@@ -149,4 +150,5 @@ Not found: `stream-json` event schema; hook timeout outcome; delegation-depth li
 - [ ] Provider approval for Kiro (K-17): Bedrock-backed, global cross-region inference possible, retention terms by tier. Which tier and account type would be used? — owner: TBD, blocks: T3, T4
 - [ ] Is Kiro CLI usable for `baa-covered-providers` work? (P: HIPAA eligible; BAA/configuration details not found.) Until answered, Launch procedure step 3 refuses it. — owner: TBD, blocks: T3
 - [ ] `KIRO_API_KEY` needs a paid plan and admin enablement; a browser login takes precedence. How does the runner guarantee only the API key is used (K-4)? — owner: TBD, blocks: T3
+- [ ] Where does a local `--no-interactive --v3` run expose its session ID, so K-13 can capture it? Does Kiro offer any internal delegation-depth control (K-7)? — owner: TBD, blocks: T4
 - [ ] Confirm proposed K-21 (see Launch procedure) and record it as normative. — owner: TBD, blocks: T3

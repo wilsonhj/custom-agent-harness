@@ -29,12 +29,13 @@
   },
   {
     "id": "T4",
-    "title": "Add Kiro row to data-egress runtime-capabilities table; implement adapter on the adapter interface and worktree manager (blocked on the external adapter-interface and worktree-ownership packet, not yet created)",
+    "title": "Add Kiro row to data-egress runtime-capabilities table; implement adapter on the adapter interface and worktree manager",
     "owner_role": "implementer",
     "worktree": "kiro-adapter",
     "status": "Planned",
     "depends_on": [
-      "T3"
+      "T3",
+      "adapter-interface:T4"
     ]
   },
   {
