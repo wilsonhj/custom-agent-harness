@@ -26,8 +26,9 @@ repository and PRs #2/#3 and packet-only branches were inspected before starting
 
 ## Exact next action
 
-PR #4 is merged. Open a pull request for the post-merge follow-up branch
-`claude/wizardly-allen-3ovt4w`, wait for CI (`verify`) to pass, and merge it; then a human
+PR #8 contains fixes for both verified candidate-entrypoint bypasses and is synced with
+main at 019870f. Wait for CI (`verify`) on the published fixes and review them before
+merging; then a human
 configures real local worker/verifier/reviewer commands (entrypoints as absolute paths under
 `toolsDirectory`) and runs `doctor` on the target host.
 
@@ -121,6 +122,40 @@ could reach the child and the pipe closed normally (it also failed the first CI 
 Resolved in 72966ed: the grandchild is spawned detached from Node (setsid before exec) and
 the child exits only after its `spawn` event. The test fails after 30 s on 7fce6c6 and
 passes in about 1 s with the fix; CI `verify` passed on 72966ed.
+
+## PR #8 verified review fixes (2026-11-05)
+
+Synced `claude/wizardly-allen-3ovt4w` with main at
+019870f2c71fc9fda24782853ef68050aebfa1ee before changing implementation. The merge was
+clean and preserves the adapter-interface feature packet and kiro-adapter updates.
+
+Both findings from the review of ef06780 were reproduced. `node review` found a
+worker-written `review.js`, and `node /proc/self/cwd/review.js` reached the candidate
+through procfs. Each could forge a passing review and reach `awaiting-decision`.
+
+The relative-argument guard now includes Node's implicit .js/.json/.node suffixes.
+Absolute verifier/reviewer argument paths, including `--name=value`, must be inside
+configured runtime mounts or the tools directory (host path or /tools). This excludes
+procfs and fd aliases without enumerating their spellings. Relative traversal is resolved
+from the sandbox's /work cwd, covering ../proc aliases and ../work candidate paths even
+though the host worktree has a different path. The working directory remains
+/work, and ordinary options and non-path operands remain supported. This implements the
+trusted-entrypoint contract in this packet's design.md, API and schema, and requirements.md
+items 2 and 5. It is still an argument guard, not an interpreter parser: shell strings and
+trusted tools that themselves import candidate code remain the documented limitations.
+
+Regression tests bug12 and bug13 cover verifier and reviewer, fixture and real-bubblewrap
+execution, bare and --name=value absolute aliases, and valid trusted arguments. Before the
+implementation change, all four extensionless cases reached `awaiting-decision` and the
+absolute-alias configuration test failed with a missing expected rejection. The valid
+argument case passed.
+
+Validation of the fixes on Node 24.22.1: `HARNESS_REQUIRE_SANDBOX=1 npm test` reports
+95 tests, 94 pass, 0 fail, 1 expected restricted-host skip. This includes both roles and
+the ../work variants in real bubblewrap. `npm run check`, `git diff --check`, and
+`node harness/local/cli.mjs doctor` (ok: true) pass. Tests ran with additional execution
+permissions because the command sandbox restricts nested namespace setup; isolation in
+the workflow itself remained mandatory. Remote CI on the published commit is the final gate.
 
 ## Review and limitations
 

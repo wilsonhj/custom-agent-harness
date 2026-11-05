@@ -55,14 +55,20 @@ const SANDBOX_WORKSPACE = '/work';
 
 // Verifier and reviewer entrypoints must stay outside the candidate. They start in the
 // workspace, so a relative argument (`review.mjs`, `.`) would resolve to worker-written
-// files; refuse any argument that names an existing candidate path.
+// files. Node also tries .js/.json/.node for an extensionless entrypoint, so checking
+// only the literal argument would let `node review` execute a candidate review.js.
 function assertNoCandidateArguments(workspace, role, argv) {
   for (const value of argv.slice(1).flatMap(argumentValues)) {
     if (!value || path.isAbsolute(value)) continue;
-    const target = path.resolve(workspace, value);
-    if (!inside(workspace, target)) continue;
-    let exists = true;
-    try { fs.lstatSync(target); } catch { exists = false; }
+    // Resolve as the sandbox does: ../work/review still names /work/review, even
+    // though the host-side worktree directory has a different name and parent.
+    const sandboxTarget = path.resolve(SANDBOX_WORKSPACE, value);
+    if (!inside(SANDBOX_WORKSPACE, sandboxTarget)) continue;
+    const target = path.join(workspace, path.relative(SANDBOX_WORKSPACE, sandboxTarget));
+    const exists = ['', '.js', '.json', '.node'].some(suffix => {
+      try { fs.lstatSync(target + suffix); return true; }
+      catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return false; throw e; }
+    });
     invariant(!exists, `${role} argument names a candidate file; keep its entrypoint outside the candidate: ${value}`);
   }
 }
@@ -101,6 +107,15 @@ function loadConfig(file, repo, store) {
     if (role !== 'worker') {
       invariant(argv.every(a => !a.includes('{workspace}') && argumentValues(a).every(v =>
         !(path.isAbsolute(v) && inside(SANDBOX_WORKSPACE, path.resolve(v))))), `${role} must not run a workspace path`);
+      // Positive mount allowlist: /proc/self/cwd and /dev/fd aliases can reach /work
+      // without spelling it. Check relative traversal using the sandbox cwd too.
+      const roots = [...c.runtimePaths, c.toolsDirectory, '/tools'];
+      for (const value of argv.flatMap(argumentValues)) {
+        const resolved = path.resolve(SANDBOX_WORKSPACE, value);
+        if (!path.isAbsolute(value) && inside(SANDBOX_WORKSPACE, resolved)) continue;
+        invariant(roots.some(root => inside(root, resolved)),
+          `${role} path must be in a runtime or tools directory: ${value}`);
+      }
     }
     for (const arg of argv.filter(a => path.isAbsolute(a))) {
       const resolved = path.resolve(arg);

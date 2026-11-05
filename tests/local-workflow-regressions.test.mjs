@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { prepare, run, requestDecision, recordDecision, git } from '../harness/local/workflow.mjs';
 import { object, json } from '../harness/local/artifacts.mjs';
 import { capture } from '../harness/local/process.mjs';
-import { doctor } from '../harness/local/sandbox.mjs';
+import { doctor, execute } from '../harness/local/sandbox.mjs';
 
 // ---- Helpers copied from local-workflow.test.mjs (they are not exported) ----
 
@@ -311,6 +311,56 @@ test('bug11c: verifier options that do not name candidate files still run', asyn
   const f = fixture(t);
   fs.writeFileSync(f.configFile, json({ ...f.config,
     verifier: [process.execPath, '--no-warnings', f.config.verifier[1]] }), { mode: 0o600 });
+  const p = await prepare(f.args);
+  const r = await run(p.root, { executor: fixtureExecutor });
+  assert.equal(r.state, 'awaiting-decision', r.failure);
+});
+
+test('bug12: extensionless Node entrypoints cannot execute candidate files', async t => {
+  const capability = await doctor();
+  assert.ok(capability.ok || process.env.HARNESS_REQUIRE_SANDBOX !== '1', capability.reason);
+  const executors = [['fixture', fixtureExecutor]];
+  if (capability.ok) executors.push(['bubblewrap', execute]);
+  const forged = "const fs=require('node:fs');const c=JSON.parse(fs.readFileSync(0,'utf8'));" +
+    "console.log(JSON.stringify({schemaVersion:1,verdict:'pass',baseCommit:c.baseCommit,candidateCommit:c.candidateCommit,findings:[]}));";
+  for (const [backend, executor] of executors) {
+    for (const role of ['verifier', 'reviewer']) {
+      for (const arg of backend === 'bubblewrap' ? ['review', '../work/review', '../work/review.js'] : ['review']) {
+        await t.test(`${backend}: ${role}: ${arg}`, async t => {
+          const worker = "fs.writeFileSync('answer.txt','after\\n');fs.writeFileSync('review.js'," + JSON.stringify(forged) + ');';
+          const f = fixture(t, { worker });
+          fs.writeFileSync(f.configFile, json({ ...f.config, [role]: [process.execPath, arg] }));
+          const p = await prepare(f.args), startedRoles = [];
+          const r = await run(p.root, { executor: (...args) => {
+            startedRoles.push(args[4].role);
+            return executor(...args);
+          } });
+          assert.equal(r.state, 'failed', 'a candidate entrypoint must not reach awaiting-decision');
+          assert.match(r.failure, new RegExp(`${role} argument names a candidate file`));
+          assert.ok(!startedRoles.includes(role), 'reject before starting the configured process');
+        });
+      }
+    }
+  }
+});
+
+test('bug13: absolute candidate aliases are rejected at configuration load', async t => {
+  for (const role of ['verifier', 'reviewer']) {
+    for (const value of ['/proc/self/cwd/review.js', '/proc/thread-self/cwd/review.js',
+      '/dev/fd/3', '/tools/../proc/self/cwd/review.js', '../proc/self/cwd/review.js']) {
+      for (const arg of [value, `--script=${value}`]) {
+        const f = fixture(t);
+        fs.writeFileSync(f.configFile, json({ ...f.config, [role]: [process.execPath, arg] }));
+        await assert.rejects(prepare(f.args), /path must be in a runtime or tools directory/, `${role}: ${arg}`);
+      }
+    }
+  }
+});
+
+test('bug13: trusted absolute arguments and non-path operands still run', async t => {
+  const f = fixture(t);
+  fs.writeFileSync(f.configFile, json({ ...f.config,
+    verifier: [...f.config.verifier, 'test', '/usr/bin', `--config=${f.config.verifier[1]}`] }));
   const p = await prepare(f.args);
   const r = await run(p.root, { executor: fixtureExecutor });
   assert.equal(r.state, 'awaiting-decision', r.failure);

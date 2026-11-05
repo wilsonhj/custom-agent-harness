@@ -60,10 +60,15 @@ when a run is prepared; changing any of them requires a new run.
 All command arrays are argv, not shell strings. Executables must be absolute paths within
 runtime mounts. Worker arguments may contain `{workspace}`, replaced with `/work`; verifier
 and reviewer arguments may not reference the workspace: `{workspace}` and absolute `/work`
-paths (also as `--name=/work/...`) are rejected when the configuration is loaded, and a
-relative argument (or `--name=value` value) that names an existing candidate path, such as
-`review.mjs` or `.`, fails the run before that process starts. Give their entrypoints as
-absolute paths under `toolsDirectory`. `/opt` itself cannot be mounted. Absolute
+paths (also as `--name=/work/...`) are rejected when the configuration is loaded. All their
+absolute arguments and `--name=value` paths must be under a configured runtime directory,
+`toolsDirectory`, or its sandbox path `/tools`; aliases such as `/proc/self/cwd/review.js`
+and `/dev/fd/...` are rejected. Relative traversal is resolved from `/work` under the same
+rule, so `../proc/self/cwd/...` is rejected too. A relative argument (or `--name=value` value) that names an
+existing candidate path, such as `review.mjs` or `.`, fails the run before that process
+starts. This also checks Node's implicit `.js`, `.json`, and `.node` suffixes: `node review`
+is rejected if the candidate contains `review.js`. Give their entrypoints as absolute paths
+under `toolsDirectory`. `/opt` itself cannot be mounted. Absolute
 references under `toolsDirectory` are translated to `/tools`. Each process starts in
 `/work` and receives JSON on stdin:
 
