@@ -21,6 +21,12 @@
 |---|---|---|
 | `claude --version`, `claude --help` | 2.1.318; flags recorded under "Claude evidence by requirement" | terminal output of this session |
 
+## Review: Codex PR review bot (PR #10), 2026-11-05
+
+| Finding | Resolution |
+|---|---|
+| P2: `-p --output-format stream-json` needs `--verbose` | Verified on 2.1.318 (the CLI refuses without it); added to C-1, design argv and acceptance test in 8882c9f. Re-review of 8882c9f: no findings. |
+
 ## Known limitations
 
 - Claude facts come from the installed CLI's help text only; no live run was made (it needs an API key and spends budget).
