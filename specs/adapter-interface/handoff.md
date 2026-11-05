@@ -87,8 +87,8 @@ in the next commit:
 
 ## Known limitations
 
-- Independent Codex review of `381bc10` found the validation-boundary omission recorded
-  below; final review of the correction and fresh CI remain required before merging.
+- PR #6 merged while the follow-up corrections below were being prepared; CI on those
+  corrections remains required before merging the follow-up.
 - Adapter implementation and the new acceptance suites remain future T3 work.
 
 ## Codex review correction, 2026-11-04
@@ -112,6 +112,33 @@ in the next commit:
 - Validation results and the final independent review will be recorded on PR #6 against
   the exact correction commit; the new adapter acceptance suites are not claimed as run.
 
+## Verified review fixes after PR #6, 2026-11-04
+
+- A fresh Codex reviewer verified the connected `wilsonhj` account and the complete
+  `7fce6c6...5119e2d` comparison (10 files, +371/-23), using exact-commit source-control
+  reads without prior chat context or local checkout; it found two actionable defects.
+- P1: A-21 and its planned acceptance test denied writes but not reads of private
+  signing/deploy keys by the adapter account. A-21 now denies both adapter and runtime
+  key reads/writes while preserving the separate ledger-write ban. K-3 distinguishes
+  those permissions, retains Kiro's ledger-read denial, and both packets' acceptance
+  cases now check key reads under both users. Source: approval-ledger.md "Who writes,
+  and how it is enforced" (agents hold neither signing key).
+- P2: the runtime-output invariant prohibited all evidence, contradicting A-17 and its
+  acceptance case. It now expressly admits only structured reviewer findings under
+  A-17 while continuing to reject free-form runtime claims as evidence.
+- The independently added A-22 validation boundary is preserved. These are packet
+  corrections only; no T2 decision, T3 implementation or phase approval is inferred.
+- Validation: `npm run check` and `git diff --check` passed; all six task packets parse,
+  all 26 task dependencies resolve without cycles, and every normative A/K requirement
+  has planned acceptance coverage. These consistency checks do not execute the future
+  adapter or Kiro suites.
+- `npm test` on macOS with Node v26.12.1: 80 tests, 76 passed, 2 failed, 2 skipped.
+  `sandbox argv is offline, minimally mounted, and does not expose controller state`
+  fails because Linux bubblewrap is required; `default CLI execution fails closed when
+  isolation is unavailable` expects `worker failed` but gets the Linux-only error.
+  Node 26 is outside the pinned Node 24 range; supported-host CI is still required.
+- The fixes are based on merge commit `019870f`, whose tree matches reviewed `5119e2d`.
+
 ## Unresolved decisions
 
 - See requirements.md "Unresolved questions" — owner: TBD (human), in T2.
@@ -124,6 +151,6 @@ in the next commit:
 
 ## Exact next action
 
-Validate and independently review this correction, then merge PR #6 only if ready;
-complete the human-owned T2 decisions before any T3 implementation. No task-phase
-approval is granted by this handoff or by merging the proposed packet.
+Check supported-host CI on the follow-up correction before merging it, then complete
+the human-owned T2 decisions before any T3 implementation. No task-phase approval is
+granted by this handoff or by merging the proposed packet.
