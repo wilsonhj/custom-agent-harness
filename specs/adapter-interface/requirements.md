@@ -9,7 +9,7 @@
 ## User-visible behavior
 
 - The control plane can start, watch, cancel and collect any runtime through one
-  interface, and each run leaves a run-ledger record (A-1 to A-9, A-13 to A-15, A-17 to A-21).
+  interface, and each run leaves a run-ledger record (A-1 to A-9, A-13 to A-15, A-17 to A-22).
 - A task's worktree has exactly one writer at a time; a second writer is refused (A-10, A-11).
 - A run can only write its task's working files and request directory, and cannot read
   other tasks' worktrees or reach the network beyond its profile (A-12, A-16, A-18).
@@ -54,11 +54,12 @@ cited source implies but does not state.
 | A-14 | The control plane caps harness-launched delegation depth and parallel jobs with `execution.max_delegation_depth` and `execution.max_parallel_jobs`; each runtime packet states whether and how it bounds the runtime's internal subagents. | README "Example configuration contract", "Required controls" |
 | A-15 | The runtime user has no write access to the artifacts directory, evidence store or run ledger, except its own task's request directory. | *new*; README "Design boundaries"; approval-ledger.md `evidence_refs` (evidence must be re-hashable) |
 | A-16 | The adapter, not the runtime, creates commits: after a run it stages and commits the working files on the host with Git configured to run no repository-controlled code (no hooks, filters, fsmonitor, or submodule recursion) and rejects nested repositories and gitlinks before any host Git call. | *new*; README "Trust boundaries" (repository files and hooks are untrusted) |
-| A-17 | Evidence cited in `evidence_refs` is either the output of validation the harness ran itself on the adapter-created commit, or a reviewer job's structured findings that passed the A-5 schema, labelled as review findings; free-form runtime claims (such as "tests passed") are never evidence. | AGENTS.md "Completion requires validated evidence, not an assertion"; approval-ledger.md `evidence_refs` (test output, review findings) |
+| A-17 | Evidence cited in `evidence_refs` is either the output of validation satisfying A-22 that the harness ran itself on the adapter-created commit, or a reviewer job's structured findings that passed the A-5 schema, labelled as review findings; free-form runtime claims (such as "tests passed") are never evidence. | AGENTS.md "Completion requires validated evidence, not an assertion"; approval-ledger.md `evidence_refs` (test output, review findings) |
 | A-18 | The runtime user cannot read other tasks' worktrees, homes or request directories, and has network access only as its permission profile allows. | README "Permission profiles" (Network column), "Required controls" (filesystem and network restrictions) |
 | A-19 | The adapter refuses to start when the task's egress class exceeds the runtime's ceiling from the egress profile. | data-egress.md "Egress classes" (Rules) (checked before content reaches a session) |
 | A-20 | A required integration failure (runtime missing, sandbox unavailable, version mismatch, required tool not starting) fails the run before the runtime receives the task. | README "Minimum acceptance tests" (required integration failures block the workflow) |
 | A-21 | Neither the adapter's OS user nor the runtime user has write access to `<ledger-root>`, the approval signing keys or the anchor-repo deploy key; only the ledger account writes the approval ledger. | approval-ledger.md "Who writes, and how it is enforced" |
+| A-22 | Harness-run validation uses independently trusted entrypoints configured outside the candidate and executes all code it invokes (including candidate-controlled build, test and dependency scripts) inside a harness-enforced boundary with a read-only candidate mount, writes limited to isolated job scratch space, no adapter/controller credentials or write authority to artifacts, evidence stores or ledgers, and filesystem and network access restricted to the validation job's permission profile. | local-workflow.md "Trust and installation" (isolated, read-only verifier); "Operator configuration" (trusted verifier entrypoint outside candidate); README "Trust boundaries", "Required controls" |
 
 ## Cited company decisions
 

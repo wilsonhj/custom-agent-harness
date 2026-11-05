@@ -14,6 +14,14 @@
   its task record, acquire the per-worktree writer lock and release it only after the
   run's processes are confirmed gone (A-10, A-11).
 - A per-run OS user or container for the runtime process (A-12, A-15); choice in T2.
+- Harness-run validation uses independently trusted entrypoints configured outside the
+  candidate; every script they invoke runs inside the harness-enforced boundary with a
+  read-only candidate mount and isolated writable scratch space, without adapter/controller
+  credentials or write access to artifacts, evidence stores or ledgers, and with reads and
+  network access limited by the validation job's permission profile (A-17, A-22;
+  `docs/local-workflow.md` "Trust and installation", "Operator configuration"). The harness
+  captures validation output outside that boundary; unavailable isolation fails closed
+  before validation code runs (A-20). T2 chooses the backend, not whether to isolate validation.
 - New run-ledger record shape (A-13), append-only; storage is an open question.
 - No change to `harness/policy/transitions.ts` or the approval ledger.
 

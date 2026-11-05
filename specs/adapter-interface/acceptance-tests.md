@@ -20,7 +20,7 @@ has been run. "Fake runtime" is a test executable that tries the forbidden actio
 - [ ] The compatibility check fails on a version other than the declared one — `tests/adapter-interface.test.ts` — covers: A-9
 - [ ] Each run appends exactly one run-ledger record with the listed fields, including outcome `failed` for a cancelled run; a head SHA printed by the runtime is ignored in favour of Git's; the record is not accepted as an approval — `tests/run-ledger.test.ts` — covers: A-13
 - [ ] Harness-launched delegation depth and parallel-job caps are enforced — `tests/adapter-interface.test.ts` — covers: A-14
-- [ ] A fake runtime that prints "tests passed" produces no `evidence_refs` entry; harness-run validation and schema-valid reviewer findings do — `tests/run-ledger.test.ts` — covers: A-17
+- [ ] A fake runtime that prints "tests passed" produces no `evidence_refs` entry; harness-run validation satisfying A-22 and schema-valid reviewer findings do — `tests/run-ledger.test.ts` — covers: A-17
 - [ ] A task whose egress class exceeds the runtime's ceiling is refused before launch — `tests/adapter-interface.test.ts` — covers: A-19
 - [ ] Missing runtime, unavailable sandbox, version mismatch and a required tool failing to start each fail the run before the runtime receives the task — `tests/adapter-interface.test.ts` — covers: A-20
 
@@ -34,6 +34,7 @@ has been run. "Fake runtime" is a test executable that tries the forbidden actio
 - [ ] The fake runtime cannot read another task's worktree, home or request directory, and its network access matches its profile — `tests/adapter-process.test.ts` — covers: A-18
 - [ ] Existing suites still pass under `npm test` — `npm test`
 - [ ] Neither the adapter's user nor the fake runtime's user can write `<ledger-root>`, the signing keys or the anchor deploy key — `tests/adapter-process.test.ts` — covers: A-21
+- [ ] An externally configured trusted verifier invokes malicious candidate build, test and dependency scripts: candidate/evidence/artifact/run-ledger/approval-ledger writes, controller credential reads, unrelated file reads and forbidden network access are denied; isolated scratch writes succeed and the harness captures output outside the boundary; candidate configuration cannot replace the verifier entrypoint, and unavailable isolation fails before validation code runs — `tests/adapter-validation.test.ts` — covers: A-17, A-20, A-22
 
 ## Release
 

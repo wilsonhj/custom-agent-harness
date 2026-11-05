@@ -20,7 +20,10 @@
 
 | Command | Result | Evidence |
 |---|---|---|
-| (none) | not run | Test files are created in T3 |
+| `npm run check` | passed (2026-11-04 correction) | JavaScript syntax checks passed |
+| `git diff --check` | passed (2026-11-04 correction) | No whitespace errors |
+| Packet consistency check | passed (2026-11-04 correction) | All 5 non-template task packets parse; 23 task dependencies resolve without cycles; every normative A/K requirement has planned acceptance coverage |
+| New adapter acceptance suites | not run | Test files are created in T3; existing-suite CI is required on the correction commit |
 
 ## Review: /code-review (Claude, same session, not independent; NOT Codex)
 
@@ -84,7 +87,30 @@ in the next commit:
 
 ## Known limitations
 
-- No independent review yet (T1). Requirements are drawn from README "Adapter contract", "Minimum acceptance tests", "Run ledger" and AGENTS.md; no runtime facts.
+- Independent Codex review of `381bc10` found the validation-boundary omission recorded
+  below; final review of the correction and fresh CI remain required before merging.
+- Adapter implementation and the new acceptance suites remain future T3 work.
+
+## Codex review correction, 2026-11-04
+
+- Review: a separate Codex reviewer inspected `7fce6c6...381bc10` read-only, without the
+  coordinator's session history; one Important finding, no Critical findings.
+- Verified issue: A-17 accepted harness-run validation without extending the runtime-user
+  isolation rules to candidate-controlled validation code, allowing an implementation to
+  run candidate tests with the evidence-writing adapter account's authority.
+- Fix: new A-22 requires an independently trusted verifier entrypoint configured outside
+  the candidate and harness-enforced isolation of every invoked script, a read-only
+  candidate, isolated scratch writes, restricted reads/network, and no controller
+  credentials or artifact/evidence/ledger write authority; A-17 now requires A-22.
+- `design.md` records this execution boundary and fail-closed behavior; the planned
+  `tests/adapter-validation.test.ts` acceptance case probes malicious validation code,
+  verifier replacement and unavailable isolation. No runtime code was changed.
+- Source: `docs/local-workflow.md` "Trust and installation" and "Operator configuration",
+  already merged via PR #4; this carries forward its validation trust boundary.
+- Assumption: this is a packet correction, not authorization to choose T2's isolation
+  backend or implement T3; the proposed status and human decision gate remain in force.
+- Validation results and the final independent review will be recorded on PR #6 against
+  the exact correction commit; the new adapter acceptance suites are not claimed as run.
 
 ## Unresolved decisions
 
@@ -98,4 +124,6 @@ in the next commit:
 
 ## Exact next action
 
-A human runs `/codex:adversarial-review` on `specs/adapter-interface/` and records the findings here (T1).
+Validate and independently review this correction, then merge PR #6 only if ready;
+complete the human-owned T2 decisions before any T3 implementation. No task-phase
+approval is granted by this handoff or by merging the proposed packet.
