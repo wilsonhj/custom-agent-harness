@@ -1,0 +1,34 @@
+[
+  {
+    "id": "T1",
+    "title": "Independent review of this plan (/codex:adversarial-review, run by a human with the codex plugin)",
+    "owner_role": "reviewer",
+    "worktree": "adapter-interface",
+    "status": "Planned",
+    "depends_on": []
+  },
+  {
+    "id": "T2",
+    "title": "Human decisions on the unresolved questions (language and layout, lock location, run-ledger storage, A-12 enforcement)",
+    "owner_role": "human",
+    "worktree": "adapter-interface",
+    "status": "Planned",
+    "depends_on": ["T1"]
+  },
+  {
+    "id": "T3",
+    "title": "Implement harness/adapters/types.ts, harness/orchestration/worktree.ts, run-ledger append and a fake test adapter, with the tests in acceptance-tests.md",
+    "owner_role": "implementer",
+    "worktree": "adapter-interface",
+    "status": "Planned",
+    "depends_on": ["T2"]
+  },
+  {
+    "id": "T4",
+    "title": "Independent review of the T3 diff and test evidence",
+    "owner_role": "reviewer",
+    "worktree": "adapter-interface",
+    "status": "Planned",
+    "depends_on": ["T3"]
+  }
+]

@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Base SHA | 0b9d58f (main at packet creation) |
-| Head SHA | 9d339f8 (PR head these edits were made on; the commit that adds this line is its direct child) |
+| Head SHA | 9bb0630 (PR #6 head these edits were made on; they land in the next commit) |
 | Author (runtime / session ID) | Claude Code / session_01AaDiMJVSVxQVfoGPARPgBn; follow-up pass session_01AaDiMLni7kwVNftEwaHm1a |
 | Date | 2026-11-01 |
 
@@ -13,7 +13,7 @@
 - `specs/kiro-adapter/acceptance-tests.md` — one test per requirement; Migration/Preview sections removed. Follow-up: `workspace-config` also covers K-5.
 - `specs/kiro-adapter/design.md` — migration justification and rollout/rollback corrected.
 - `specs/kiro-adapter/handoff.md` — this record.
-- `specs/kiro-adapter/tasks.json` — T1-T5 and T7: research, plan review, human decisions, adapter, tests, code review (T6 moved to a separate packet, not yet created).
+- `specs/kiro-adapter/tasks.json` — T1-T5 and T7: research, plan review, human decisions, adapter, tests, code review (T6 moved to `specs/adapter-interface/`).
 
 ## Implemented requirements
 
@@ -111,7 +111,7 @@ Treated as claims to verify against kiro.dev (re-fetched 2026-11-01). Result:
 | No single "may this task launch Kiro?" procedure; K-21 both normative and pending | Added "Launch procedure"; K-21 moved out of the normative table as pending T3. |
 | T1's definition of done needed the T5 hook test | T1 now ends with a list of what only a test can settle; the test stays in T5. |
 | Handoff kept superseded research, a stale test name, no real SHA | Superseded summary removed, name fixed, Base/Head SHA and date recorded. |
-| T6 belongs in its own packet | Removed from tasks.json; recorded as an external prerequisite (packet not yet created). |
+| T6 belongs in its own packet | Removed from tasks.json; recorded as an external prerequisite, now `specs/adapter-interface/`. |
 | design.md said the migration gate was inapplicable | Reworded; acceptance test added for a classifier result of `clean`. |
 | K-21 cited data-egress.md by line number | Now cites the sentences. |
 
@@ -129,6 +129,16 @@ Already fixed at `9d339f8` and left alone: T1 no longer needs the T5 test, T6 is
 tasks.json, the migration-gate acceptance line exists, the superseded MCP text is gone.
 No suite exists to run (`tests/kiro/*` are T5 placeholders); `tasks.json` was not changed.
 
+## Changes made in PR #6 (adapter-interface), 2026-11-01
+
+Normative changes to this packet, aligning it with `specs/adapter-interface/`:
+K-2 (lock released only after confirmed process death; human release after a crash),
+K-3 (separate runtime user; A-21 ledger ban for both users), K-7 (no delegation unless a
+depth control exists), K-11 (output is a runtime claim; evidence per A-17), K-13 (session
+ID capture via `--resume-id`), K-16 (artifacts directory and run ledger also protected),
+T4 depends on `adapter-interface:T4`. Matching acceptance tests were updated. Review records
+are in `specs/adapter-interface/handoff.md`.
+
 ## Assumptions made
 
 - K-21 (proposed, needs human confirmation): data-egress.md says both "a session on an
@@ -141,7 +151,7 @@ No suite exists to run (`tests/kiro/*` are T5 placeholders); `tasks.json` was no
 - Packet ID `kiro-adapter` given by the user; scope is the Kiro CLI surface only.
 - `owner_role: human` for T3 and worktree name `kiro-adapter` in tasks.json are placeholders.
 - A runtime with no verified managed configuration is capped at `any-provider` and only under K-17.
-- The adapter interface and worktree ownership (former T6) need their own packet, which does not exist yet.
+- The adapter interface and worktree ownership (former T6) are in `specs/adapter-interface/`.
 
 ## Exact next action
 
