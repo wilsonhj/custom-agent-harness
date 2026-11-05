@@ -16,9 +16,9 @@ been run.
 - [ ] MCP servers come only from the harness `--mcp-config` with `--strict-mcp-config`; a worktree `.mcp.json` is not loaded (live) — `tests/claude-adapter.test.ts` — covers: C-4
 - [ ] First run passes `--session-id <uuid>`; continuation passes `--resume` with the recorded ID only — `tests/claude-adapter.test.ts` — covers: C-5
 - [ ] A run over budget is recorded as failed — `tests/claude-adapter.test.ts` — covers: C-8
-- [ ] Malformed stream-json and output claiming "approved" fail the run; valid output is stored as a runtime claim, not evidence — `tests/claude-adapter.test.ts` — covers: C-9
-- [ ] A `claude --version` other than the pin refuses the run before launch — `tests/claude-adapter.test.ts` — covers: C-10
-- [ ] Subagents are unavailable when the profile disallows delegation (live) — `tests/claude-adapter.test.ts` — covers: C-11
+- [ ] Exit 0 with a final `result` event that has `is_error: true` (or `subtype: "success"` with `is_error: true`), a non-zero exit, a missing `result` event, malformed stream-json and output claiming "approved" all fail the run; valid output is stored as a runtime claim, not evidence — `tests/claude-adapter.test.ts` — covers: C-9
+- [ ] A `claude --version` other than the pin refuses the run before launch; the environment carries `DISABLE_AUTOUPDATER=1` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` — `tests/claude-adapter.test.ts` — covers: C-10
+- [ ] Subagents are unavailable when the profile disallows delegation: the `system`/`init` event lists no Task or Agent tool — `tests/claude-adapter.test.ts` — covers: C-11
 
 ## Invariants
 

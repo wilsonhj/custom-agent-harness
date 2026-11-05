@@ -7,7 +7,10 @@
 - Argv builder: `claude -p --bare --restricted --output-format stream-json --verbose --session-id
   <uuid>|--resume <uuid> --settings <harness file> --tools ... --allowedTools ...
   --permission-mode dontAsk --permission-prompts none --mcp-config <file>
-  --strict-mcp-config --max-budget-usd <n>`; a test asserts forbidden flags never appear.
+  --strict-mcp-config --max-budget-usd <n> --max-turns <n>`, with environment
+  `ANTHROPIC_API_KEY`, `CLAUDE_CONFIG_DIR=<task home>`, `DISABLE_AUTOUPDATER=1`,
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and `HTTPS_PROXY=<sandbox egress proxy>`;
+  a test asserts forbidden flags never appear.
 - Stream-json parser that maps events to the harness result schema (A-5).
 - Harness-run egress proxy reachable from the sandbox, allowing only the model API host
   (C-6); design detail is open.
