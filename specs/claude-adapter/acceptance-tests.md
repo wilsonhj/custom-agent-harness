@@ -5,12 +5,13 @@ Check an item only when the result is recorded in `handoff.md`.
 
 The test files below do not exist yet; T5 creates them and they run with `npm test`. Tests
 that call the real model API are marked "live" and need the T3 key; the rest use a fake
-`claude` executable that records its argv and emits canned stream-json. Nothing here has
+`claude` executable that records its argv, rejects argv the real CLI rejects (for example
+`stream-json` without `--verbose`), and emits canned stream-json. Nothing here has
 been run.
 
 ## Behavior
 
-- [ ] Argv contains `-p --bare --restricted --output-format stream-json` and the profile's `--tools`/`--allowedTools`; cwd is the sandboxed worktree — `tests/claude-adapter.test.ts` — covers: C-1, C-2, C-3
+- [ ] Argv contains `-p --bare --restricted --output-format stream-json --verbose` and the profile's `--tools`/`--allowedTools`; cwd is the sandboxed worktree — `tests/claude-adapter.test.ts` — covers: C-1, C-2, C-3
 - [ ] Argv never contains `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `bypassPermissions`, `--continue`, `--fork-session` or `--no-session-persistence` — `tests/claude-adapter.test.ts` — covers: C-3, C-5
 - [ ] MCP servers come only from the harness `--mcp-config` with `--strict-mcp-config`; a worktree `.mcp.json` is not loaded (live) — `tests/claude-adapter.test.ts` — covers: C-4
 - [ ] First run passes `--session-id <uuid>`; continuation passes `--resume` with the recorded ID only — `tests/claude-adapter.test.ts` — covers: C-5

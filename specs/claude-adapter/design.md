@@ -4,7 +4,7 @@
 
 - New `harness/adapters/claude.ts` implementing the adapter-interface `Adapter`
   (`start`, `status`, `cancel`, `collect`) for runtime `claude`.
-- Argv builder: `claude -p --bare --restricted --output-format stream-json --session-id
+- Argv builder: `claude -p --bare --restricted --output-format stream-json --verbose --session-id
   <uuid>|--resume <uuid> --settings <harness file> --tools ... --allowedTools ...
   --permission-mode dontAsk --permission-prompts none --mcp-config <file>
   --strict-mcp-config --max-budget-usd <n>`; a test asserts forbidden flags never appear.

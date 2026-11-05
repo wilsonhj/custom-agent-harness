@@ -32,7 +32,7 @@ One normative sentence per row; evidence is under "Claude evidence by requiremen
 
 | ID | Requirement | Source |
 |---|---|---|
-| C-1 | The adapter runs `claude -p` with `--output-format stream-json`, the task prompt on stdin, and the working directory set to the sandboxed worktree. | adapter-interface A-1, A-2 |
+| C-1 | The adapter runs `claude -p` with `--output-format stream-json --verbose`, the task prompt on stdin, and the working directory set to the sandboxed worktree. | adapter-interface A-1, A-2 |
 | C-2 | The adapter starts Claude with `--bare` and `--restricted`, so hooks, plugins, CLAUDE.md auto-discovery and user, project and local settings files are not loaded, and passes all configuration explicitly with `--settings`, `--append-system-prompt-file` or `--add-dir`. | adapter-interface A-12, A-16; README "Trust boundaries" |
 | C-3 | The adapter passes an explicit `--tools` and `--allowedTools` list mapped from the task's permission profile, `--permission-mode dontAsk` and `--permission-prompts none`, and never passes `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions` or `--permission-mode bypassPermissions`. | adapter-interface A-3; README "Required controls" |
 | C-4 | MCP servers come only from the harness profile via `--mcp-config` with `--strict-mcp-config`. | adapter-interface A-18; data-egress.md "Enforcement" |
@@ -49,7 +49,7 @@ One normative sentence per row; evidence is under "Claude evidence by requiremen
 
 | ID | Evidence |
 |---|---|
-| C-1 | (P) `-p/--print` prints and exits; `--output-format text|json|stream-json` (print only); `--input-format stream-json` exists. (P) In `-p` mode "the workspace trust dialog is skipped" and "settings files that fail validation are silently ignored": the adapter must validate its own `--settings` file before launch. Exit codes and the stream-json event schema: UNVERIFIED. |
+| C-1 | (P) `-p/--print` prints and exits; 2.1.318 refuses `-p --output-format stream-json` without `--verbose` ("Error: When using --print, --output-format=stream-json requires --verbose", observed 2026-11-05); `--output-format text|json|stream-json` (print only); `--input-format stream-json` exists. (P) In `-p` mode "the workspace trust dialog is skipped" and "settings files that fail validation are silently ignored": the adapter must validate its own `--settings` file before launch. Exit codes and the stream-json event schema: UNVERIFIED. |
 | C-2 | (P) `--bare`: skips hooks, LSP, plugin sync, auto-memory, keychain reads and CLAUDE.md auto-discovery; auth is strictly `ANTHROPIC_API_KEY` or `apiKeyHelper` via `--settings`. (P) `--restricted`: removes Bash and other code-running tools and WebFetch unless `--tools` names them, ignores user/project/local settings (managed settings and `--settings` still apply), confines file tools to working directories, refuses `bypassPermissions`. How `--bare` and `--restricted` combine: UNVERIFIED. |
 | C-3 | (P) `--tools`, `--allowedTools`, `--disallowedTools`, `--permission-mode` (acceptEdits, auto, bypassPermissions, manual, dontAsk, plan), `--permission-prompts none` ("anything that would prompt is denied automatically"). |
 | C-4 | (P) `--mcp-config`, `--strict-mcp-config` ("only use MCP servers from --mcp-config"). |
