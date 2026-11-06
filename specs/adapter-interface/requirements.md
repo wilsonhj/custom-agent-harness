@@ -2,9 +2,9 @@
 
 > Status: proposed, not approved. Harness-side only: no runtime-specific facts. Each
 > runtime (Claude, Codex, Cursor, Kiro) gets its own adapter packet that depends on this
-> one; `specs/kiro-adapter/` is the first. Open PR #4 (`specs/local-evidence-workflow`)
-> already implements a worktree, lease, sandbox and evidence store with different choices;
-> how the two relate is an open question (T2).
+> one; `specs/kiro-adapter/` is the first. T2 architecture decisions were made by the
+> repository owner on 2026-11-05 (see "T2 decisions"); they choose mechanisms and do not
+> approve any task phase.
 
 ## User-visible behavior
 
@@ -32,8 +32,9 @@
 
 ## Requirements
 
-One normative sentence per row. "Runtime user" means the per-run OS user or container
-that A-12 requires; which one is a T2 decision. Rows marked *new* add a constraint the
+One normative sentence per row. "Runtime user" means the bubblewrap sandbox identity a
+runtime or validation job runs as (T2 decision D1): a private user namespace with no mount of
+the controller store, artifacts directory, evidence store, run ledger or `<ledger-root>`. Rows marked *new* add a constraint the
 cited source implies but does not state.
 
 | ID | Requirement | Source |
@@ -49,7 +50,7 @@ cited source implies but does not state.
 | A-9 | Each adapter declares its pinned runtime version, and a compatibility test fails on any other version. | README "Required controls" (pin versions), "Prerequisites" |
 | A-10 | The worktree manager creates one worktree per task at the base SHA in the task record, outside any other task's worktree. | AGENTS.md "Work only in the worktree assigned to your task"; README "Key decisions" |
 | A-11 | A writer must hold an atomic per-worktree lock for the whole run; acquiring it fails if another writer holds it; it is released only after every process of the run is confirmed gone, and a lock whose owner cannot be confirmed (for example after a host crash) is released only by a human, never by timeout. | AGENTS.md "One writer per worktree"; README `one_writer_per_worktree` |
-| A-12 | Write limits are enforced by an OS-level boundary the harness controls (a per-run OS user or container): the runtime user can write only its task's working files, its task's request directory and its task home directory, never Git metadata (`.git`, the common `.git` directory, refs, config, hooks). | README "Required controls" (enforce filesystem restrictions externally), "Minimum acceptance tests" (unrelated paths) |
+| A-12 | Write limits are enforced by an OS-level boundary the harness controls (a bubblewrap sandbox, T2 decision D1): the runtime user can write only its task's working files, its task's request directory and its task home directory, never Git metadata (`.git`, the common `.git` directory, refs, config, hooks). | README "Required controls" (enforce filesystem restrictions externally), "Minimum acceptance tests" (unrelated paths) |
 | A-13 | Each run appends one run-ledger record (task and job IDs, run outcome and failure reason, runtime, adapter and skill versions, knowledge revision, permission profile, session ID, base SHA, head SHA read by the adapter from Git, artifact digests, timing, usage where available) that is separate from the approval ledger and grants no approval. | README "Run ledger"; approval-ledger.md "Purpose" |
 | A-14 | The control plane caps harness-launched delegation depth and parallel jobs with `execution.max_delegation_depth` and `execution.max_parallel_jobs`; each runtime packet states whether and how it bounds the runtime's internal subagents. | README "Example configuration contract", "Required controls" |
 | A-15 | The runtime user has no write access to the artifacts directory, evidence store or run ledger, except its own task's request directory. | *new*; README "Design boundaries"; approval-ledger.md `evidence_refs` (evidence must be re-hashable) |
@@ -70,11 +71,19 @@ cited source implies but does not state.
 | Approvals only in the external ledger | `docs/architecture/approval-ledger.md`, "Who writes, and how it is enforced" |
 | Content leaving the machine | `docs/security/data-egress.md` |
 
+## T2 decisions (repository owner, 2026-11-05)
+
+| ID | Question | Decision | Consequence for T3 |
+|---|---|---|---|
+| D1 | Isolation backend for A-12, A-15, A-18, A-22 | Reuse the bubblewrap sandbox from `harness/local` (private user, PID and network namespaces; read-only mounts except the task's working files) for runtime and validation jobs. Per-run OS users and containers are not used. | Linux only; macOS and Windows are unsupported until a backend is chosen for them. A continued session gets its task home mounted read-write at a fixed path. |
+| D2 | Relation to `harness/local` (PR #4) | Build on it: refactor its worktree, lease and sandbox code into shared modules the adapter interface uses, and move evidence to the `<local-artifacts-directory>/evidence/sha256/<digest>` layout in approval-ledger.md. | T3 changes merged `harness/local` code; its tests must keep passing, and its run store layout moves (no migration of old pilot runs). |
+| D3 | Lock location and process-death check (A-11) | Exclusive-create lock file in the controller store recording PID and boot ID, like `harness/local`'s lease. Death is confirmed by the bubblewrap PID-namespace teardown plus a process-group kill; a stale lock is removed only by a human after checking PID and boot ID. | No new service. |
+| D4 | Run-ledger storage (A-13) and module language | Per-project append-only JSONL in the controller store, each line carrying the SHA-256 of the previous line; unsigned and grants no approval. New modules are TypeScript (`.ts`) run with Node 24 type stripping, like `transitions.ts`. | `harness/local` stays `.mjs` until refactored by D2. Node 24 (package.json `engines`) is the supported runtime; README "Testing" (Node >= 22.6) covers only the state-machine suite. |
+| D5 | First runtime that proves the interface (blocks T4) | Claude Code CLI in headless mode (`claude -p`). | A `claude-adapter` packet is needed before that adapter is built; Codex follows. |
+
+The controller account that runs adapters must not be the ledger account (A-21): the
+sandbox keeps runtimes away from `<ledger-root>`, and OS ownership keeps the adapter away.
+
 ## Unresolved questions
 
-- [ ] Language and location: TypeScript under `harness/adapters/` and `harness/orchestration/`, matching `harness/policy/transitions.ts`? — owner: TBD, blocks: T2
-- [ ] Where does the worktree lock live, and how is process-tree death confirmed on each supported host (process group and PID namespace on Linux; macOS has no cgroups)? — owner: TBD, blocks: T2
-- [ ] Run-ledger storage: separate JSONL beside the artifacts directory, or the Phase 2 shared service? Is it hash-chained like the approval ledger? — owner: TBD, blocks: T2
-- [ ] Per-run OS user or container for A-12, A-15 and A-18, and how a continued session reaches its task home if the user changes per run? — owner: TBD, blocks: T2
-- [ ] Relation to open PR #4 (`specs/local-evidence-workflow`): adopt its worktree, lease, bubblewrap sandbox and evidence store, or replace them? Its store layout (`<store>/<run>/objects/`) and Node 24 requirement differ from approval-ledger.md and this packet. — owner: TBD, blocks: T2
-- [ ] Which first runtime proves the interface: the installed Codex plugin, or a Claude adapter? — owner: TBD, blocks: T4
+- [ ] macOS and Windows isolation backend (D1 covers Linux only). — owner: TBD, blocks: none for T3

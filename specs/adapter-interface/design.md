@@ -13,7 +13,8 @@
 - New `harness/orchestration/worktree.ts`: create a worktree for a task at the base SHA in
   its task record, acquire the per-worktree writer lock and release it only after the
   run's processes are confirmed gone (A-10, A-11).
-- A per-run OS user or container for the runtime process (A-12, A-15); choice in T2.
+- Runtime and validation jobs run in the bubblewrap sandbox from `harness/local`, refactored
+  into a shared module (T2 decisions D1, D2); evidence moves to the approval-ledger.md layout.
 - Harness-run validation uses independently trusted entrypoints configured outside the
   candidate; every script they invoke runs inside the harness-enforced boundary with a
   read-only candidate mount and isolated writable scratch space, without adapter/controller
@@ -21,16 +22,16 @@
   network access limited by the validation job's permission profile (A-17, A-22;
   `docs/local-workflow.md` "Trust and installation", "Operator configuration"). The harness
   captures validation output outside that boundary; unavailable isolation fails closed
-  before validation code runs (A-20). T2 chooses the backend, not whether to isolate validation.
-- New run-ledger record shape (A-13), append-only; storage is an open question.
+  before validation code runs (A-20). Backend: bubblewrap (T2 decision D1).
+- New run-ledger record shape (A-13): per-project append-only JSONL in the controller store,
+  hash-chained, unsigned (T2 decision D4).
 - No change to `harness/policy/transitions.ts` or the approval ledger.
 
 ## Dependencies
 
 - `harness/policy/transitions.ts` (task states) and the approval-ledger design.
 - `specs/ledger-write-guard/` for the guard that keeps agents off the ledger.
-- Node >= 22.6 for `node --experimental-strip-types --test` (README "Testing"); open PR #4
-  requires Node 24, to be reconciled in T2.
+- Node 24 (package.json `engines`); new modules are `.ts` run with type stripping (D4).
 - The migration classifier (`<migration-classifier-command>`), which does not exist yet.
 - Dependents: `specs/kiro-adapter/` and future per-runtime adapter packets. A dependent
   task names a task in this packet as `adapter-interface:<task-id>` in `depends_on`; it
