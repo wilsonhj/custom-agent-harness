@@ -4,16 +4,22 @@
 
 - New `harness/adapters/claude.ts` implementing the adapter-interface `Adapter`
   (`start`, `status`, `cancel`, `collect`) for runtime `claude`.
-- Argv builder: `claude -p --bare --restricted --output-format stream-json --verbose --session-id
-  <uuid>|--resume <uuid> --settings <harness file> --tools ... --allowedTools ...
-  --permission-mode dontAsk --permission-prompts none --mcp-config <file>
-  --strict-mcp-config --max-budget-usd <n> --max-turns <n>`, with environment
-  `ANTHROPIC_API_KEY`, `CLAUDE_CONFIG_DIR=<task home>`, `DISABLE_AUTOUPDATER=1`,
-  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and `HTTPS_PROXY=<sandbox egress proxy>`;
-  a test asserts forbidden flags never appear.
-- Stream-json parser that maps events to the harness result schema (A-5).
-- Harness-run egress proxy reachable from the sandbox, allowing only the model API host
-  (C-6); design detail is open.
+- Argv builder: `claude -p --bare --restricted --disable-slash-commands --output-format
+  stream-json --verbose --session-id <uuid>|--resume <uuid> --settings <harness file>
+  --tools ... --allowedTools ... --permission-mode dontAsk --permission-prompts none
+  --mcp-config <file> --strict-mcp-config --max-budget-usd <n> --max-turns <n>` (never
+  `--add-dir`), with environment `ANTHROPIC_API_KEY=<dummy>`,
+  `ANTHROPIC_BASE_URL=<sandbox route to the model proxy>`, `CLAUDE_CONFIG_DIR=<task home>`,
+  `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, `DISABLE_AUTOUPDATER=1` and
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`; a test asserts forbidden flags never appear.
+- Stream-json parser that maps events to the harness result schema (A-5) and checks
+  `init.session_id` and `init.apiKeySource`.
+- Harness model proxy outside the sandbox (C-6, C-7, C-8, C-12): strips client credentials,
+  adds the real key for the approved Console organization, forwards only model API paths,
+  meters spend per task with a hard cutoff. How the sandbox reaches it is open.
+- Transcript integrity (C-5): after each run the adapter copies the transcript out of the
+  task home, records its SHA-256 in the run ledger, and rebuilds the task home from that
+  copy before `--resume`.
 
 ## Dependencies
 
