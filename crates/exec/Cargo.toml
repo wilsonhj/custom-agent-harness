@@ -7,5 +7,17 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Exposes `TreeGone::for_tests()` to this crate's integration tests only.
+test-support = []
+
 [dependencies]
 harness-core = { path = "../core" }
+libc = "0.2"
+thiserror = "2"
+tokio = { version = "1", features = ["process", "io-util", "rt-multi-thread", "macros", "time", "net", "signal", "sync"] }
+tokio-util = { version = "0.7", features = ["codec", "rt"] }
+
+[dev-dependencies]
+harness-exec = { path = ".", features = ["test-support"] }
+tempfile = "3"

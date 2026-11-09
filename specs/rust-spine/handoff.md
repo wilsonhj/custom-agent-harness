@@ -26,6 +26,23 @@
 | `claude --help`, `codex --help`, `agent --help` probes | recorded | `research-2026-11-09/1b-subscription-clis.md` |
 | Any `cargo` or `npm` command | not run | Rust toolchain not installed |
 
+## Contract changes during implementation
+
+Later tasks build against these, not the plan text, where they differ.
+
+- T2 (a5d313c): modules are `pub mod` with no root re-exports (`harness_core::finding::Severity`).
+  `Capabilities` is Serialize only. `RawFinding`/`RawReview` are not `Eq`/`Hash` (f32).
+  `ReviewRejected { PathOutsideRepo{finding,path}, PassWithBlocking{finding}, BadLineRange{finding},
+  ConfidenceOutOfRange{finding} }` (finding is 1-based). String ids: `new(impl Into<String>)`,
+  `as_str`; hex ids: `parse(&str) -> Result<_, IdError>`, `as_str`, `LEN`. `MAX_CLAIM_CHARS = 2000`
+  characters. `ModelFamily::OpenAi` is `"openai"` on the wire. A finding with a file and no lines is
+  `Location` 0..0 (whole file); start without end is start..start.
+- Integration commit after T2: `harness_exec::plan::{LaunchPlan, TreeGone}` are shared by T5, T6
+  and T7 (re-exported at the crate root). `TreeGone::confirmed()` is crate-private (supervisor only);
+  `TreeGone::for_tests()` exists under the `test-support` feature, enabled for this crate's own
+  tests. The exec crate's dependencies are pre-declared (tokio, tokio-util, libc, thiserror; dev:
+  tempfile) so parallel tasks do not edit `Cargo.toml`.
+
 ## Known limitations
 
 - Adapter fixtures will be provisional until plan Task 11 records real transcripts.

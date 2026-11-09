@@ -45,7 +45,8 @@ for (const [name, pkg] of members) {
   }
   const allowed = ALLOWED_EDGES[name];
   if (allowed) {
-    for (const dep of deps.filter((d) => members.has(d))) {
+    // A crate may list itself as a dev-dependency to enable test-only features.
+    for (const dep of deps.filter((d) => members.has(d) && d !== name)) {
       if (!allowed.includes(dep)) errors.push(`forbidden edge ${name} -> ${dep}`);
     }
   }
