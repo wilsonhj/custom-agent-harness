@@ -1,0 +1,11 @@
+[package]
+name = "harness-exec"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+harness-core = { path = "../core" }
