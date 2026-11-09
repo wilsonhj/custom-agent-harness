@@ -170,8 +170,10 @@ pub fn can_transition(
             Subject::Commit(c) => ctx.candidate.as_ref() == Some(c),
             Subject::PacketDigest(_) => false,
         }),
-        // Engine-driven steps of the implement/review/repair loop.
-        (Approved, Implementing)
+        // Engine-driven steps. `Draft -> Planned` records the packet digest at `eng task new`;
+        // the human's approval of that digest is the gate at `Planned -> Approved`.
+        (Draft, Planned)
+        | (Approved, Implementing)
         | (Implementing, Reviewing)
         | (Reviewing, Repair)
         | (Repair, Reviewing) => Ok(()),
@@ -186,7 +188,7 @@ pub fn can_transition(
                 Err(Denied::WrongKind)
             }
         }
-        // Remaining listed edges (for example `Draft -> Planned`, `Failed -> Repair`,
+        // Remaining listed edges (for example `Planned -> Draft`, `Failed -> Repair`,
         // `-> Superseded`) need a decision kind this slice does not have.
         (
             _,

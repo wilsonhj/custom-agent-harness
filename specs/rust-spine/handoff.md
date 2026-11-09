@@ -43,6 +43,21 @@ Later tasks build against these, not the plan text, where they differ.
   tests. The exec crate's dependencies are pre-declared (tokio, tokio-util, libc, thiserror; dev:
   tempfile) so parallel tasks do not edit `Cargo.toml`.
 
+- T3 (95bbb8c, plus architect fix): `HumanDecision::principal() -> &str`, `seq() -> Seq` added;
+  `HumanDecision` has no Deserialize; `Subject` serialises as `{"type", "value"}`.
+  `Draft -> Planned` is ungated (architect's fix: it records the packet digest; the gate is
+  `Planned -> Approved`). These listed edges always deny in this slice because no decision kind
+  authorises them: `Planned -> Draft`, `Failed -> Repair`, `Verified -> Repair`, any
+  `-> Superseded`, and every resume out of `Blocked`. The TS check that a resume happens at the
+  blocked-at commit has no Rust counterpart yet; `Blocked` is not used by this slice.
+- T8 (5e6979f): `ParseState::new(role: Role, argv: &[String])`. `AdapterPlan.argv[0]` is the bare
+  name `claude`/`codex`; the engine substitutes the resolved binary. Claude's reviewer schema is
+  passed inline to `--json-schema` (`review_schema` is used only by Codex; missing => PolicyDenied).
+  Codex reads the prompt from stdin (argv ends with `-`). Claude's `own_sandbox_confirmed_off` is
+  true only if an `init.sandbox` field shows it off; no such field is documented, so it is false
+  until Task 11 records a real `init` event — the engine must therefore treat Claude runs as
+  blocked on this until Task 11 decides the check.
+
 ## Known limitations
 
 - Adapter fixtures will be provisional until plan Task 11 records real transcripts.

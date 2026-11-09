@@ -66,7 +66,8 @@ const RESUMABLE: [TaskState; 11] = [
 
 /// Task 3 "Rules": engine-driven edges that need no decision (plus any listed edge into
 /// `Failed`, `Cancelled` or `Blocked`, see `is_ungated`).
-const ENGINE_DRIVEN: [(TaskState, TaskState); 4] = [
+const ENGINE_DRIVEN: [(TaskState, TaskState); 5] = [
+    (Draft, Planned),
     (Approved, Implementing),
     (Implementing, Reviewing),
     (Reviewing, Repair),
