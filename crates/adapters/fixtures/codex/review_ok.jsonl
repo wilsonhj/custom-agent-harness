@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"thr_abc"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"{\"verdict\": \"changes_requested\", \"summary\": \"One issue.\", \"findings\": [{\"severity\": \"high\", \"category\": \"correctness\", \"file\": \"src/a.rs\", \"line_start\": 3, \"line_end\": 5, \"claim\": \"off by one\", \"failure_scenario\": \"empty input panics\", \"recommendation\": \"guard length\", \"suggested_check\": null, \"confidence\": 0.8}]}"}}
+{"type":"turn.completed","usage":{"input_tokens":200,"cached_input_tokens":0,"output_tokens":80,"reasoning_output_tokens":10}}

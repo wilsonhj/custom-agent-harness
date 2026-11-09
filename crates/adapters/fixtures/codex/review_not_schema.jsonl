@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"thr_abc"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Looks good to me, no issues."}}
+{"type":"turn.completed","usage":{"input_tokens":200,"cached_input_tokens":0,"output_tokens":80,"reasoning_output_tokens":10}}
