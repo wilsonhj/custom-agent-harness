@@ -109,6 +109,18 @@ Later tasks build against these, not the plan text, where they differ.
   must name the current candidate (or the packet digest before any checkpoint). Any other effect
   failure fails the task.
 
+- T7 security fixes (47c22a7, 08562a4, 7726e70): `commit_candidate(ws, parent, n, author_time,
+  _proof: &TreeGone)` and `reset_to(ws, commit, _proof: &TreeGone)` take the proof by reference;
+  `commit_candidate` re-scans after `write-tree`. `Workspace` gains `pub base: CommitSha`.
+  `hostgit::HARDENING` (one documented constant) and `hostgit::EMPTY_TREE`: every host Git call uses
+  `--attr-source=<empty tree>`, ignores `core.attributesFile`/system attributes, blanks every
+  `filter.*`/`diff.*`/`merge.*` driver found in repo config (via `GIT_CONFIG_KEY_n`), and fails closed
+  with `GitError::NonUtf8DriverName` if any such name is not UTF-8. Every harness diff uses
+  `--no-ext-diff --no-textconv`. `scan` rejects root entries that fold (ASCII + a documented Unicode
+  table, dropping HFS+-ignorable code points) to `PROTECTED_ROOT_NAMES`, unless the entry exists with
+  the exact same name in the base commit's root and is unchanged (regular files only; symlinks and
+  gitlinks fail closed; ignored files count).
+
 ## Known limitations
 
 - Adapter fixtures will be provisional until plan Task 11 records real transcripts.
