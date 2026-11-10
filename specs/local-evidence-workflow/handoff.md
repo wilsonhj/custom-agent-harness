@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Base SHA | e769f18 (current main, merged into the branch at 3169e00) |
-| Head SHA | b515c37 plus the commit that adds this handoff update and the regression suite |
-| Author (runtime / session ID) | Claude Code (lead integration) / session_01AaDiMJVSVxQVfoGPARPgBn; original implementation by Codex |
-| Date | 2026-11-01 |
+| Base SHA | 7fce6c6 (main after PR #4 merged; the follow-up starts here) |
+| Head SHA | The follow-up commit on `claude/wizardly-allen-3ovt4w` that adds this line (direct child of 7fce6c6) |
+| Author (runtime / session ID) | Claude Code (lead integration) / session_01AaDiMJVSVxQVfoGPARPgBn; post-merge follow-up session_01AaDiMLni7kwVNftEwaHm1a; original implementation by Codex |
+| Date | 2026-11-03 |
 
 Branch: codex/local-evidence-workflow. Original base: upstream main 0b9d58f.
 
@@ -26,8 +26,11 @@ repository and PRs #2/#3 and packet-only branches were inspected before starting
 
 ## Exact next action
 
-Wait for CI (`verify`) to pass on the pushed head, then merge PR #4; afterwards a human
-configures real local worker/verifier/reviewer commands and runs `doctor` on the target host.
+PR #8 contains fixes for both verified candidate-entrypoint bypasses and is synced with
+main at 019870f. Wait for CI (`verify`) on the published fixes and review them before
+merging; then a human
+configures real local worker/verifier/reviewer commands (entrypoints as absolute paths under
+`toolsDirectory`) and runs `doctor` on the target host.
 
 ## Implemented
 
@@ -90,6 +93,77 @@ worker `.gitattributes` can select filter drivers defined in the repository's ow
 Not changed (documented as known limitations in docs/local-workflow.md): reviewer prompt
 injection, unbound empty directories and non-exec mode bits, and the evidence-store layout
 that differs from approval-ledger.md.
+
+## Post-merge follow-up (2026-11-03)
+
+A `/code-review` of 5287b46 reported 8 unverified findings. Each was re-checked against
+main at 7fce6c6:
+
+| Finding | Status at 7fce6c6 | Resolution | Regression test |
+|---|---|---|---|
+| Packet digest taken from the source checkout | Already fixed (b515c37, 21364da) | none | bug2a, bug2b, bug8 |
+| `capture()` waits for 'close', so a `setsid` descendant holding a pipe keeps it past the deadline | Confirmed: a 500 ms deadline was still pending at 3 s | After 'exit', kill the group and force-close pipes after 1 s; the job fails with "descendant kept output open after exit" | bug10 (hangs 30 s on 7fce6c6) |
+| Verifier/reviewer "no workspace path" rule only rejected `{workspace}` | Confirmed: `['node', 'review.mjs']` ran a worker-written review that reached awaiting-decision; absolute `/work/...` also passed | Reject `/work` paths at config load; refuse relative arguments naming an existing candidate path before each verifier/reviewer run. cwd stays `/work`: moving it would make an `npm test` verifier silently test `/tools` | bug11a, bug11b (fail on 7fce6c6), bug11c |
+| `git()` trim corrupts `ls-tree -z` and the patch | Patch: already fixed (b515c37). `ls-tree -z`: not a bug, the output ends in NUL, which `trim()` keeps | none | bug4 |
+| Snapshot exec bit differs from Git | Already fixed (b515c37) | none | bug3 |
+| Agent-set task statuses in tasks.json | Statuses were already changed to `Reviewing`/`Planned` | Not changed: editing them again would be an agent recording a transition; a human should set them | n/a |
+| Full candidate re-hash before the reviewer, right after the post-verifier check, and again at the end | Confirmed | Each role's candidate is checked once, right after it (the worker's after `reset --hard`) | covered by existing candidate-tamper tests |
+| `doctor()` duplicates the bwrap argv | Confirmed | Shared `bwrapPrefix()`; `doctor` reports the constant path | existing doctor and real-sandbox tests |
+
+Validation on this host (Node 24.22.1 under /opt, bubblewrap and ssh-keygen installed as in
+CI): `HARNESS_REQUIRE_SANDBOX=1 npm test` 84 tests, 83 pass, 0 fail, 1 skip (the
+restricted-host denial test, skipped because the sandbox is available); `npm run check`
+passed; `node harness/local/cli.mjs doctor` ok; `git diff --check` passed. Before the change
+the same suite gave 80 tests, 79 pass, 1 skip.
+
+Codex review (chatgpt-codex-connector on PR #8, commit d8fc97a), one P2 finding: `bug10` let
+the shell exit before its background child called `setsid`, so the exit-time group kill
+could reach the child and the pipe closed normally (it also failed the first CI run).
+Resolved in 72966ed: the grandchild is spawned detached from Node (setsid before exec) and
+the child exits only after its `spawn` event. The test fails after 30 s on 7fce6c6 and
+passes in about 1 s with the fix; CI `verify` passed on 72966ed.
+
+## PR #8 verified review fixes (2026-11-05)
+
+Synced `claude/wizardly-allen-3ovt4w` with main at
+019870f2c71fc9fda24782853ef68050aebfa1ee before changing implementation. The merge was
+clean and preserves the adapter-interface feature packet and kiro-adapter updates.
+
+Both findings from the review of ef06780 were reproduced. `node review` found a
+worker-written `review.js`, and `node /proc/self/cwd/review.js` reached the candidate
+through procfs. Each could forge a passing review and reach `awaiting-decision`.
+
+The relative-argument guard now includes Node's implicit .js/.json/.node suffixes.
+Absolute verifier/reviewer argument paths, including `--name=value`, must be inside
+configured runtime mounts or the tools directory (host path or /tools). This excludes
+procfs and fd aliases without enumerating their spellings. Relative traversal is resolved
+from the sandbox's /work cwd, covering ../proc aliases and ../work candidate paths even
+though the host worktree has a different path. The working directory remains
+/work, and ordinary options and non-path operands remain supported. This implements the
+trusted-entrypoint contract in this packet's design.md, API and schema, and requirements.md
+items 2 and 5. It is still an argument guard, not an interpreter parser: shell strings and
+trusted tools that themselves import candidate code remain the documented limitations.
+
+Regression tests bug12 and bug13 cover verifier and reviewer, fixture and real-bubblewrap
+execution, bare and --name=value absolute aliases, and valid trusted arguments. Before the
+implementation change, all four extensionless cases reached `awaiting-decision` and the
+absolute-alias configuration test failed with a missing expected rejection. The valid
+argument case passed.
+
+Codex review of c7bf209 (PR #8), one P2 finding: an operand longer than the filename limit
+(for example a `node -e` script of 300+ characters with no `/`) made `lstat` throw
+`ENAMETOOLONG`, failing the run before the trusted command started. Such a name cannot be a
+worker-written file, so the check now treats `ENAMETOOLONG` like `ENOENT`. Regression test
+bug11d failed with ENAMETOOLONG before the change and passes after it;
+`HARNESS_REQUIRE_SANDBOX=1 npm test` 96 tests, 95 pass, 0 fail, 1 skip (the
+restricted-host denial test); `npm run check` and `git diff --check` passed.
+
+Validation of the fixes on Node 24.22.1: `HARNESS_REQUIRE_SANDBOX=1 npm test` reports
+95 tests, 94 pass, 0 fail, 1 expected restricted-host skip. This includes both roles and
+the ../work variants in real bubblewrap. `npm run check`, `git diff --check`, and
+`node harness/local/cli.mjs doctor` (ok: true) pass. Tests ran with additional execution
+permissions because the command sandbox restricts nested namespace setup; isolation in
+the workflow itself remained mandatory. Remote CI on the published commit is the final gate.
 
 ## Review and limitations
 
