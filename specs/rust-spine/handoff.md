@@ -379,3 +379,83 @@ their own profiles. No live runtime, credential or global account was used.
 Exact next action: integrate this commit into the PR 13 review-fix branch, resolve the
 independent containment decision, then have an external reviewer inspect the policy
 trust boundary and launch callbacks. No approval-ledger or release transition was made.
+
+
+## PR 13 R-11 containment decision (before implementation)
+
+Source: R-11 and design §6.2 require every descendant confirmed gone before lock
+release; the existing supervisor documents the responsibility-disclaim escape that
+polling cannot detect. The coordinating agent selected the minimal fail-closed fix
+under the user's authorization to fix verified issues: no privileged backend, new
+OS accounts, VM, or weakened proof requirement is included in this change.
+
+Plan:
+1. Add launch-before-side-effects and same-boot recovery/quarantine regressions;
+   verify they fail against the existing implementation.
+2. Refuse production `spawn_gated` with `ContainmentUnavailable` before the shim,
+   identity callback or plan can run; doctor reports unavailable and skips runtime
+   execution. Same/unknown-boot recovery cannot issue `TreeGone`; a confirmed
+   different boot remains sufficient. Fresh never-run workspaces remain usable.
+3. Preserve independent policy/store/adapter coverage and private algorithm tests;
+   explicitly mark execution-dependent cases unavailable, then run all packet
+   checks and record exact passing/ignored/failing counts and limitations.
+
+Impact: untrusted agents and verification cannot execute on the current macOS
+backend, including fake-agent end-to-end flows. Existing same-boot legacy runs
+remain quarantined and locked; empty process scans, missing/reused leaders and
+responsibility SPI availability are not containment evidence. No environment,
+feature, debug, or fake-runtime override will reopen the production launch path.
+
+R-11 implementation complete on the containment-only branch, based on `feceb481e647fb263a02248b5554226a73540f04`.
+The earlier supervisor/doctor/recovery guarantees and successful fake-flow results in
+this historical handoff are superseded by this section. `ContainmentUnavailable`
+is a typed infrastructure failure (wire code `containment_unavailable`). No strong
+backend was added; the current production launch gate remains closed.
+
+The [external containment review brief](containment-review-brief.md) lists all 29
+new Rust ignores and 3 CLI skips by test name, their missing capabilities, the 5
+unchanged pilot-specific Rust ignores, and review targets. README now states that
+both real and fake-agent end-to-end execution are disabled. Private bounded-output
+unit fixtures preserve framing/limit coverage without an executable bypass.
+Same/unknown-boot recovery leaves the started row, workspace lock and dirty marker
+intact. Confirmed reboot and fresh-never-started recovery cases remain covered.
+
+Verification (2026-11-10; fake/trusted local fixtures only):
+
+| Command / check | Result |
+|---|---|
+| New `unavailable_containment_denies_before_shim_callback_or_plan` before fix | RED: identity callback ran without containment |
+| New `same_or_unknown_boot_without_a_leader_cannot_prove_tree_gone` before fix | RED: empty scan issued a proof |
+| New `same_boot_legacy_run_remains_quarantined_even_without_a_live_leader` before fix | RED: recovery did not retain workspace lock |
+| New `doctor_reports_containment_unavailable_without_executing_runtimes` before fix | RED: containment check absent |
+| All four regressions after fix | PASS |
+| `node scripts/check-deps.mjs` | PASS |
+| `cargo fmt --check`, `git diff --check` | PASS |
+| `cargo clippy --workspace --all-targets -- -D warnings` | PASS |
+| `cargo test --workspace` outside the inherited sandbox | PASS: 228 passed, 0 failed, 34 ignored (29 new backend-dependent, 5 unchanged pilot/design differences) |
+| `cargo build --workspace` | PASS |
+| `PATH="/usr/local/bin:$PATH" ENG_BIN=target/debug/eng npm run conformance` | PASS: 12 cases, 9 passed, 0 failed, 3 explicitly skipped |
+| `PATH="/usr/local/bin:$PATH" npm test` | 90 tests: 86 passed, 2 failed, 2 skipped; Linux-only pilot limits below |
+
+Final Node/conformance commands used `/usr/local/bin/node v24.0.2` (confirmed with
+`process.execPath` and `process.version`). An initial `npm test` used the shell's
+`/opt/homebrew/bin/node v26.12.1`; it had the same 86/2/2 result and was rerun on the
+supported Node major. Initial sandboxed Rust execution failed 7 local proxy tests
+with `Operation not permitted` when binding listeners; the documented full suite
+was rerun outside the inherited sandbox and passed, including sandbox-live tests.
+
+The two unchanged Node failures are `tests/local-workflow.test.mjs:239`
+(`sandbox argv is offline, minimally mounted, and does not expose controller state`)
+and `:273` (`default CLI execution fails closed when isolation is unavailable`):
+Linux Bubblewrap is required, and the second test expects `worker failed` instead
+of the actual platform refusal. Two unchanged Node skips are `bug1: nested-repo
+clean filter cannot write to a host path (sandbox escape)` and `real bubblewrap
+workflow and denied read/write/network paths`, both requiring Linux `/usr/bin/bwrap`.
+No Linux pilot source was changed.
+
+Exact next action: integrate this containment commit with the independent functional
+fixes, adapt their execution fixtures to the closed gate, rerun combined verification,
+and obtain external review of the launch boundary and legacy-run quarantine. A
+future separately designed containment backend is required before live Task 11 or
+successful end-to-end execution can resume. No approval-ledger or release transition
+was made.

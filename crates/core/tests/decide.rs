@@ -1172,6 +1172,10 @@ fn classify_maps_outcomes_to_termination_reasons() {
         TerminationReason::InfrastructureFailure
     );
     assert_eq!(
+        classify(None, &f(ContainmentUnavailable)),
+        TerminationReason::InfrastructureFailure
+    );
+    assert_eq!(
         classify(agent, &f(SecretInDiff)),
         TerminationReason::PolicyViolation
     );

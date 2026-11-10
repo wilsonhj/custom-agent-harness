@@ -12,6 +12,7 @@ pub enum FailureCode {
     OutputLimitExceeded,
     SpawnError,
     SandboxUnavailable,
+    ContainmentUnavailable,
     VersionMismatch,
     ConfigChanged,
     InvalidAgentOutput,
