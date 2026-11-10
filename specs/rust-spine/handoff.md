@@ -295,9 +295,37 @@ ok; `cargo test --locked` on those three crates 124 passed, 0 failed; `npm run c
 
 Merging #17 and this branch conflicts only in this file.
 
+## Diagnosis of the R-11 restart gap (2026-11-10, no code change)
+
+Read `shim.rs` and `supervisor.rs` to fix gap (2) above. The planned fix (make
+`kill_identity` return `KillFailed` whenever the anchor is already gone) is wrong by itself:
+
+- After the engine dies the gate closes, and the shim exits 0 by design once no live process
+  names it responsible (`shim.rs` step 6). So "anchor gone at restart" is the normal case
+  after an engine crash, not only the unsafe one (anchor killed while a detached descendant
+  lives). The two cases cannot be told apart: the shim's exit status is lost with its parent.
+- Failing closed on every "anchor gone" would leave the effect pending and the lock held for
+  nearly every engine crash during a real run, and no command lets a human release it. That
+  trades the R-11 gap for losing restart recovery (R-5). The existing recovery tests would
+  still pass, because their fake agent hangs and keeps the anchor alive.
+
+Options for the owner (design §6.2 as corrected by PR #17 says: no `TreeGone`, keep the lock,
+stop for human recovery):
+
+1. Fail closed plus a human recovery command (for example `eng recover <task>
+   --confirm-dead`) that records who confirmed and releases the lock. Smallest change and
+   closest to PR #17; a crashed run already stops for the human (`LostOnRestart`).
+2. Clean-exit evidence: the shim writes a marker outside the sandbox before exiting 0, and
+   `kill_identity` accepts "anchor gone" only with the marker. Keeps recovery automatic;
+   changes `spawn_gated`, `kill_identity`, the shim and their callers.
+3. Record the gap as an accepted risk.
+
+None of these closes the documented disclaim gap. `harness-exec` builds only on macOS, so any
+of them must be verified by the macOS CI job.
+
 ## Exact next action
 
-Owner decides how R-11 and R-17 are to be met before Task 11: either implement them here
+Owner picks one of the three R-11 options above. Owner also decides how R-11 and R-17 are to be met before Task 11: either implement them here
 (a pre-spawn class/authorization gate; no `TreeGone` from `kill_identity` without a live
 anchor; a decision on the documented disclaim gap) or accept them explicitly as recorded
 risks. Only then does the owner run Task 11 with the architect (eng login claude; eng login
