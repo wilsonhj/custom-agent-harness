@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Base SHA | b56ae9d (origin/main) |
-| Head SHA | uncommitted working tree on branch `docs/rust-harness-design` |
+| Head SHA | tip of `feat/rust-spine` after the `feat(cli): eng commands, doctor, conformance flow; docs` commit (parent a7f4bf1; Tasks 1-10) |
 | Author (runtime / session ID) | Claude Code / lead architect session, 2026-11-09 |
 | Date | 2026-11-09 |
 
@@ -161,6 +161,30 @@ Later tasks build against these, not the plan text, where they differ.
     denied state dir). The scratch is removed (then `git worktree prune`) after `TreeGone`, by
     recovery after killing a crashed verify, and before a retry; never after `KillFailed`.
 
+- T10 (CLI; see the tip of `feat/rust-spine`):
+  - `harness-cli` now depends on `harness-core`, `harness-exec` and `harness-adapters` besides the
+    engine (it must name the core types `Engine` takes, and call the sandbox probe, the
+    descendant-tracking check, `packet_digest` and the adapters' version check).
+    `scripts/check-deps.mjs` `ALLOWED_EDGES['harness-cli']` was widened to match; not `store`.
+  - Environment: `ENG_CLAUDE_BIN`, `ENG_CODEX_BIN`, `ENG_NODE_BIN`, `ENG_SHIM_BIN`,
+    `ENG_EXTRA_READ_DIRS` (colon-separated, canonicalised, must exist). All runtime paths are
+    canonicalised; `node_bin` is set whenever a node is found (Codex is then launched as
+    `node <codex.js>`). Debug builds only: `ENG_FORCE_SANDBOX_UNAVAILABLE=1` re-executes `eng`
+    under a trivial Seatbelt profile, so the engine's own probe fails for real (profiles do
+    not nest); no engine change. No `ENG_DECIDE_ASSUME_TTY`: the conformance suite types `yes`
+    on a real pty through `script(1)` (needs an anonymous pipe on stdin; see `engTty`).
+  - Exit codes: `run` maps AwaitingHuman 4, Failed and Cancelled 5, a rejected command 3; a broken
+    hash chain or a locked workspace is 5; `decide` without a terminal or without `yes` is 3.
+    `eng run` first Ctrl-C trips the cancel token and submits `Cancel`; the second exits 130
+    (recovery kills what was left on the next start).
+  - `eng-shim` is a binary of `harness-exec`: `cargo build -p harness-cli` does NOT build it. Use
+    `cargo build --workspace` (or add `-p harness-exec`) before `eng run` or the conformance suite.
+  - `eng doctor` runs `<bin> --version` directly (unsandboxed, clean environment, 10 s limit),
+    which is the only place `eng` spawns a runtime; it never makes a model call. `eng login`
+    execs the official CLI with `CLAUDE_CONFIG_DIR` / `CODEX_HOME` set under `<state>/runtimes/`
+    and `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` removed. It was not run.
+  - `package.json` `conformance` script is now `node --test conformance/cases/*.test.mjs`.
+
 ## Known limitations
 
 - Adapter fixtures will be provisional until plan Task 11 records real transcripts.
@@ -187,7 +211,17 @@ Later tasks build against these, not the plan text, where they differ.
 - The six research reports are accurate where graded (P) or (D); UNVERIFIED items are listed
   in design §11.
 
+## Task 10 verification
+
+| Command | Result |
+|---|---|
+| `node scripts/check-deps.mjs` | `check-deps: ok` |
+| `cargo fmt --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| `cargo test --workspace` | all pass (CLI: 8 unit tests) |
+| `cargo build --workspace && ENG_BIN=target/debug/eng npm run conformance` | 11 tests, 11 pass |
+| `target/debug/eng doctor` on the development Mac | exit 0; sandbox, descendant tracking, claude 2.1.318, codex-cli 0.166.0, shim, state dir (absent) all ok |
+
 ## Exact next action
 
-Owner reviews `docs/superpowers/plans/2026-11-09-rust-spine.md`, installs the Rust toolchain
-(plan Task 1 step 1), and tells the architect to start Task 1.
+Owner runs Task 11 with the architect (eng login claude; eng login codex; eng doctor)

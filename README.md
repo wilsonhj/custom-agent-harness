@@ -39,7 +39,21 @@
 
 ## Overview
 
-### Runnable local pilot
+### Rust CLI (`eng`)
+
+`eng` takes a human-approved spec packet, has Claude Code implement it in a sandboxed
+worktree, verifies it, has Codex review it read-only, repairs for up to two rounds, and stops
+for a human decision. See [Quick start](#quick-start).
+
+- **macOS only.** The Rust CLI needs macOS 26 on Apple silicon (`/usr/bin/sandbox-exec`).
+  There is no Linux build and no unsandboxed fallback: if the sandbox probe fails, nothing runs.
+- **Real Claude runs are refused for now.** Claude Code documents no way to confirm that its own
+  sandbox is off inside the harness sandbox, so the engine reports `PolicyDenied` for a real
+  Claude run until the Task 11 live tests settle that check. Fake agents (the conformance
+  suite) run today; real runs wait for Task 11.
+- Pinned runtimes: Claude Code `2.1.318`, codex-cli `0.166.0`.
+
+### Legacy pilot
 
 The first local evidence workflow is implemented under `harness/local/` (Node 24,
 Linux bubblewrap). It prepares an isolated worktree, runs operator-configured worker,
@@ -226,56 +240,58 @@ Document authentication and billing separately for each runtime. Do not assume o
 
 ## Quick start
 
-> Setup is incomplete until the project-specific commands below are supplied and tested. Angle-bracket commands are placeholders, not runnable instructions.
+Requires macOS 26 on Apple silicon, a Rust toolchain (`rust-toolchain.toml`), Node 24, and
+Claude Code and Codex at the pinned versions. Real Claude runs are refused until the Task 11
+live tests settle the sandbox confirmation (see [Overview](#rust-cli-eng)).
 
-### 1. Install
-
-```bash
-git clone <repository-url>
-cd <repository-directory>
-<install-dependencies-command>
-```
-
-### 2. Configure
+### 1. Build
 
 ```bash
-cp config/harness.example.yaml config/harness.local.yaml
-<configure-authentication-command>
+cargo build --workspace          # builds eng and eng-shim (they must sit side by side)
+export PATH="$PWD/target/debug:$PATH"
 ```
 
-Keep configuration examples secret-free. Store credentials using <approved secret mechanism>.
-
-### 3. Validate the environment
+### 2. Sign in (once per runtime; the harness never reads the login)
 
 ```bash
-<environment-validation-command>
-<adapter-compatibility-test-command>
+eng login claude                 # starts Claude Code with a harness-owned config dir; type /login
+eng login codex                  # runs `codex login` with a harness-owned CODEX_HOME
 ```
 
-Expected result: <Describe successful validation, required services, and output artifacts.>
-
-### 4. Run a safe first task
+### 3. Check the environment
 
 ```bash
-<read-only-planning-command>
-<independent-review-command>
-<inspect-artifacts-command>
+eng doctor                       # exit 0 only if every check passes
 ```
 
-Expected result: a recorded job, validated output artifacts, and no workspace or production changes.
-
-### Proposed CLI surface
-
-These names describe the intended custom CLI. They are not vendor commands and are unavailable until implemented.
+### 4. Run a task
 
 ```bash
-eng plan FEATURE-123
-eng implement FEATURE-123 --agent claude
-eng review FEATURE-123 --agent codex
-eng verify FEATURE-123 --target preview
-eng deploy-check FEATURE-123
-eng learn FEATURE-123
+eng task new --repo . --packet specs/my-feature     # prints the task id and packet digest
+eng decide <task> approve-spec                      # needs a terminal; type yes
+eng run <task>                                      # exit 4 = waiting for you
+eng status <task>
+eng decide <task> accept                            # or reject / send-back
+eng audit verify                                    # recomputes the hash chain
 ```
+
+Every command accepts `--json` (one object with `ok`, `task`, `state`, `error`) and
+`--state-dir <path>` (default `~/Library/Application Support/eng`). Exit codes: `0` ok, `2`
+usage, `3` rejected by policy, `4` awaiting a human, `5` failed, `70` internal. The pipeline
+(runtimes and verification commands) is read from `.eng/pipeline.toml` in the repository.
+
+`ENG_CLAUDE_BIN`, `ENG_CODEX_BIN`, `ENG_NODE_BIN` and `ENG_SHIM_BIN` override where the runtimes
+and the shim are found (default: `PATH`, and `eng-shim` beside `eng`); `ENG_EXTRA_READ_DIRS`
+(colon-separated) lets the sandbox read more directories. Debug builds also honour
+`ENG_FORCE_SANDBOX_UNAVAILABLE=1`, which makes the sandbox probe fail for real.
+
+### Testing the CLI
+
+```bash
+cargo build --workspace && ENG_BIN=target/debug/eng npm run conformance
+```
+
+The conformance cases drive only the `eng` binary, with fake agents from `conformance/fixtures/`.
 
 ## Configuration
 
