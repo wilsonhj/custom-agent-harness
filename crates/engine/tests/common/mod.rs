@@ -4,7 +4,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, dead_code)]
 
-use std::os::unix::fs::PermissionsExt as _;
+use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 use std::process::Command as Process;
 
@@ -126,8 +126,23 @@ pub fn fixture() -> Fixture {
     tgit(&repo, &["commit", "-q", "-m", "base"]);
     let base = CommitSha::parse(&tgit(&repo, &["rev-parse", "HEAD"])).unwrap();
     let state = tmp.path().join("state");
-    std::fs::create_dir(&state).unwrap();
-    std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o700)).unwrap();
+    authorize_fake_agents(&repo, &state);
+    Fixture {
+        tmp,
+        repo,
+        base,
+        state,
+    }
+}
+
+/// An operator grant for synthetic test inputs, stored outside the repository in the
+/// actual engine state directory. Uses the production policy path and permission rules.
+pub fn authorize_fake_agents(repo: &Path, state: &Path) {
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(state)
+        .unwrap();
     let policy = serde_json::json!({
         "version": 1,
         "project_root": repo,
@@ -138,12 +153,6 @@ pub fn fixture() -> Fixture {
     let path = state.join("egress-policy.json");
     std::fs::write(&path, serde_json::to_vec(&policy).unwrap()).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
-    Fixture {
-        tmp,
-        repo,
-        base,
-        state,
-    }
 }
 
 /// A script that runs `fake` with `FAKE_SCENARIO=<scenario>`.

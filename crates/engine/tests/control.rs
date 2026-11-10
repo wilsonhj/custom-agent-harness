@@ -57,6 +57,8 @@ async fn status_snapshot_sequence_matches_tasks_during_concurrent_submissions() 
 async fn cancellation_api_refuses_other_commands_before_writing() {
     let f = fixture();
     let cfg = config(&f, "clean", "clean");
+    let policy = f.state.join("egress-policy.json");
+    let policy_before = std::fs::read(&policy).unwrap();
     let command = envelope(
         &TaskId::new("missing"),
         human(),
@@ -68,7 +70,23 @@ async fn cancellation_api_refuses_other_commands_before_writing() {
         cancel_task(&cfg, command).await,
         Err(EngineError::Control(_))
     ));
-    assert!(!f.state.exists());
+    assert_eq!(std::fs::read(&policy).unwrap(), policy_before);
+    let entries: Vec<_> = std::fs::read_dir(&f.state)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(entries, [std::ffi::OsString::from("egress-policy.json")]);
+    for name in [
+        "state.db",
+        "engine.lock",
+        "run-control",
+        "run-control.pending",
+    ] {
+        assert!(
+            std::fs::symlink_metadata(f.state.join(name)).is_err(),
+            "a rejected non-cancel command must not create {name}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -102,6 +120,7 @@ async fn malformed_and_partial_clients_do_not_block_running_task_control() {
         .path()
         .join("long-state-path-".repeat(8))
         .join("state");
+    authorize_fake_agents(&f.repo, &cfg.state_dir);
     let engine = Engine::open(cfg.clone()).await.unwrap();
     let id = start_task(&engine, &f, &default_pipeline()).await;
     let cancel = CancellationToken::new();
