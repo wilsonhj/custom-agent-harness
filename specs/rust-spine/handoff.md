@@ -566,3 +566,27 @@ Exact next action: the parent session pushes the final documentation commit, req
 scoped review of these five docs, and checks CI at that exact head. Keep R-11 execution closed and report the
 latest Node failures and lost workflow availability; no phase or release approval
 is implied.
+
+## PR 18 review fixes: worktree checkout and early containment check (2026-11-10)
+
+- Exec: `git worktree add` checked out under `<common>/worktrees/<name>` while
+  `driver_overrides` read configuration under the common dir, so a filter defined only
+  behind `[includeIf "gitdir:**/worktrees/**"]` and selected by `.git/info/attributes`
+  ran on the host. New `workspace::add_detached` adds with `--no-checkout` and populates
+  with `reset --hard` through the pinned `git_in`; `workspace::create` and the verifier
+  checkout in `worker.rs` both use it. Regression test
+  `smudge_filter_behind_a_worktree_only_include_does_not_run_on_create`
+  (`crates/exec/tests/workspace.rs`) failed before the fix (marker created) and passes
+  after. `hostgit.rs` HARDENING notes record the case.
+- Engine: the agent-run path checks `containment_available()` right after the sandbox
+  probe and before `check_version`, so a warm `versions_ok` cache cannot defer the first
+  refusal past prompt construction and proxy start. The verifier path checks it before
+  `verify_in_scratch` (checkout and sandbox wrap). `approved_policy_snapshot_...` now
+  asserts `ContainmentUnavailable`. Containment stays disabled.
+
+Verification (Rust 1.99.1, Git 2.50.1, macOS): `cargo fmt --check` pass;
+`cargo clippy --workspace --all-targets -- -D warnings` pass;
+`cargo test -p harness-exec --test workspace` 38 passed, 0 failed, 5 ignored;
+`cargo test -p harness-engine` 29 passed, 0 failed, 18 ignored;
+`cargo test --workspace` 235 passed, 0 failed, 35 ignored (baseline 234 plus the new
+regression test). Node suites not rerun.

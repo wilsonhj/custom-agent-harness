@@ -136,6 +136,19 @@ async fn approved_policy_snapshot_is_bound_to_the_effect_before_preparation() {
                     && reference.produced_by.as_ref() == Some(&effect)
             })
     );
+    let outcome = events(&engine).into_iter().find_map(|event| match event {
+        Event::EffectFinished {
+            outcome: EffectOutcome::AgentRun { outcome, .. },
+            ..
+        } => Some(outcome),
+        _ => None,
+    });
+    assert_eq!(
+        outcome,
+        Some(RunOutcome::Failed {
+            code: FailureCode::ContainmentUnavailable
+        })
+    );
 }
 
 #[tokio::test]

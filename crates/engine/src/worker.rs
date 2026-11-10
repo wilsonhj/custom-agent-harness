@@ -19,7 +19,8 @@ use harness_exec::egress::{EgressDecision, EgressProxy};
 use harness_exec::hostgit::git;
 use harness_exec::sandbox_macos::{self, Network, SandboxProfile};
 use harness_exec::supervisor::{
-    self, Limits, LineSink, ProcessIdentity, SpawnAbort, Stream, kill_identity,
+    self, Limits, LineSink, ProcessIdentity, SpawnAbort, Stream, containment_available,
+    kill_identity,
 };
 use harness_exec::workspace::{self, Workspace};
 use harness_exec::{LaunchPlan, TreeGone};
@@ -875,6 +876,11 @@ impl Engine {
         if let Err(code) = sandbox_macos::probe() {
             return Ok(Finish::Outcome(fail(code)?));
         }
+        // `check_version` returns early for a cached runtime, so `spawn_gated` alone would
+        // refuse only after the prompt is built and the egress proxy started.
+        if !containment_available() {
+            return Ok(Finish::Outcome(fail(FailureCode::ContainmentUnavailable)?));
+        }
         if let Err(code) = self
             .check_version(adapter, &launch, &ws, &task_home, &authorization)
             .await
@@ -1119,6 +1125,10 @@ impl Engine {
         let scratch = self.verify_scratch(&task.id, effect)?;
         // Left over from a run cut off by a crash (recovery killed its tree first).
         self.remove_scratch(repo, &scratch).await?;
+        // Before the checkout and sandbox wrap `verify_in_scratch` does ahead of `spawn_gated`.
+        if !containment_available() {
+            return Ok(Finish::Outcome(fail(FailureCode::ContainmentUnavailable)?));
+        }
         let finish = self
             .verify_in_scratch(row, task, &ws, &scratch, cancel)
             .await;
