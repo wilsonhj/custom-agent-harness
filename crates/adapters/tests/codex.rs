@@ -50,6 +50,12 @@ fn codex_both_roles_disable_agents_md_discovery() {
             .filter(|w| w[0] == "-c" && w[1] == "project_doc_max_bytes=0")
             .count();
         assert_eq!(n, 1, "{role:?}: {:?}", p.argv);
+        let skills = p
+            .argv
+            .windows(2)
+            .filter(|w| w[0] == "-c" && w[1] == "skills.include_instructions=false")
+            .count();
+        assert_eq!(skills, 1, "{role:?}: {:?}", p.argv);
         // Options, not part of the prompt: they precede the stdin marker.
         assert_eq!(p.argv.last().map(String::as_str), Some("-"));
     }
