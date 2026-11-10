@@ -20,8 +20,6 @@ pub struct LaunchPlan {
 pub struct TreeGone(());
 
 impl TreeGone {
-    // Task 5 (supervisor) is the only caller; remove this allow when it lands.
-    #[allow(dead_code)]
     pub(crate) fn confirmed() -> Self {
         TreeGone(())
     }
