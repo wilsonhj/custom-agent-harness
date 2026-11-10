@@ -293,8 +293,13 @@ version = "0.1.0"
 dependencies = [
  "harness-adapters",
  "harness-core",
+ "harness-engine",
  "harness-exec",
  "harness-store",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
