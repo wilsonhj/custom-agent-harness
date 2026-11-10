@@ -1,0 +1,106 @@
+[
+  {
+    "id": "T0",
+    "title": "Resolve blocking questions: writer identity, evidence location, file rotation",
+    "owner_role": "human",
+    "worktree": "none",
+    "status": "Planned",
+    "depends_on": []
+  },
+  {
+    "id": "T1",
+    "title": "Record schema (run-ledger/v1), validator with per-field patterns and harness/ledger/registry.json allowlist, valid and invalid fixtures; add harness/ledger to scripts/check-local.mjs",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": [
+      "T0"
+    ]
+  },
+  {
+    "id": "T2",
+    "title": "Writer (lock, compare-and-append, idempotent deterministic IDs, torn-tail quarantine, fsync, outcome-evidence check) and classify.mjs termination rules",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": [
+      "T1"
+    ]
+  },
+  {
+    "id": "T2b",
+    "title": "Local workflow: add a structured failureCode to the run manifest (no string parsing downstream), with tests for each code",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": [
+      "T0"
+    ]
+  },
+  {
+    "id": "T3",
+    "title": "Reader and CLI: list, show, verify --store, export, reconcile (incl. --confirm-dead), unlock",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": [
+      "T2"
+    ]
+  },
+  {
+    "id": "T3b",
+    "title": "Local workflow as first producer: optional runLedger config path; emit job_start, decision and job_end records from harness/local/workflow.mjs",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": [
+      "T2",
+      "T2b"
+    ]
+  },
+  {
+    "id": "T4",
+    "title": "Session-hook spool and writer ingestion as provenance=session-hook",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": [
+      "T2"
+    ]
+  },
+  {
+    "id": "T5",
+    "title": "Write-boundary and egress tests: agent user cannot write; no free text accepted",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": [
+      "T2",
+      "T3b",
+      "T4"
+    ]
+  },
+  {
+    "id": "T6",
+    "title": "Docs: README Run ledger section and capability row, data-egress note for run-ledger exports",
+    "owner_role": "implementer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": [
+      "T3"
+    ]
+  },
+  {
+    "id": "T7",
+    "title": "Independent review of T1-T6 diff, including T2b and T3b (/codex:review, plus /codex:adversarial-review on the schema)",
+    "owner_role": "reviewer",
+    "worktree": "<worktree-run-ledger>",
+    "status": "Planned",
+    "depends_on": [
+      "T3",
+      "T3b",
+      "T5",
+      "T6"
+    ]
+  }
+]

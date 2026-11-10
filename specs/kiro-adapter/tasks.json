@@ -1,0 +1,61 @@
+[
+  {
+    "id": "T1",
+    "title": "Read the permissions, sandbox and settings pages end to end, re-check (M)/(S) items on kiro.dev, and list the questions only a runtime test can settle",
+    "owner_role": "implementer",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": []
+  },
+  {
+    "id": "T2",
+    "title": "Independent review of the revised plan (/codex:adversarial-review, run by a human with the codex plugin)",
+    "owner_role": "reviewer",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": [
+      "T1"
+    ]
+  },
+  {
+    "id": "T3",
+    "title": "Human decisions: provider approval (K-17), K-21 rule, BAA use, and whether to install managed config / root-owned hook and egress-profile entry (MDM or admin step)",
+    "owner_role": "human",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": [
+      "T2"
+    ]
+  },
+  {
+    "id": "T4",
+    "title": "Add Kiro row to data-egress runtime-capabilities table; implement adapter on the adapter interface and worktree manager",
+    "owner_role": "implementer",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": [
+      "T3",
+      "adapter-interface:T4"
+    ]
+  },
+  {
+    "id": "T5",
+    "title": "Create tests/kiro/* and run them; record results in handoff.md",
+    "owner_role": "implementer",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": [
+      "T4"
+    ]
+  },
+  {
+    "id": "T7",
+    "title": "Independent review of the adapter diff and test evidence",
+    "owner_role": "reviewer",
+    "worktree": "kiro-adapter",
+    "status": "Planned",
+    "depends_on": [
+      "T5"
+    ]
+  }
+]

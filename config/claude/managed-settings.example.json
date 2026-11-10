@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "deny": ["Edit(//var/lib/<harness-name>/ledger/**)"]
+  },
+  "allowManagedHooksOnly": true,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env -u NODE_OPTIONS -u NODE_PATH /usr/bin/node \"/Library/Application Support/ClaudeCode/hooks/ledger-guard.mjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
+  }
+}
