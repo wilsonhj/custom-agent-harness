@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { prepare, run, requestDecision, recordDecision, git } from '../harness/local/workflow.mjs';
 import { object, json } from '../harness/local/artifacts.mjs';
 import { capture } from '../harness/local/process.mjs';
-import { doctor } from '../harness/local/sandbox.mjs';
+import { doctor, execute } from '../harness/local/sandbox.mjs';
 
 // ---- Helpers copied from local-workflow.test.mjs (they are not exported) ----
 
@@ -262,4 +262,116 @@ test('bug9: a store reached through a symlink into the repository is rejected be
   fs.symlinkSync(f.repo, link);
   await assert.rejects(prepare({ ...f.args, store: path.join(link, 'state') }), /outside the source checkout/);
   assert.equal(fs.existsSync(path.join(f.repo, 'state')), false);
+});
+
+// ===========================================================================
+// 10. A descendant that leaves the process group and keeps the output pipe open cannot
+//     hold the bounded runner past its deadline.
+// ===========================================================================
+test('bug10: capture resolves soon after exit when a setsid descendant holds stdout', async t => {
+  // The grandchild is in its own session (detached: setsid before exec) before the child
+  // exits, so killing the child's process group cannot reach it and it keeps stdout open.
+  const script = "const p=require('node:child_process').spawn(process.execPath,['-e','setTimeout(()=>{},30000)']," +
+    "{detached:true,stdio:'inherit'});p.on('spawn',()=>{process.stderr.write(String(p.pid));process.exit(0);});";
+  const started = Date.now();
+  // The deadline is well after the exit, so only the pipe drain can end the wait.
+  const r = await capture([process.execPath, '-e', script], { deadlineMs: 10000 });
+  const elapsed = Date.now() - started, pid = Number(r.stderr);
+  t.after(() => { try { process.kill(pid, 'SIGKILL'); } catch {} });
+  assert.ok(pid > 0, `grandchild pid not reported: ${r.stderr}`);
+  assert.ok(elapsed < 5000, `capture took ${elapsed} ms`);
+  assert.equal(r.exitCode, 0);
+  assert.match(r.failure, /kept output open/);
+});
+
+// ===========================================================================
+// 11. Verifier and reviewer entrypoints cannot be candidate files.
+// ===========================================================================
+test('bug11a: a reviewer run by relative path cannot execute a worker-written review', async t => {
+  const worker = "fs.writeFileSync('answer.txt','after\\n');\n" +
+    "fs.writeFileSync('review.mjs', \"import * as fs from 'node:fs';const c=JSON.parse(fs.readFileSync(0,'utf8'));" +
+    "console.log(JSON.stringify({schemaVersion:1,verdict:'pass',baseCommit:c.baseCommit,candidateCommit:c.candidateCommit,findings:[]}));\");";
+  const f = fixture(t, { worker, reviewer: "process.exit(1);" });
+  fs.writeFileSync(f.configFile, json({ ...f.config, reviewer: [process.execPath, 'review.mjs'] }), { mode: 0o600 });
+  const p = await prepare(f.args);
+  const r = await run(p.root, { executor: fixtureExecutor });
+  assert.equal(r.state, 'failed', 'a forged candidate review must not reach awaiting-decision');
+  assert.match(r.failure, /reviewer argument names a candidate file.*: review\.mjs$/);
+});
+
+test('bug11b: a verifier/reviewer argument under the sandbox /work path is rejected', async t => {
+  for (const arg of ['/work/check.mjs', '--script=/work/check.mjs']) {
+    const f = fixture(t);
+    fs.writeFileSync(f.configFile, json({ ...f.config, verifier: [process.execPath, arg] }), { mode: 0o600 });
+    await assert.rejects(prepare(f.args), /verifier must not run a workspace path/, arg);
+  }
+});
+
+test('bug11c: verifier options that do not name candidate files still run', async t => {
+  const f = fixture(t);
+  fs.writeFileSync(f.configFile, json({ ...f.config,
+    verifier: [process.execPath, '--no-warnings', f.config.verifier[1]] }), { mode: 0o600 });
+  const p = await prepare(f.args);
+  const r = await run(p.root, { executor: fixtureExecutor });
+  assert.equal(r.state, 'awaiting-decision', r.failure);
+});
+
+test('bug11d: an inline script longer than a filename is not treated as a candidate path', async t => {
+  const f = fixture(t);
+  // Over NAME_MAX (255) bytes in one path component: lstat would throw ENAMETOOLONG.
+  const script = ';'.repeat(300) + "if(require('node:fs').readFileSync('answer.txt','utf8')!=='after\\n')process.exit(1);";
+  fs.writeFileSync(f.configFile, json({ ...f.config, verifier: [process.execPath, '-e', script] }), { mode: 0o600 });
+  const p = await prepare(f.args);
+  const r = await run(p.root, { executor: fixtureExecutor });
+  assert.equal(r.state, 'awaiting-decision', r.failure);
+});
+
+test('bug12: extensionless Node entrypoints cannot execute candidate files', async t => {
+  const capability = await doctor();
+  assert.ok(capability.ok || process.env.HARNESS_REQUIRE_SANDBOX !== '1', capability.reason);
+  const executors = [['fixture', fixtureExecutor]];
+  if (capability.ok) executors.push(['bubblewrap', execute]);
+  const forged = "const fs=require('node:fs');const c=JSON.parse(fs.readFileSync(0,'utf8'));" +
+    "console.log(JSON.stringify({schemaVersion:1,verdict:'pass',baseCommit:c.baseCommit,candidateCommit:c.candidateCommit,findings:[]}));";
+  for (const [backend, executor] of executors) {
+    for (const role of ['verifier', 'reviewer']) {
+      for (const arg of backend === 'bubblewrap' ? ['review', '../work/review', '../work/review.js'] : ['review']) {
+        await t.test(`${backend}: ${role}: ${arg}`, async t => {
+          const worker = "fs.writeFileSync('answer.txt','after\\n');fs.writeFileSync('review.js'," + JSON.stringify(forged) + ');';
+          const f = fixture(t, { worker });
+          fs.writeFileSync(f.configFile, json({ ...f.config, [role]: [process.execPath, arg] }));
+          const p = await prepare(f.args), startedRoles = [];
+          const r = await run(p.root, { executor: (...args) => {
+            startedRoles.push(args[4].role);
+            return executor(...args);
+          } });
+          assert.equal(r.state, 'failed', 'a candidate entrypoint must not reach awaiting-decision');
+          assert.match(r.failure, new RegExp(`${role} argument names a candidate file`));
+          assert.ok(!startedRoles.includes(role), 'reject before starting the configured process');
+        });
+      }
+    }
+  }
+});
+
+test('bug13: absolute candidate aliases are rejected at configuration load', async t => {
+  for (const role of ['verifier', 'reviewer']) {
+    for (const value of ['/proc/self/cwd/review.js', '/proc/thread-self/cwd/review.js',
+      '/dev/fd/3', '/tools/../proc/self/cwd/review.js', '../proc/self/cwd/review.js']) {
+      for (const arg of [value, `--script=${value}`]) {
+        const f = fixture(t);
+        fs.writeFileSync(f.configFile, json({ ...f.config, [role]: [process.execPath, arg] }));
+        await assert.rejects(prepare(f.args), /path must be in a runtime or tools directory/, `${role}: ${arg}`);
+      }
+    }
+  }
+});
+
+test('bug13: trusted absolute arguments and non-path operands still run', async t => {
+  const f = fixture(t);
+  fs.writeFileSync(f.configFile, json({ ...f.config,
+    verifier: [...f.config.verifier, 'test', '/usr/bin', `--config=${f.config.verifier[1]}`] }));
+  const p = await prepare(f.args);
+  const r = await run(p.root, { executor: fixtureExecutor });
+  assert.equal(r.state, 'awaiting-decision', r.failure);
 });

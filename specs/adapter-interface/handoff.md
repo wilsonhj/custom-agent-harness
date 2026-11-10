@@ -149,8 +149,18 @@ in the next commit:
 - TypeScript under `harness/` is proposed (to match `transitions.ts`) but left as an open question.
 - Worktree name `adapter-interface` in tasks.json is a placeholder.
 
+## T2 decisions recorded (2026-11-05)
+
+The repository owner answered the T2 questions in session
+session_01AaDiMJVSVxQVfoGPARPgBn, each choosing the option the session recommended:
+bubblewrap isolation (D1), build on `harness/local` and align the evidence store with
+approval-ledger.md (D2), lock file plus PID-namespace teardown (D3), hash-chained JSONL run
+ledger and TypeScript modules (D4), Claude Code CLI as the first runtime (D5). The agent
+recorded them; it did not mark T2 complete or approve any transition.
+
 ## Exact next action
 
-Check supported-host CI on the follow-up correction before merging it, then complete
-the human-owned T2 decisions before any T3 implementation. No task-phase approval is
-granted by this handoff or by merging the proposed packet.
+Review the conflict-free follow-up branch and its supported-host CI, then request the
+T2 -> T3 transition through the external approval ledger for the decisions already
+recorded in requirements.md "T2 decisions". T3 starts by refactoring `harness/local`
+into shared modules (D2). This handoff grants no task-phase approval.
