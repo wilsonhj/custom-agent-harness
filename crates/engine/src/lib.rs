@@ -14,6 +14,7 @@
 
 mod config;
 mod doctor;
+mod egress_policy;
 mod recovery;
 mod worker;
 

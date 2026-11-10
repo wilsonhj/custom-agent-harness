@@ -336,6 +336,61 @@ impl Engine {
         }
     }
 
+    fn record_egress_authorization(
+        &self,
+        task: &TaskId,
+        effect: &EffectId,
+        runtime: RuntimeKind,
+        grant: &crate::egress_policy::Authorization,
+    ) -> Result<(), EngineError> {
+        let record = serde_json::json!({
+            "effect": effect,
+            "runtime": runtime,
+            "authorized_at": crate::now(),
+            "policy_digest": grant.digest(),
+            "policy_snapshot": String::from_utf8_lossy(&grant.bytes),
+        });
+        let id = self.store.put_artifact(
+            &serde_json::to_vec(&record).map_err(|e| EngineError::Corrupt(e.to_string()))?,
+            MediaType::Json,
+            Provenance::HarnessEvidence,
+            Some(effect),
+        )?;
+        let dir = self.task_dir(task)?.join("egress-authorization");
+        private_dir(&dir)?;
+        fs::write(dir.join(path_component(effect)?), id.as_str())?;
+        Ok(())
+    }
+
+    /// The operator policy snapshot and SHA-256 checked for this hosted effect. A record
+    /// describes authorization at preparation time; a revoked grant still prevents the go byte.
+    pub fn egress_authorization(
+        &self,
+        effect: &EffectId,
+    ) -> Result<Option<ArtifactId>, EngineError> {
+        let Some(row) = self.store.effect(effect)? else {
+            return Ok(None);
+        };
+        let pointer = self
+            .task_dir(&row.task)?
+            .join("egress-authorization")
+            .join(path_component(effect)?);
+        let Ok(text) = fs::read_to_string(pointer) else {
+            return Ok(None);
+        };
+        let id = ArtifactId::parse(text.trim())
+            .map_err(|e| EngineError::Corrupt(format!("egress authorization pointer: {e}")))?;
+        if !self
+            .store
+            .has_label(&id, Provenance::HarnessEvidence, Some(effect))?
+        {
+            return Err(EngineError::Corrupt(format!(
+                "egress authorization {id} is not evidence of effect {effect}"
+            )));
+        }
+        Ok(Some(id))
+    }
+
     /// `<task dir>/verify/<effect>`: one verification's scratch area (its checkout and home).
     fn verify_scratch(&self, task: &TaskId, effect: &EffectId) -> Result<PathBuf, EngineError> {
         Ok(self
@@ -638,6 +693,7 @@ impl Engine {
         launch: &Launch,
         ws: &Workspace,
         task_home: &Path,
+        authorization: &crate::egress_policy::Authorization,
     ) -> Result<(), FailureCode> {
         let kind = adapter.capabilities().runtime;
         let cached = self
@@ -669,8 +725,19 @@ impl Engine {
             max_output_bytes: 1024 * 1024,
             max_line_bytes: 64 * 1024,
         };
-        let child =
-            supervisor::spawn_gated(&self.cfg.shim_bin, wrapped, limits, |_| Ok(())).await?;
+        let child = supervisor::spawn_gated(&self.cfg.shim_bin, wrapped, limits, |_| {
+            authorization
+                .recheck(&self.cfg.state_dir)
+                .map_err(|()| SpawnAbort("egress authorization revoked".into()))
+        })
+        .await
+        .map_err(|code| {
+            if authorization.recheck(&self.cfg.state_dir).is_err() {
+                FailureCode::PolicyDenied
+            } else {
+                code
+            }
+        })?;
         let mut sink = Collect::new(None, None);
         let (exit, killed) = child.run(&mut sink, CancellationToken::new()).await;
         if killed.is_err() || exit.code != Some(0) {
@@ -780,6 +847,15 @@ impl Engine {
             return Err(EngineError::Corrupt("agent_run on another spec".into()));
         };
         let fail = |code| self.not_run(&row.spec, RunOutcome::Failed { code }, "not_run");
+        let authorization = match crate::egress_policy::authorize(
+            &self.cfg.state_dir,
+            Path::new(&task.repo.path),
+            *runtime,
+        ) {
+            Ok(grant) => grant,
+            Err(()) => return Ok(Finish::Outcome(fail(FailureCode::PolicyDenied)?)),
+        };
+        self.record_egress_authorization(&task.id, effect, *runtime, &authorization)?;
         let pipeline = self.pipeline(&task.pipeline)?;
         let ws = self.workspace(task).await?;
         let task_home = self.role_home(&task.id, *role)?;
@@ -799,7 +875,10 @@ impl Engine {
         if let Err(code) = sandbox_macos::probe() {
             return Ok(Finish::Outcome(fail(code)?));
         }
-        if let Err(code) = self.check_version(adapter, &launch, &ws, &task_home).await {
+        if let Err(code) = self
+            .check_version(adapter, &launch, &ws, &task_home, &authorization)
+            .await
+        {
             return Ok(Finish::Outcome(fail(code)?));
         }
         if let Err(code) = self.reset_before_run(&ws, base).await? {
@@ -894,16 +973,25 @@ impl Engine {
 
         // A new process may write the worktree: any earlier proof is void from here on.
         let _void = self.take_proof(&task.id);
-        let child =
-            match supervisor::spawn_gated(&self.cfg.shim_bin, wrapped, limits, self.gate(effect))
-                .await
-            {
-                Ok(c) => c,
-                Err(code) => {
-                    self.stop_proxy(proxy, &task.id, effect).await?;
-                    return Ok(Finish::Outcome(fail(code)?));
-                }
-            };
+        let child = match supervisor::spawn_gated(&self.cfg.shim_bin, wrapped, limits, |id| {
+            authorization
+                .recheck(&self.cfg.state_dir)
+                .map_err(|()| SpawnAbort("egress authorization revoked".into()))?;
+            self.gate(effect)(id)
+        })
+        .await
+        {
+            Ok(c) => c,
+            Err(code) => {
+                self.stop_proxy(proxy, &task.id, effect).await?;
+                let code = if authorization.recheck(&self.cfg.state_dir).is_err() {
+                    FailureCode::PolicyDenied
+                } else {
+                    code
+                };
+                return Ok(Finish::Outcome(fail(code)?));
+            }
+        };
         let mut state = ParseState::new(*role, &plan.argv);
         let mut sink = Collect::new(Some((adapter, &mut state)), Some("agent:first_line"));
         let (exit, killed) = child.run(&mut sink, cancel.clone()).await;

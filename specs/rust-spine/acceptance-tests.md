@@ -13,6 +13,7 @@ Check an item only when the result is recorded in `handoff.md`.
 - [ ] Human-decision gate — `cargo test -p harness-core --test lifecycle` and `ENG_BIN=target/debug/eng node --test conformance/cases/decide.test.mjs` — covers: R-7
 - [ ] Sandbox denial and fail-closed probe — `cargo test -p harness-exec --test sandbox_profile --test sandbox_live` and `conformance/cases/flow.test.mjs` (sandbox-unavailable case) — covers: R-8, R-9
 - [ ] Egress allowlist — `cargo test -p harness-exec --test egress` — covers: R-10
+- [ ] Operator egress authorization, policy audit binding and revocation — `cargo test -p harness-engine --test egress_policy` — covers: `docs/security/data-egress.md`
 - [ ] Process-tree kill — `cargo test -p harness-exec --test supervisor` — covers: R-11
 - [ ] Secret scan and hardened host Git — `cargo test -p harness-exec --test workspace` — covers: R-12
 - [ ] Adapter plans, parsers, version pin — `cargo test -p harness-adapters` — covers: R-13, R-14, R-15

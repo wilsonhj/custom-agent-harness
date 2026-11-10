@@ -276,3 +276,54 @@ Contract changes (engine, additive):
 ## Exact next action
 
 Owner runs Task 11 with the architect (eng login claude; eng login codex; eng doctor)
+
+## PR 13 review fix: operator egress authorization
+
+Source: `docs/security/data-egress.md`, especially the default-local-only rule,
+most-restrictive inheritance, and the requirement to check before content retrieval.
+The operator is trusted under this local single-user design; a repository or candidate
+pipeline cannot grant permission. A fixed `<state>/egress-policy.json` avoids adding
+repository-controlled configuration or a runtime bypass. Only `any-provider` with an
+explicit approved subscription runtime is supported; BAA-dependent work remains denied.
+The grant covers all reachable repository, packet, tool and derived content, without
+per-path widening. The policy must live outside the source and task-writable roots.
+
+Plan:
+1. Reproduce missing authorization reaching runtime preparation; verify a failing test.
+2. Validate a strict operator grant before task/prompt/version preparation; re-read the
+   identical grant immediately before each version or agent go byte, and preserve the
+   snapshot and digest as per-effect harness evidence.
+3. Exercise denial, path/permission binding, runtime restrictions and revocation with
+   fake agents; run the packet's Rust and conformance checks and record exact results.
+
+Revocation applies to future launches, including a grant changed during preparation.
+It cannot retract content already sent by a running process. Metadata-only doctor probes
+use synthetic empty directories and send no task content, so they do not need a grant.
+
+Implemented the plan above in the engine, with fake fixtures using the same production
+policy path. `Engine::egress_authorization(&EffectId)` returns the per-effect evidence
+containing the exact policy snapshot and SHA-256. No `EngineConfig` field or CLI option
+changed. [External review brief](egress-review-brief.md) records the trust boundary and
+limitations. This fix does not claim to close the separately reviewed process-containment gap.
+
+Verification (2026-11-10):
+
+| Command | Result |
+|---|---|
+| `cargo test -p harness-engine --test egress_policy` before the fix | RED: missing grant reached `SandboxUnavailable` instead of `PolicyDenied` |
+| Revocation regression with final agent recheck temporarily removed | RED: fake `agent-started` marker appeared after the grant was deleted |
+| `cargo test -p harness-engine --test egress_policy` with the fix restored | 4/4 pass, fake executables only |
+| `cargo test -p harness-engine egress_policy` | 4 policy unit tests pass |
+| `node scripts/check-deps.mjs` | pass |
+| `cargo fmt --check` | pass |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
+| `cargo test --workspace` | pass; 5 pre-existing ignored workspace regressions |
+| `cargo build --workspace && ENG_BIN=target/debug/eng npm run conformance` | pass; 11/11 fake-agent cases |
+| `npm test` | 86 pass, 2 skip, 2 fail: existing `tests/local-workflow.test.mjs:239` and `:273` require Linux bubblewrap on this macOS host |
+
+Sandbox-dependent checks ran outside the inherited outer sandbox so they could apply
+their own profiles. No live runtime, credential or global account was used.
+
+Exact next action: integrate this commit into the PR 13 review-fix branch, resolve the
+independent containment decision, then have an external reviewer inspect the policy
+trust boundary and launch callbacks. No approval-ledger or release transition was made.

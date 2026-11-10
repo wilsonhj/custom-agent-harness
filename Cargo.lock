@@ -397,6 +397,7 @@ dependencies = [
  "harness-engine",
  "harness-exec",
  "harness-store",
+ "serde",
  "serde_json",
  "thiserror",
  "tokio",
