@@ -20,6 +20,15 @@
 - Clippy denies `unwrap_used`, `expect_used`, `await_holding_lock` in non-test code.
 - If the sandbox probe fails, nothing runs (`SandboxUnavailable`). There is no unsandboxed fallback and no flag to add one.
 - The harness never reads, stores, copies or forwards a subscription login token.
+- Before hosted spawn, enforce the content class and explicit project/provider authorization
+  for every readable input. Missing or unknown class is `local-only`; missing authorization,
+  unverifiable provider configuration or unenforced read isolation is `PolicyDenied`.
+  BAA-restricted content requires a current verified exact runtime/account/settings entry
+  (`docs/security/data-egress.md`, Egress classes, BAA configuration allowlist, Enforcement;
+  design §9, packet R-17). A login, spec approval or host allowlist grants no egress authority.
+- Before opening the task gate, establish descendant containment across detachment and
+  responsibility disclaim. A persistent supervisor alone is insufficient; unavailable or
+  unproven containment fails closed with `SandboxUnavailable` (design §6.2, packet R-11).
 - Agents never run Git and never commit. The harness makes every commit under `refs/harness/tasks/<task-id>/cp/<n>`.
 - Agent output is a claim. Only `HarnessEvidence` and `ReviewFindings` artifacts may be cited as evidence.
 - A task reaches `Approved` or `Verified` only through a `HumanDecision` for an exact digest or commit.
@@ -342,27 +351,54 @@ pub struct LaunchPlan { pub argv: Vec<String>, pub env: Vec<(String, String)>,
     pub cwd: PathBuf, pub stdin: Vec<u8> }
 pub struct Limits { pub deadline: Duration, pub max_output_bytes: u64, pub max_line_bytes: usize }
 pub struct ProcessIdentity { pub pgid: i32, pub pid: i32, pub start_us: i64, pub boot_id: String }
-pub struct TreeGone(());                       // constructed only by terminate()/wait()
+// pid/start_us identify the persistent supervisor; pgid identifies the separate task group.
+pub struct TreeGone(());                       // constructed only after confirmed descendant cleanup
+pub struct KillFailed { /* retains the cleanup handle; contains no TreeGone */ }
 pub struct ExitInfo { pub code: Option<i32>, pub signal: Option<i32>, pub failure: Option<FailureCode> }
 pub trait LineSink: Send { fn line(&mut self, stream: Stream, bytes: &[u8]); }
-pub struct Supervised { /* owns the child */ }
+pub struct Supervised { /* owns the persistent supervisor and separate task child */ }
 pub async fn spawn_gated(plan: LaunchPlan, limits: Limits,
     on_identity: impl FnOnce(ProcessIdentity) -> Result<(), SpawnAbort>) -> Result<Supervised, FailureCode>;
 impl Supervised {
-    pub async fn run(self, sink: &mut dyn LineSink, cancel: CancellationToken) -> (ExitInfo, TreeGone); }
+    pub async fn run(self, sink: &mut dyn LineSink, cancel: CancellationToken)
+        -> Result<(ExitInfo, TreeGone), KillFailed>; }
 pub fn boot_id() -> String;                    // sysctl kern.bootsessionuuid
 pub fn identity_is_alive(id: &ProcessIdentity) -> bool;
 pub async fn kill_identity(id: &ProcessIdentity) -> Result<TreeGone, KillFailed>;
 ```
 
-Behaviour: the child is `eng __shim`, a new process-group leader that blocks reading one byte on fd 3 and then `exec`s `argv`; `on_identity` runs before the byte is written, and if it errors or the parent dies the shim exits having run nothing. Kill sequence: `SIGTERM` to the group, 5 s grace, `SIGKILL`, reap the leader, then repeatedly enumerate and kill every process whose ancestry traces to the supervisor until none remain (bound 2 s); on timeout return `KillFailed`. Stdout and stderr are drained concurrently through length-limited line framing; stdin is written from its own task and `EPIPE` is ignored.
+Behaviour: start a separate persistent unsandboxed supervisor and a gated task child in its
+own process group. Only the task child may `exec` `argv`; it waits for one byte on fd 3.
+`on_identity` records the supervisor identity and task pgid before the gate opens; callback
+failure or parent loss before that byte means no task command runs. The supervisor remains
+alive after task exit and throughout cleanup (design §6.2; research `1a-macos-sandbox.md` §6).
 
-- [ ] **Step 1: Write the failing tests** (helper scripts are `/bin/sh -c` one-liners):
+Before opening the gate, a backend must establish containment of arbitrary task descendants,
+including double-fork/`setsid` and responsibility-disclaim cases. Merely loading the private
+lookup functions, keeping an anchor alive or observing an empty responsibility snapshot is
+insufficient. No capable backend is established by this plan; until one is, return
+`SandboxUnavailable` without opening the gate. Ancestry polling is not a proof fallback.
+
+On normal exit, cancellation, deadline or output failure: `SIGTERM` the task group, wait
+5 s, then `SIGKILL` as needed and use the established backend to confirm every descendant
+is gone (cleanup bound 2 s). Reap the supervisor only after that proof; exclude the live
+supervisor from its own sweep. `run` and `kill_identity` return `KillFailed` on tracking
+error, premature supervisor loss or timeout, never `TreeGone`; preserve recovery identity
+and the worktree lock, and stop for the human. Only successful confirmed cleanup returns
+`TreeGone` (R-11). Stdout and stderr drain concurrently through length-limited line framing;
+stdin is written from its own task and `EPIPE` is ignored.
+
+- [ ] **Step 1: Write the failing tests** (use non-secret local helpers; the detachment and
+  responsibility-disclaim cases need a synthetic native helper):
 
 ```rust
 #[tokio::test] async fn shim_runs_nothing_if_identity_callback_fails() { /* marker file absent */ }
 #[tokio::test] async fn deadline_kills_group_and_reports_deadline_exceeded() {}
 #[tokio::test] async fn detached_grandchild_is_killed_before_tree_gone() { /* child double-forks + setsid; its pid is dead when run() returns */ }
+#[tokio::test] async fn unproved_descendant_containment_prevents_task_spawn() { /* task marker absent; SandboxUnavailable */ }
+#[tokio::test] async fn responsibility_disclaim_cannot_produce_false_tree_gone() { /* refuse before gate unless containment is established; otherwise confirm the helper is gone */ }
+#[tokio::test] async fn normal_task_exit_keeps_supervisor_alive_until_descendant_cleanup() {}
+#[tokio::test] async fn tracking_error_or_cleanup_timeout_retains_lock_without_tree_gone() {}
 #[tokio::test] async fn output_cap_triggers_kill() { /* `yes` => OutputLimitExceeded */ }
 #[tokio::test] async fn oversized_line_is_a_failure_not_a_panic() {}
 #[tokio::test] async fn stderr_flood_does_not_deadlock() {}
@@ -370,7 +406,11 @@ Behaviour: the child is `eng __shim`, a new process-group leader that blocks rea
 ```
 
 - [ ] **Step 2: Run.** `cargo test -p harness-exec --test supervisor`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Descendant enumeration uses the calls probed in `research-2026-11-09/1a-macos-sandbox.md` §6; `eng doctor` (Task 10) must fail closed if they are unavailable, so expose `pub fn descendant_tracking_available() -> bool`.
+- [ ] **Step 3: Implement.** Expose `pub fn descendant_tracking_available() -> bool` only as
+  a capability check for containment satisfying the cases above, not symbol availability.
+  `eng doctor` (Task 10), `spawn_gated` and recovery must fail closed when that capability
+  cannot be established. Research §6's responsibility sweep is evidence of a limited probe,
+  not evidence that arbitrary descendants cannot disclaim responsibility.
 - [ ] **Step 4: Run.** Expected: PASS, three consecutive times (`for i in 1 2 3; do cargo test -p harness-exec --test supervisor || break; done`).
 - [ ] **Step 5: Commit.** `git commit -am "feat(exec): gated spawn, bounded streams, process-tree kill with TreeGone proof"`
 
@@ -403,7 +443,25 @@ impl EgressProxy {
     pub async fn stop(self) -> Vec<EgressDecision>; }
 ```
 
-Rules: `render_profile` starts `(deny default)`; every path is canonicalised (`std::fs::canonicalize`) before rendering and passed as a `-D` parameter, and a path that cannot be canonicalised is `ProfileError::Unresolvable`. `default_read_deny` returns: `~/.ssh`, `~/.aws`, the state directory, the Git common dir, `<worktree>/.git`, and under the worktree `.claude`, `.mcp.json`, `.codex`, `.agents`, `.cursor`. Writes: `worktree` only if `worktree_writable`, plus `task_home`; never the Git paths. `Network::ProxyOnly` allows outbound only to `localhost:<port>`. The proxy accepts `CONNECT host:443` only, allows exact host matches from `allow_hosts`, answers `403` otherwise, and records every decision. `wrap` prepends `/usr/bin/sandbox-exec -p <profile> -D ...` and adds `HTTPS_PROXY`, `HTTP_PROXY`, `NODE_USE_ENV_PROXY=1` to `env`.
+Rules: `render_profile` starts `(deny default)`. Required existing roots (`worktree`,
+`task_home`, state and Git common directories) and existing rule targets use
+`std::fs::canonicalize` before rendering and are passed as `-D` parameters. For a deny
+target missing with `NotFound`, walk upward using `symlink_metadata` to the nearest existing
+ancestor, canonicalise that ancestor, then append the missing normal components. Reject
+`..`, broken symlinks, permission errors and other resolution failures with
+`ProfileError::Unresolvable`; never skip a deny rule. A required root that is missing also
+fails. This preserves denies on later-created paths and resolves aliases such as
+`/tmp` to `/private/tmp` (design §6.1; R-9; research `1a-macos-sandbox.md` §1).
+
+`default_read_deny` returns: `~/.ssh`, `~/.aws`, the state directory, the Git common dir,
+`<worktree>/.git`, and under the worktree `.claude`, `.mcp.json`, `.codex`, `.agents`,
+`.cursor`, whether or not optional targets exist. Writes: `worktree` only if
+`worktree_writable`, plus `task_home`; never the Git paths. `Network::ProxyOnly` allows
+outbound only to `localhost:<port>`. The proxy accepts `CONNECT host:443` only, allows exact
+host matches from `allow_hosts`, answers `403` otherwise, and records every decision. Host
+permission does not authorize content egress (design §9). `wrap` prepends
+`/usr/bin/sandbox-exec -p <profile> -D ...` and adds `HTTPS_PROXY`, `HTTP_PROXY`,
+`NODE_USE_ENV_PROXY=1` to `env`.
 
 - [ ] **Step 1: Write the failing tests:**
 
@@ -411,6 +469,9 @@ Rules: `render_profile` starts `(deny default)`; every path is canonicalised (`s
 // sandbox_profile.rs (pure)
 #[test] fn profile_starts_with_deny_default() {}
 #[test] fn profile_resolves_real_paths() { /* worktree given via a symlink and with a space in its name renders the canonical path; no "/tmp/" literal survives */ }
+#[test] fn absent_optional_deny_targets_resolve_through_existing_ancestor() { /* clean repo lacks agent config; home lacks .ssh/.aws; every deny remains */ }
+#[test] fn missing_deny_suffix_under_symlinked_ancestor_uses_real_path() {}
+#[test] fn missing_required_root_or_broken_symlink_is_an_error() {}
 #[test] fn unresolvable_path_is_an_error_not_a_skipped_rule() {}
 #[test] fn readonly_profile_has_no_worktree_write_rule() {}
 // sandbox_live.rs (runs /usr/bin/sandbox-exec with /bin/sh, /usr/bin/touch, /bin/cat)
@@ -419,6 +480,7 @@ Rules: `render_profile` starts `(deny default)`; every path is canonicalised (`s
 #[test] fn read_of_ssh_dir_and_state_dir_is_denied() {}
 #[test] fn write_to_git_file_and_common_dir_is_denied() {}
 #[test] fn read_of_repo_agent_config_is_denied_but_agents_md_is_readable() {}
+#[test] fn optional_deny_target_created_after_profile_render_is_denied() { /* fixture uses non-secret files */ }
 #[test] fn nested_sandbox_exec_fails_inside_profile() { /* documents the nesting fact */ }
 #[test] fn network_none_blocks_loopback_and_remote() {}
 // egress.rs
@@ -571,7 +633,26 @@ impl Engine {
     pub fn verify_chain(&self) -> Result<Seq, EngineError>; }
 ```
 
-Store rules: schema as in `research-2026-11-09/5-rust-core.md` §4.1 without the `anchors` table; `PRAGMA journal_mode=WAL, synchronous=FULL, foreign_keys=ON`; one dedicated writer thread owns the connection; `hash = sha256(prev_hash || seq_be || canonical_json(body))`; same idempotency key with the same body returns the first receipt, with a different body is rejected; artifact bytes are written (exclusive create, fsync file and directory) before the transaction that references them; objects live at `objects/<first two hex>/<sha256>` and no other crate learns that path. Engine rules: one worker per outbox row following the eight steps of §4.2; recovery follows the table in design §5.4 exactly; an `AgentRun` effect resolves the adapter, checks the version, builds the profile (`worktree_writable = role == Implementer`), starts the egress proxy with `AdapterPlan.egress_hosts`, wraps, spawns, feeds lines to the adapter, stores the transcript as `RuntimeClaim`, and for a reviewer stores the validated `Review` as `ReviewFindings`; a `Verify` effect runs `pipeline.verify_commands[i]` under a read-only profile with `Network::None` and stores combined output as `HarnessEvidence`; workspace lock rows are released only with a `TreeGone`.
+Store rules: schema as in `research-2026-11-09/5-rust-core.md` §4.1 without the `anchors` table; `PRAGMA journal_mode=WAL, synchronous=FULL, foreign_keys=ON`; one dedicated writer thread owns the connection; `hash = sha256(prev_hash || seq_be || canonical_json(body))`; same idempotency key with the same body returns the first receipt, with a different body is rejected; artifact bytes are written (exclusive create, fsync file and directory) before the transaction that references them; objects live at `objects/<first two hex>/<sha256>` and no other crate learns that path.
+
+Engine rules: one worker per outbox row following the eight steps of §4.2; recovery follows
+the table in design §5.4, subject to R-11's requirement for actual descendant-cleanup proof.
+Before an `AgentRun`, resolve reviewed project/per-path egress classifications and explicit
+provider authorization, including exact runtime/account/settings and any required verified
+BAA entry. Missing/unknown policy, unauthorized content/provider, or read isolation that
+cannot enforce the declared ceiling returns `PolicyDenied` before spawn or task-content
+delivery; the proxy's host list cannot substitute for this check (design §9; R-17).
+
+Then resolve the adapter, check its version, build the profile (`worktree_writable = role ==
+Implementer`), start the egress proxy with `AdapterPlan.egress_hosts`, wrap, spawn through
+Task 5's containment gate, and feed lines to the adapter. Screen output before artifact
+retention; store only non-secret output as `RuntimeClaim`, and for a reviewer store the
+validated non-secret `Review` as `ReviewFindings`. Do not retain raw authenticated transcripts
+or uncertain credential-bearing content; record a non-secret failure summary instead
+(decision 6; design §§6.3, 11). A `Verify` effect runs `pipeline.verify_commands[i]` under a
+read-only profile with `Network::None` and stores non-secret combined output as
+`HarnessEvidence`. Workspace lock rows are released only with `TreeGone`; cleanup failure
+or unavailable containment retains the lock and stops recovery for the human (R-11).
 
 - [ ] **Step 1: Write the failing store tests:**
 
@@ -590,6 +671,11 @@ Store rules: schema as in `research-2026-11-09/5-rust-core.md` §4.1 without the
 
 ```rust
 #[tokio::test] async fn clean_flow_stops_at_awaiting_human_with_one_checkpoint() {}
+#[tokio::test] async fn missing_or_unknown_class_denies_hosted_spawn() { /* PolicyDenied; fake-agent marker absent */ }
+#[tokio::test] async fn unauthorized_provider_or_unverified_baa_config_denies_spawn() {}
+#[tokio::test] async fn reviewed_any_provider_input_allows_explicitly_authorized_runtime() {}
+#[tokio::test] async fn derived_input_uses_most_restrictive_class_before_spawn() {}
+#[tokio::test] async fn secret_bearing_output_is_not_retained_as_an_artifact() { /* synthetic canary only */ }
 #[tokio::test] async fn blocking_finding_runs_two_repair_rounds_then_stops() {}
 #[tokio::test] async fn failing_verify_command_triggers_repair_without_review() {}
 #[tokio::test] async fn agent_that_writes_a_token_fails_with_secret_in_diff() {}
@@ -647,19 +733,32 @@ eng login claude|codex                       execs the official CLI's login with
 ### Task 11: Live tests and the first real run (owner present)
 
 **Files:**
-- Modify: `crates/adapters/fixtures/**` (replace provisional transcripts), `crates/adapters/src/{claude,codex}.rs` (only where a recorded transcript contradicts the provisional format), `specs/rust-spine/handoff.md`
+- Modify: `crates/adapters/fixtures/**` (reconstruct synthetic fixtures from validated event shapes), `crates/adapters/src/{claude,codex}.rs` (only where those shapes contradict the provisional format), `specs/rust-spine/handoff.md`
 
 **Interfaces:**
-- Consumes: the built `eng`. Uses the owner's subscriptions; every step needs the owner's go-ahead in the session.
+- Consumes: the built `eng`. Each authenticated step needs the owner's explicit go-ahead
+  and design §9 project/provider authorization; R-11 containment must be established first.
+  Use only synthetic non-secret repository content for probes. Design acceptance alone
+  does not authorize credential inspection or project disclosure (design §14).
 
 - [ ] **Step 1:** Owner runs `eng login claude` and `eng login codex`. Then `eng doctor` exits 0.
 - [ ] **Step 2 (design §11.1):** Run a one-line implementer task on a throwaway repo. Expected: Claude completes inside the harness sandbox with its own sandbox off; `own_sandbox_confirmed_off` is true. Same for a Codex review. If either cannot run under the outer profile, stop and return to the architect: decision 7 must be revisited.
 - [ ] **Step 3 (§11.3):** From the egress log, record the exact hosts each CLI needed; set `egress_hosts` to that list; confirm a non-listed host got 403.
-- [ ] **Step 4 (§11.2):** From inside an implementer run, attempt to read the login (a prompt that asks the agent to `cat` the config directory and query the Keychain). Record in `handoff.md` what was readable. This measures the accepted exposure; it does not gate the slice.
+- [ ] **Step 4 (§11.2):** In a separate disposable config/home containing only synthetic
+  non-secret canaries, use a local helper to check canary readability under the run profile.
+  Emit only `readable`, `denied` or `unavailable`; never emit file contents. Do not inspect
+  real config directories, tokens or Keychain login items. Record only these statuses in
+  `handoff.md`; real credential readability remains UNVERIFIED, and this probe establishes
+  no real credential-isolation guarantee (decision 6; design §6.3).
 - [ ] **Step 5 (§11.4):** On a throwaway repo containing `.claude/settings.json` with a hook that writes a marker and a `.mcp.json` server that writes a marker, run an implementer task. Expected: neither marker exists; the harness MCP config loaded. If a marker exists, evaluate `--safe-mode` per design §11.4.
-- [ ] **Step 6 (§11.6):** Save the transcripts from steps 2–5 as fixtures, removing the word PROVISIONAL; run `cargo test -p harness-adapters`; fix parser differences. Expected: PASS.
+- [ ] **Step 6 (§11.6):** Review event shapes from the authorized runs without retaining raw
+  authenticated transcripts or probe artifacts. Reconstruct minimal fixtures with synthetic
+  values; screen them before retention, sharing or commit. Record runtime/version and
+  reconstruction provenance in `fixtures/README.md`; remove PROVISIONAL only for validated
+  event shapes. Run `cargo test -p harness-adapters`; fix parser differences. Expected: PASS.
 - [ ] **Step 7:** Run one real task end to end on a small real packet chosen by the owner. Expected: stops at `AwaitingHuman`; the owner inspects findings and runs `eng decide`.
-- [ ] **Step 8: Commit.** `git commit -am "test: recorded transcripts and live-test results"`
+- [ ] **Step 8: Commit.** Review the exact staged diff for non-secret synthetic fixtures and
+  metadata only, then `git commit -am "test: reconstructed fixtures and live-test results"`.
 
 ---
 
