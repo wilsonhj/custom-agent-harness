@@ -88,6 +88,10 @@ impl Engine {
             EffectSpec::Verify { .. } => {
                 if let Some(proof) = proof {
                     self.keep_proof(&row.task, proof);
+                    // Best effort: the next attempt removes a leftover scratch area first.
+                    if let Some(task) = self.store.task(&row.task)? {
+                        let _ = self.remove_verify_scratch(&task, &row.effect).await;
+                    }
                 }
                 if row.attempt < row.max_attempts {
                     self.store

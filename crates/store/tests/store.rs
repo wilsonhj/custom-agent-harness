@@ -1,14 +1,19 @@
 //! harness-store: receipts, the hash chain, artifacts, crash consistency, the engine lock.
 
+#![allow(clippy::unwrap_used)]
+
 use std::os::unix::process::ExitStatusExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command as Process;
 
 use harness_core::artifact::{MediaType, Provenance};
-use harness_core::decide::{Command, Decision, Event, Facts, Rejection, Task, decide};
+use harness_core::decide::{
+    Command, Decision, EffectOutcome, Event, Facts, Rejection, Task, decide,
+};
 use harness_core::finding::Severity;
 use harness_core::ids::{ArtifactId, CommitSha, EffectId, IdempotencyKey, Seq, TaskId, Timestamp};
 use harness_core::lifecycle::{DecisionKind, Subject, TaskState};
+use harness_core::outcome::RunOutcome;
 use harness_core::policy::{Pipeline, StageRoute};
 use harness_core::types::{Actor, Budget, Envelope, RepoRef, Role, RuntimeKind, WIRE_VERSION};
 use harness_store::{ChainBroken, OutboxState, Store, StoreError};
@@ -296,23 +301,11 @@ fn corrupted_artifact_is_detected_on_read() {
         store.get_artifact(&id).ok().as_deref(),
         Some(&b"evidence bytes"[..])
     );
-    let meta = store.artifact(&id).ok().flatten();
+    let meta = store.artifact_refs(&id).unwrap_or_default();
     assert_eq!(
-        meta.map(|a| (a.size, a.label)),
-        Some((14, Provenance::HarnessEvidence))
+        meta.iter().map(|a| (a.size, a.label)).collect::<Vec<_>>(),
+        [(14, Provenance::HarnessEvidence)]
     );
-    // The same bytes cannot be relabelled.
-    match store.put_artifact(
-        b"evidence bytes",
-        MediaType::Text,
-        Provenance::RuntimeClaim,
-        None,
-    ) {
-        Err(StoreError::LabelConflict { existing, .. }) => {
-            assert_eq!(existing, Provenance::HarnessEvidence)
-        }
-        other => panic!("expected LabelConflict, got {other:?}"),
-    }
     // Flip the stored bytes behind the store's back.
     let hex = id.as_str();
     let file = d.path().join("objects").join(&hex[..2]).join(hex);
@@ -336,6 +329,178 @@ fn corrupted_artifact_is_detected_on_read() {
         store.get_artifact(&ArtifactId::of(b"nope")),
         Err(StoreError::NotFound(_))
     ));
+}
+
+/// `submit` with effect ids `<prefix>-1..` and the given `diff_chunks` fact.
+fn submit_facts(
+    store: &Store,
+    cmd: Envelope<Command>,
+    prefix: &str,
+    diff_chunks: Option<u32>,
+) -> Result<harness_store::Receipt, StoreError> {
+    let p = pipeline();
+    let ids: Vec<EffectId> = (1..=8)
+        .map(|i| EffectId::new(format!("{prefix}-{i}")))
+        .collect();
+    let decide_fn = |t: Option<&Task>, c: &Envelope<Command>| -> Result<Decision, Rejection> {
+        decide(
+            t,
+            c,
+            &Facts {
+                pipeline: &p,
+                review: None,
+                diff_chunks,
+                new_effect_ids: &ids,
+            },
+        )
+    };
+    store.submit(cmd, &decide_fn)
+}
+
+fn outcome(effect: &str, outcome: EffectOutcome) -> Envelope<Command> {
+    env(
+        &format!(
+            "outcome-{effect}-{}",
+            ArtifactId::of(format!("{outcome:?}").as_bytes())
+        ),
+        Actor::Effect {
+            effect: EffectId::new(effect),
+        },
+        Command::RecordEffectOutcome {
+            effect: EffectId::new(effect),
+            outcome,
+        },
+    )
+}
+
+/// Labels belong to a reference, not to bytes: an agent that prints exactly the bytes of a
+/// later verification output must not block the task, and its claim must not become
+/// evidence.
+#[test]
+fn same_bytes_under_two_labels_are_two_references() {
+    let d = TempDir::new("labels");
+    let store = open(d.path());
+    ok_submit(&store, create("c1", "create"));
+    ok_submit(&store, approve("c2"));
+    let r = submit_facts(&store, run("c3", "run"), "r", None).unwrap();
+    assert!(r.accepted);
+    // The implementer run r-1 prints bytes that the verification will print again later.
+    let bytes = b"eng verification output\n";
+    let id = store
+        .put_artifact(
+            bytes,
+            MediaType::Jsonl,
+            Provenance::RuntimeClaim,
+            Some(&EffectId::new("r-1")),
+        )
+        .unwrap();
+    let r = submit_facts(
+        &store,
+        outcome(
+            "r-1",
+            EffectOutcome::AgentRun {
+                outcome: RunOutcome::Succeeded,
+                transcript: id.clone(),
+                review: None,
+            },
+        ),
+        "i",
+        None,
+    )
+    .unwrap();
+    assert!(r.accepted, "{:?}", r.rejection);
+    let r = submit_facts(
+        &store,
+        outcome(
+            "i-1",
+            EffectOutcome::Checkpoint {
+                outcome: RunOutcome::Succeeded,
+                commit: Some(CommitSha::parse(&"b".repeat(40)).unwrap()),
+                diff: None,
+            },
+        ),
+        "c",
+        None,
+    )
+    .unwrap();
+    assert!(r.accepted, "{:?}", r.rejection);
+    let verify = EffectOutcome::Verify {
+        outcome: RunOutcome::Succeeded,
+        evidence: id.clone(),
+    };
+    // Cited as the verification's evidence while only the agent's claim carries the bytes.
+    let refused = submit_facts(&store, outcome("c-1", verify.clone()), "v", Some(0));
+    match refused {
+        Err(StoreError::Unlabelled { id: bad, label, by }) => {
+            assert_eq!(bad, id);
+            assert_eq!(label, Provenance::HarnessEvidence);
+            assert_eq!(by, Some(EffectId::new("c-1")));
+        }
+        other => panic!("expected Unlabelled, got {other:?}"),
+    }
+    assert_eq!(
+        store
+            .task(&TaskId::new(TASK))
+            .unwrap()
+            .unwrap()
+            .progress
+            .evidence,
+        Vec::<ArtifactId>::new()
+    );
+    // The verification then stores the same bytes as its own evidence.
+    let again = store
+        .put_artifact(
+            bytes,
+            MediaType::Text,
+            Provenance::HarnessEvidence,
+            Some(&EffectId::new("c-1")),
+        )
+        .unwrap();
+    assert_eq!(again, id);
+    let r = submit_facts(&store, outcome("c-1", verify), "v", Some(0)).unwrap();
+    assert!(r.accepted, "{:?}", r.rejection);
+    let task = store.task(&TaskId::new(TASK)).unwrap().unwrap();
+    assert_eq!(
+        task.run,
+        harness_core::stage::StageRunState::AwaitingHuman {
+            gate: harness_core::stage::HumanGate::ReviewClean
+        }
+    );
+    // One object, two references; the claim is still only a claim.
+    let refs: Vec<(Provenance, Option<EffectId>)> = store
+        .artifact_refs(&id)
+        .unwrap()
+        .into_iter()
+        .map(|a| (a.label, a.produced_by))
+        .collect();
+    assert_eq!(
+        refs,
+        [
+            (Provenance::RuntimeClaim, Some(EffectId::new("r-1"))),
+            (Provenance::HarnessEvidence, Some(EffectId::new("c-1"))),
+        ]
+    );
+    let r1 = EffectId::new("r-1");
+    let c1 = EffectId::new("c-1");
+    assert!(
+        !store
+            .has_label(&id, Provenance::HarnessEvidence, Some(&r1))
+            .unwrap()
+    );
+    assert!(
+        store
+            .has_label(&id, Provenance::HarnessEvidence, Some(&c1))
+            .unwrap()
+    );
+    assert!(
+        store
+            .has_label(&id, Provenance::RuntimeClaim, Some(&r1))
+            .unwrap()
+    );
+    let objects = std::fs::read_dir(d.path().join("objects").join(&id.as_str()[..2]))
+        .unwrap()
+        .count();
+    assert_eq!(objects, 1, "bytes are stored once");
 }
 
 #[test]

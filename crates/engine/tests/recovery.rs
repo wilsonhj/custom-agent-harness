@@ -213,6 +213,14 @@ async fn crash_during_verify_retries_once() {
         (OutboxState::Started, 1)
     );
     let verify_effect = pending[0].effect.clone();
+    // The crashed verification's scratch checkout is still there.
+    let scratch = f
+        .state
+        .join("tasks")
+        .join(id.as_str())
+        .join("verify")
+        .join(verify_effect.as_str());
+    assert!(scratch.join("checkout").join("feature.txt").exists());
 
     let engine = Engine::open(cfg).await.unwrap();
     let t = engine
@@ -236,6 +244,10 @@ async fn crash_during_verify_retries_once() {
     drop(engine);
     let row = outbox(&f, &verify_effect);
     assert_eq!((row.state, row.attempt), (OutboxState::Done, 2));
+    // Recovery and the retry removed the scratch area and its worktree registration.
+    assert!(!scratch.exists());
+    let listed = tgit(&f.repo, &["worktree", "list", "--porcelain"]);
+    assert_eq!(listed.matches("worktree ").count(), 2, "{listed}");
 }
 
 #[tokio::test]

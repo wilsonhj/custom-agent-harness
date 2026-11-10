@@ -7,7 +7,10 @@
 // file must exist and be JSON. The scenario comes from `FAKE_SCENARIO`:
 //   clean (default)   reviewer: verdict pass, no findings; implementer: edit like fake-claude
 //   blocking          reviewer: one high-severity finding on feature.txt
+//   probe_home        reviewer: one high-severity finding if it can read a `.cargo/config.toml`
+//                     in its own HOME or in a sibling `implementer` home; otherwise as clean
 import fs from 'node:fs';
+import path from 'node:path';
 
 const args = process.argv.slice(2);
 if (args.includes('--version')) {
@@ -21,10 +24,25 @@ if (reviewer) JSON.parse(fs.readFileSync(args[schemaAt + 1], 'utf8'));
 fs.readFileSync(0, 'utf8');
 const emit = (event) => process.stdout.write(JSON.stringify(event) + '\n');
 
+const readable = (p) => {
+  try {
+    fs.readFileSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const home = process.env.HOME || '/nonexistent';
+const leaked =
+  scenario === 'probe_home' &&
+  [path.join(home, '.cargo', 'config.toml'), path.join(home, '..', 'implementer', '.cargo', 'config.toml')].some(
+    readable,
+  );
+
 let text = 'Done.';
 if (reviewer) {
   const review =
-    scenario === 'blocking'
+    scenario === 'blocking' || leaked
       ? {
           verdict: 'changes_requested',
           summary: 'One blocking issue.',

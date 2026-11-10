@@ -58,7 +58,7 @@ pub async fn create(
     base: &CommitSha,
     root: &Path,
 ) -> Result<Workspace, WorkspaceError> {
-    check_task_id(task)?;
+    validate_task_id(task)?;
     let toplevel = git_path(repo, &["rev-parse", "--show-toplevel"]).await?;
     let common = git_path(
         repo,
@@ -198,7 +198,7 @@ pub async fn commit_candidate(
     _proof: &TreeGone,
 ) -> Result<(CommitSha, String), FailureCode> {
     scan(ws).await?;
-    check_task_id(&ws.task).map_err(|_| FailureCode::SpawnError)?;
+    validate_task_id(&ws.task).map_err(|_| FailureCode::SpawnError)?;
     let dir = ws.path.as_path();
     let infra = |_: GitError| FailureCode::SpawnError;
 
@@ -302,17 +302,17 @@ async fn diff(
         .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
 }
 
-/// A task id becomes a directory name and a ref component: `[A-Za-z0-9._-]`, at most 128
-/// characters, not starting with `.` or `-`, no `..`, not ending in `.lock`.
-fn check_task_id(task: &TaskId) -> Result<(), WorkspaceError> {
+/// A task id becomes a directory name (under the worktrees root and the state directory) and a
+/// ref component: 1 to 64 ASCII letters, digits, `-` and `_`, not starting with `-`. So it can
+/// never be empty, `.`, `..`, absolute, or contain a separator. Callers check it before every
+/// path join that uses a task id.
+pub fn validate_task_id(task: &TaskId) -> Result<(), WorkspaceError> {
     let s = task.as_str();
     let ok = !s.is_empty()
-        && s.len() <= 128
+        && s.len() <= 64
         && s.bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
-        && !s.starts_with(['.', '-'])
-        && !s.contains("..")
-        && !s.ends_with(".lock");
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+        && !s.starts_with('-');
     if ok {
         Ok(())
     } else {

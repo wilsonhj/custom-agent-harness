@@ -3,8 +3,14 @@
 //! command; recovery settles whatever was in flight when the last engine died (design §5.4).
 //!
 //! Effects of one task run one at a time, in intent order. Every process runs gated
-//! (`eng-shim`), sandboxed (`sandbox-exec`), with `HOME` and `TMPDIR` set to the task home and
-//! an environment that is only the adapter plan's variables plus `PATH`.
+//! (`eng-shim`), sandboxed (`sandbox-exec`), with an environment that is only the adapter
+//! plan's variables plus `PATH`, `HOME` and `TMPDIR`. Per-task state lives in
+//! `<state>/tasks/<task>/`: `HOME`/`TMPDIR` of an agent run is its role's home
+//! (`homes/implementer` or `homes/reviewer`, never shared); a verification gets a fresh scratch
+//! area `verify/<effect>/` with its own checkout of the candidate and its own empty home, both
+//! deleted after the run. The worktree is `<state>/worktrees/<task>`. Task ids are validated
+//! (`harness_exec::workspace::validate_task_id`) before a `CreateTask` is stored and before
+//! every path join.
 
 mod recovery;
 mod worker;
@@ -25,6 +31,7 @@ use harness_core::policy::Pipeline;
 use harness_core::types::{Envelope, RuntimeKind};
 use harness_exec::TreeGone;
 use harness_exec::hostgit::git;
+use harness_exec::workspace::validate_task_id;
 use harness_store::{ChainBroken, EventRecord, Receipt, Store, StoreError};
 use tokio_util::sync::CancellationToken;
 
@@ -200,8 +207,9 @@ impl Engine {
             .put_artifact(bytes, media, Provenance::Input, None)?)
     }
 
-    pub fn artifact(&self, id: &ArtifactId) -> Result<Option<Artifact>, EngineError> {
-        Ok(self.store.artifact(id)?)
+    /// Every reference to the artifact: one per (label, producing effect).
+    pub fn artifact_refs(&self, id: &ArtifactId) -> Result<Vec<Artifact>, EngineError> {
+        Ok(self.store.artifact_refs(id)?)
     }
 
     /// The artifact's bytes, verified against its id.
@@ -225,6 +233,19 @@ impl Engine {
     /// `accepted == false`. After an accepted `Accept`, creates branch `harness/<task>` at the
     /// accepted checkpoint.
     pub async fn submit(&self, cmd: Envelope<Command>) -> Result<Receipt, EngineError> {
+        // A task id becomes a path component: an unsafe one is refused before anything is
+        // stored.
+        if matches!(cmd.body, Command::CreateTask { .. })
+            && let Err(e) = validate_task_id(&cmd.task)
+        {
+            return Ok(Receipt {
+                command: harness_core::ids::CommandId::new(cmd.id.clone()),
+                accepted: false,
+                rejection: Some(e.to_string()),
+                first_seq: None,
+                last_seq: None,
+            });
+        }
         let task = self.store.task(&cmd.task)?;
         let Some(facts) = self.facts_for(task.as_ref(), &cmd).await? else {
             return Ok(Receipt {

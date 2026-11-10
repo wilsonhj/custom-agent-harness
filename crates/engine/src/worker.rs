@@ -82,6 +82,27 @@ fn private_dir(p: &Path) -> Result<(), EngineError> {
     Ok(())
 }
 
+fn ws_error(e: workspace::WorkspaceError) -> EngineError {
+    EngineError::Workspace(e.to_string())
+}
+
+/// Makes every directory under `root` owner-writable (a run may have left some read-only) so
+/// the tree can be removed. Symlinks are not followed.
+fn make_removable(root: &Path) {
+    let Ok(meta) = fs::symlink_metadata(root) else {
+        return;
+    };
+    if !meta.is_dir() {
+        return;
+    }
+    let _ = fs::set_permissions(root, fs::Permissions::from_mode(0o700));
+    if let Ok(entries) = fs::read_dir(root) {
+        for entry in entries.flatten() {
+            make_removable(&entry.path());
+        }
+    }
+}
+
 /// Collects output lines; feeds stdout to the adapter when there is one.
 struct Collect<'a> {
     adapter: Option<(&'a dyn RuntimeAdapter, &'a mut ParseState)>,
@@ -145,8 +166,69 @@ fn decode_packet(bytes: &[u8]) -> Option<Vec<(String, String)>> {
 }
 
 impl Engine {
-    fn task_home(&self, task: &TaskId) -> PathBuf {
-        self.cfg.state_dir.join("homes").join(task.as_str())
+    /// `<state>/tasks/<task>`: what the harness keeps per task besides the worktree. The id is
+    /// validated before it is joined into a path.
+    fn task_dir(&self, task: &TaskId) -> Result<PathBuf, EngineError> {
+        workspace::validate_task_id(task).map_err(ws_error)?;
+        Ok(self.cfg.state_dir.join("tasks").join(task.as_str()))
+    }
+
+    /// The `HOME` and `TMPDIR` of one agent role, `<task dir>/homes/<role>`, created mode 0700.
+    /// The implementer and the reviewer have separate homes; the sandbox denies the whole
+    /// state directory except the running role's own home, so neither can read the other's.
+    fn role_home(&self, task: &TaskId, role: Role) -> Result<PathBuf, EngineError> {
+        let name = match role {
+            Role::Implementer => "implementer",
+            Role::Reviewer => "reviewer",
+        };
+        let home = self.task_dir(task)?.join("homes").join(name);
+        private_dir(&home)?;
+        Ok(home)
+    }
+
+    /// `<task dir>/verify/<effect>`: one verification's scratch area (its checkout and home).
+    fn verify_scratch(&self, task: &TaskId, effect: &EffectId) -> Result<PathBuf, EngineError> {
+        let e = effect.as_str();
+        if e.is_empty()
+            || !e
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err(EngineError::Corrupt(format!(
+                "effect id {e:?} is not a path component"
+            )));
+        }
+        Ok(self.task_dir(task)?.join("verify").join(e))
+    }
+
+    /// Removes a verification scratch area and the repository's registration of its checkout.
+    /// Only called when no process of that verification can still run.
+    pub(crate) async fn remove_scratch(
+        &self,
+        repo: &Path,
+        scratch: &Path,
+    ) -> Result<(), EngineError> {
+        if fs::symlink_metadata(scratch).is_err() {
+            return Ok(());
+        }
+        make_removable(scratch);
+        fs::remove_dir_all(scratch)?;
+        // Drops the administrative entry of the checkout whose directory is now gone.
+        git(repo, &["worktree", "prune"])
+            .await
+            .map_err(|e| EngineError::Git(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Removes the scratch area of verification `effect` of `task` (recovery, after the kill).
+    pub(crate) async fn remove_verify_scratch(
+        &self,
+        task: &Task,
+        effect: &EffectId,
+    ) -> Result<(), EngineError> {
+        let scratch = self.verify_scratch(&task.id, effect)?;
+        self.remove_scratch(Path::new(&task.repo.path), &scratch)
+            .await
     }
 
     fn path_env(&self) -> String {
@@ -244,14 +326,34 @@ impl Engine {
         ]
     }
 
-    /// The task's worktree, created on first use at `<state>/worktrees/<task>`.
+    /// The task's worktree, created on first use at `<state>/worktrees/<task>`. An existing
+    /// entry at that path is used only if it is a real directory (not a symlink) directly
+    /// inside the worktrees root, holding a `.git`; anything else is refused.
     pub(crate) async fn workspace(&self, task: &Task) -> Result<Workspace, EngineError> {
+        workspace::validate_task_id(&task.id).map_err(ws_error)?;
         let root = self.cfg.state_dir.join("worktrees");
         private_dir(&root)?;
         let root = fs::canonicalize(&root)?;
         let path = root.join(task.id.as_str());
         let repo = Path::new(&task.repo.path);
-        let ws = if path.join(".git").exists() {
+        let existing = match fs::symlink_metadata(&path) {
+            Ok(meta) => Some(meta),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e.into()),
+        };
+        let ws = if let Some(meta) = existing {
+            let real = fs::canonicalize(&path)?;
+            let ours = meta.is_dir()
+                && !meta.file_type().is_symlink()
+                && real == path
+                && real.parent() == Some(root.as_path())
+                && fs::symlink_metadata(path.join(".git")).is_ok();
+            if !ours {
+                return Err(EngineError::Workspace(format!(
+                    "{} is not a worktree the harness created",
+                    path.display()
+                )));
+            }
             let out = git(
                 repo,
                 &["rev-parse", "--path-format=absolute", "--git-common-dir"],
@@ -271,8 +373,6 @@ impl Engine {
                 .map_err(|e| EngineError::Workspace(e.to_string()))?
         };
         self.store.record_workspace(&task.id, &ws.path)?;
-        let home = self.task_home(&task.id);
-        private_dir(&home)?;
         Ok(ws)
     }
 
@@ -520,20 +620,24 @@ impl Engine {
         let mut findings: Vec<Finding> = Vec::new();
         let mut summaries: Vec<String> = Vec::new();
         let mut verify_outputs: Vec<String> = Vec::new();
+        // Labels belong to references: an input counts as findings (or verification output)
+        // only if an effect of this task recorded it with that label.
         for id in inputs.iter().skip(1) {
-            let meta = self.store.artifact(id)?;
-            let bytes = self.store.get_artifact(id)?;
-            match meta.map(|a| a.label) {
-                Some(Provenance::ReviewFindings) => {
-                    let review: Review = serde_json::from_slice(&bytes)
-                        .map_err(|e| EngineError::Corrupt(format!("review {id}: {e}")))?;
-                    summaries.push(review.summary);
-                    findings.extend(review.findings);
-                }
-                Some(Provenance::HarnessEvidence) => {
-                    verify_outputs.push(String::from_utf8_lossy(&bytes).into_owned());
-                }
-                _ => {}
+            if self
+                .store
+                .labelled_in_task(id, Provenance::ReviewFindings, &task.id)?
+            {
+                let bytes = self.store.get_artifact(id)?;
+                let review: Review = serde_json::from_slice(&bytes)
+                    .map_err(|e| EngineError::Corrupt(format!("review {id}: {e}")))?;
+                summaries.push(review.summary);
+                findings.extend(review.findings);
+            } else if self
+                .store
+                .labelled_in_task(id, Provenance::HarnessEvidence, &task.id)?
+            {
+                let bytes = self.store.get_artifact(id)?;
+                verify_outputs.push(String::from_utf8_lossy(&bytes).into_owned());
             }
         }
         let merged = (!findings.is_empty()).then(|| Review {
@@ -590,7 +694,7 @@ impl Engine {
         let fail = |code| self.not_run(&row.spec, RunOutcome::Failed { code }, "not_run");
         let pipeline = self.pipeline(&task.pipeline)?;
         let ws = self.workspace(task).await?;
-        let task_home = self.task_home(&task.id);
+        let task_home = self.role_home(&task.id, *role)?;
         let adapter = adapter_for(*runtime);
         // The harness-owned login directory of this runtime (readable, see `launch_for`).
         let config_dir = self
@@ -804,10 +908,54 @@ impl Engine {
         }))
     }
 
+    /// Runs `pipeline.verify_commands[i]` against the candidate commit. The candidate is
+    /// checked out (hardened host Git, `worktree add --detach`: no hook, filter or other
+    /// repository-controlled program runs) into a fresh scratch area `<task dir>/verify/<effect>`,
+    /// whose `checkout` is the command's writable working tree and whose `home` is its fresh,
+    /// empty, mode-0700 `HOME` and `TMPDIR`. The task worktree and every agent home lie in the
+    /// denied state directory, so the command can neither read nor write them; it has no
+    /// network. The scratch area is removed once the kill sequence has proved the tree gone.
     async fn verify(
         &self,
         row: &OutboxRow,
         task: &Task,
+        cancel: &CancellationToken,
+    ) -> Result<Finish, EngineError> {
+        let EffectSpec::Verify {
+            effect, candidate, ..
+        } = &row.spec
+        else {
+            return Err(EngineError::Corrupt("verify on another spec".into()));
+        };
+        let fail = |code| self.not_run(&row.spec, RunOutcome::Failed { code }, "not_run");
+        let ws = self.workspace(task).await?;
+        if let Err(code) = sandbox_macos::probe() {
+            return Ok(Finish::Outcome(fail(code)?));
+        }
+        // The worktree stays at the last checkpoint, and no earlier process may still run there.
+        if let Err(code) = self.reset_before_run(&ws, candidate).await? {
+            return Ok(Finish::Outcome(fail(code)?));
+        }
+        let repo = Path::new(&task.repo.path);
+        let scratch = self.verify_scratch(&task.id, effect)?;
+        // Left over from a run cut off by a crash (recovery killed its tree first).
+        self.remove_scratch(repo, &scratch).await?;
+        let finish = self
+            .verify_in_scratch(row, task, &ws, &scratch, cancel)
+            .await;
+        if !matches!(finish, Ok(Finish::Stuck)) {
+            // Best effort: a leftover is removed before the next attempt.
+            let _ = self.remove_scratch(repo, &scratch).await;
+        }
+        finish
+    }
+
+    async fn verify_in_scratch(
+        &self,
+        row: &OutboxRow,
+        task: &Task,
+        ws: &Workspace,
+        scratch: &Path,
         cancel: &CancellationToken,
     ) -> Result<Finish, EngineError> {
         let EffectSpec::Verify {
@@ -827,20 +975,46 @@ impl Engine {
             .get(*command_index as usize)
             .cloned()
             .ok_or_else(|| EngineError::Pipeline(format!("no verify command {command_index}")))?;
-        let ws = self.workspace(task).await?;
-        let task_home = self.task_home(&task.id);
-        if let Err(code) = sandbox_macos::probe() {
-            return Ok(Finish::Outcome(fail(code)?));
+        private_dir(scratch)?;
+        let home = scratch.join("home");
+        fs::create_dir(&home)?;
+        fs::set_permissions(&home, fs::Permissions::from_mode(0o700))?;
+        let checkout = scratch.join("checkout");
+        let Ok(checkout_arg) = utf8(&checkout) else {
+            return Ok(Finish::Outcome(fail(FailureCode::SpawnError)?));
+        };
+        let added = git(
+            Path::new(&task.repo.path),
+            &[
+                "worktree",
+                "add",
+                "--quiet",
+                "--detach",
+                &checkout_arg,
+                candidate.as_str(),
+            ],
+        )
+        .await;
+        if added.is_err() {
+            return Ok(Finish::Outcome(fail(FailureCode::SpawnError)?));
         }
-        // Tested bytes are the committed bytes.
-        if let Err(code) = self.reset_before_run(&ws, candidate).await? {
-            return Ok(Finish::Outcome(fail(code)?));
-        }
-        let profile = self.profile(&ws, &task_home, false, self.base_read_dirs(), Network::None);
+        let profile = SandboxProfile {
+            worktree: checkout.clone(),
+            worktree_writable: true,
+            task_home: home.clone(),
+            read_deny: sandbox_macos::default_read_deny(
+                &self.home,
+                &self.cfg.state_dir,
+                &checkout,
+                &ws.git_common_dir,
+            ),
+            read_allow_extra: self.base_read_dirs(),
+            network: Network::None,
+        };
         let plan = LaunchPlan {
             argv: argv.clone(),
-            env: self.base_env(&task_home),
-            cwd: ws.path.clone(),
+            env: self.base_env(&home),
+            cwd: checkout,
             stdin: Vec::new(),
         };
         let wrapped = match sandbox_macos::wrap(&profile, plan) {
@@ -868,7 +1042,6 @@ impl Engine {
         };
         self.release(&task.id, &proof)?;
         self.keep_proof(&task.id, proof);
-
         let outcome = if exit.cancelled {
             RunOutcome::Cancelled
         } else if exit.failure.is_none() && exit.code == Some(0) {

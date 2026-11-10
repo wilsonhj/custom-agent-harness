@@ -82,7 +82,8 @@ async fn clean_flow_stops_at_awaiting_human_with_one_checkpoint() {
         .unwrap();
     let labels: Vec<Provenance> = evidence
         .iter()
-        .map(|a| engine.artifact(a).unwrap().unwrap().label)
+        .flat_map(|a| engine.artifact_refs(a).unwrap())
+        .map(|a| a.label)
         .collect();
     assert!(labels.contains(&Provenance::HarnessEvidence));
     assert!(labels.contains(&Provenance::ReviewFindings));
@@ -94,10 +95,13 @@ async fn clean_flow_stops_at_awaiting_human_with_one_checkpoint() {
             ..
         } = e
         {
-            assert_eq!(
-                engine.artifact(transcript).unwrap().unwrap().label,
-                Provenance::RuntimeClaim
-            );
+            let labels: Vec<Provenance> = engine
+                .artifact_refs(transcript)
+                .unwrap()
+                .into_iter()
+                .map(|a| a.label)
+                .collect();
+            assert_eq!(labels, [Provenance::RuntimeClaim]);
         }
     }
     assert!(engine.verify_chain().unwrap().0 as usize >= evs.len());
@@ -352,7 +356,274 @@ async fn cancel_kills_the_running_agent_and_cancels_the_task() {
     assert_eq!(t.state, TaskState::Cancelled);
     assert_eq!(t.run, StageRunState::Cancelled);
     drop(engine);
-    let store = harness_store::Store::open(&f.state).unwrap();
+    let store = reopen_store(&f.state);
     assert!(store.pending_effects().unwrap().is_empty());
     assert_eq!(store.workspace(&id).unwrap().unwrap().holder, None);
+}
+
+fn verification_outputs(engine: &Engine) -> Vec<String> {
+    events(engine)
+        .iter()
+        .filter_map(|e| match e {
+            Event::VerificationFinished { evidence, .. } => {
+                Some(String::from_utf8(engine.read_artifact(evidence).unwrap()).unwrap())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Item 2: verification checks out the candidate into its own writable scratch directory; the
+/// task worktree is neither written nor readable, and nothing outside the scratch is writable.
+#[tokio::test]
+async fn verification_runs_in_a_writable_scratch_checkout() {
+    let f = fixture();
+    let outside = f.tmp.path().join("outside.txt");
+    let script = format!(
+        r#"set -e
+test -f feature.txt
+mkdir -p target && echo built > target/x && test -f target/x
+t=${{PWD%/verify/*}}; id=${{t##*/}}; s=${{t%/tasks/*}}; wt=$s/worktrees/$id
+echo "wt=$wt"
+if (echo z > "$wt/escape.txt") 2>/dev/null; then echo wrote-worktree; exit 1; fi
+if (echo y > '{}') 2>/dev/null; then echo wrote-outside; exit 1; fi
+echo verified"#,
+        outside.display()
+    );
+    let engine = Engine::open(config(&f, "clean", "clean")).await.unwrap();
+    let id = start_task(&engine, &f, &pipeline(&["sh", "-c", &script])).await;
+    let t = run(&engine, &id).await;
+    let outputs = verification_outputs(&engine);
+    assert_eq!(
+        t.run,
+        StageRunState::AwaitingHuman {
+            gate: HumanGate::ReviewClean
+        },
+        "{outputs:?}"
+    );
+    let wt = worktree(&f, &id);
+    assert!(
+        outputs[0].contains(&format!("wt={}\n", wt.display())),
+        "{outputs:?}"
+    );
+    assert!(outputs[0].contains("verified\n"), "{outputs:?}");
+    assert!(!wt.join("target").exists(), "the task worktree got target/");
+    assert!(!wt.join("escape.txt").exists());
+    assert!(!outside.exists());
+    // The scratch checkout is gone after the run.
+    let scratch = f.state.join("tasks").join(id.as_str()).join("verify");
+    let left: Vec<_> = std::fs::read_dir(&scratch)
+        .map(|d| d.map(|e| e.unwrap().path()).collect())
+        .unwrap_or_default();
+    assert!(left.is_empty(), "{left:?}");
+    // No worktree registration is left behind in the repository either.
+    let listed = tgit(&f.repo, &["worktree", "list", "--porcelain"]);
+    assert_eq!(listed.matches("worktree ").count(), 2, "{listed}");
+}
+
+/// Item 5: verification gets a fresh, empty, private HOME that no agent run could write, and
+/// the reviewer cannot read the implementer's home.
+#[tokio::test]
+async fn verification_home_is_fresh_and_reviewer_cannot_read_implementer_home() {
+    let f = fixture();
+    let script = r#"set -e
+test -f feature.txt
+echo "home=$HOME"
+echo "tmp=$TMPDIR"
+echo "mode=$(stat -f %Lp "$HOME")"
+echo "entries=$(ls -A "$HOME" | wc -l | tr -d ' ')"
+test ! -e "$HOME/.cargo/config.toml"
+echo verified"#;
+    let engine = Engine::open(config(&f, "plant_home", "probe_home"))
+        .await
+        .unwrap();
+    let id = start_task(&engine, &f, &pipeline(&["sh", "-c", script])).await;
+    let t = run(&engine, &id).await;
+    let outputs = verification_outputs(&engine);
+    assert_eq!(
+        t.run,
+        StageRunState::AwaitingHuman {
+            gate: HumanGate::ReviewClean
+        },
+        "{outputs:?}"
+    );
+    let out = &outputs[0];
+    let task_dir = f.state.join("tasks").join(id.as_str());
+    let home = out
+        .lines()
+        .find_map(|l| l.strip_prefix("home="))
+        .unwrap()
+        .to_owned();
+    assert!(
+        home.starts_with(&format!("{}/verify/", task_dir.display())),
+        "{home}"
+    );
+    assert!(out.contains(&format!("tmp={home}\n")), "{out}");
+    assert!(out.contains("mode=700\n"), "{out}");
+    assert!(out.contains("entries=0\n"), "{out}");
+    assert!(out.contains("verified\n"), "{out}");
+    // The implementer really planted the file in its own home.
+    let planted = task_dir.join("homes/implementer/.cargo/config.toml");
+    assert!(planted.exists(), "{}", planted.display());
+    assert!(!std::path::Path::new(&home).exists(), "verify home deleted");
+}
+
+/// Item 3: an agent may print exactly the bytes of a later evidence artifact (here the
+/// checkpoint diff, which it can predict). That must not block the task.
+#[tokio::test]
+async fn agent_output_equal_to_a_later_evidence_artifact_does_not_block_the_task() {
+    // First, learn the checkpoint diff the clean scenario produces.
+    let first = fixture();
+    let diff = {
+        let engine = Engine::open(config(&first, "clean", "clean"))
+            .await
+            .unwrap();
+        let id = start_task(&engine, &first, &default_pipeline()).await;
+        run(&engine, &id).await;
+        let diff = events(&engine)
+            .iter()
+            .find_map(|e| match e {
+                Event::EffectFinished {
+                    outcome: EffectOutcome::Checkpoint { diff: Some(d), .. },
+                    ..
+                } => Some(d.clone()),
+                _ => None,
+            })
+            .unwrap();
+        engine.read_artifact(&diff).unwrap()
+    };
+    let f = fixture();
+    let echo = f.tmp.path().join("echo.patch");
+    std::fs::write(&echo, &diff).unwrap();
+    let mut cfg = config(&f, "clean", "clean");
+    cfg.claude_bin = wrapper_env(
+        &f,
+        "fake-claude",
+        "echo_file",
+        &[("FAKE_ECHO_FILE", echo.to_str().unwrap())],
+    );
+    let engine = Engine::open(cfg).await.unwrap();
+    let id = start_task(&engine, &f, &default_pipeline()).await;
+    let t = engine
+        .run_until_idle(&id, CancellationToken::new())
+        .await
+        .expect("an agent's output must not block the task");
+    assert_eq!(
+        t.run,
+        StageRunState::AwaitingHuman {
+            gate: HumanGate::ReviewClean
+        }
+    );
+    let evs = events(&engine);
+    let cp_diff = evs
+        .iter()
+        .find_map(|e| match e {
+            Event::EffectFinished {
+                outcome: EffectOutcome::Checkpoint { diff: Some(d), .. },
+                ..
+            } => Some(d.clone()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(engine.read_artifact(&cp_diff).unwrap(), diff);
+    // The agent's copy is a claim of the implementer run; the evidence is the checkpoint's.
+    let implementer = evs
+        .iter()
+        .find_map(|e| match e {
+            Event::EffectIntended {
+                spec:
+                    EffectSpec::AgentRun {
+                        effect,
+                        role: Role::Implementer,
+                        ..
+                    },
+            } => Some(effect.clone()),
+            _ => None,
+        })
+        .unwrap();
+    let checkpoint = evs
+        .iter()
+        .find_map(|e| match e {
+            Event::EffectIntended {
+                spec: EffectSpec::Checkpoint { effect, .. },
+            } => Some(effect.clone()),
+            _ => None,
+        })
+        .unwrap();
+    drop(engine);
+    let store = reopen_store(&f.state);
+    assert!(
+        store
+            .has_label(&cp_diff, Provenance::RuntimeClaim, Some(&implementer))
+            .unwrap()
+    );
+    assert!(
+        !store
+            .has_label(&cp_diff, Provenance::HarnessEvidence, Some(&implementer))
+            .unwrap(),
+        "the agent's output was accepted as evidence"
+    );
+    assert!(
+        store
+            .has_label(&cp_diff, Provenance::HarnessEvidence, Some(&checkpoint))
+            .unwrap()
+    );
+}
+
+/// Item 4: a task id becomes a path component; unsafe ids never reach the store.
+#[tokio::test]
+async fn create_task_with_an_unsafe_id_is_rejected_and_stores_nothing() {
+    let f = fixture();
+    let engine = Engine::open(config(&f, "clean", "clean")).await.unwrap();
+    let packet = engine
+        .put_input(b"eng-packet-v1\n", harness_core::artifact::MediaType::Text)
+        .unwrap();
+    let pipeline_id = engine
+        .put_input(
+            default_pipeline().as_bytes(),
+            harness_core::artifact::MediaType::Text,
+        )
+        .unwrap();
+    for bad in ["../x", "a/b", "/abs", ".", ""] {
+        let task = harness_core::ids::TaskId::new(bad);
+        let r = engine
+            .submit(envelope(
+                &task,
+                human(),
+                Command::CreateTask {
+                    repo: harness_core::types::RepoRef {
+                        path: f.repo.to_string_lossy().into_owned(),
+                        git_common_dir: f.repo.join(".git").to_string_lossy().into_owned(),
+                    },
+                    base_commit: f.base.clone(),
+                    packet: packet.clone(),
+                    pipeline: pipeline_id.clone(),
+                    key: IdempotencyKey::new(format!("create-{bad}")),
+                },
+            ))
+            .await
+            .unwrap();
+        assert!(!r.accepted, "{bad:?} was accepted");
+        assert!(engine.task(&task).unwrap().is_none(), "{bad:?}");
+    }
+    assert!(events(&engine).is_empty());
+}
+
+/// Item 4: a symlink planted at the task's worktree path is never used as the worktree.
+#[tokio::test]
+async fn a_symlink_planted_at_the_worktree_path_is_refused() {
+    let f = fixture();
+    let engine = Engine::open(config(&f, "clean", "clean")).await.unwrap();
+    let id = start_task(&engine, &f, &default_pipeline()).await;
+    let root = f.state.join("worktrees");
+    std::fs::create_dir_all(&root).unwrap();
+    std::os::unix::fs::symlink(&f.repo, root.join(id.as_str())).unwrap();
+    let r = engine.run_until_idle(&id, CancellationToken::new()).await;
+    assert!(r.is_err(), "{r:?}");
+    assert_eq!(task(&engine, &id).state, TaskState::Failed);
+    assert!(
+        !f.repo.join("ran.txt").exists(),
+        "the agent ran in the repository"
+    );
+    assert_eq!(tgit(&f.repo, &["status", "--porcelain"]), "");
 }

@@ -4,7 +4,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use harness_core::artifact::{Artifact, MediaType, Provenance};
-use harness_core::decide::{Command, Decision, EffectSpec, Event, Rejection, Task, apply};
+use harness_core::decide::{
+    Command, Decision, EffectOutcome, EffectSpec, Event, Rejection, Task, apply,
+};
 use harness_core::ids::{ArtifactId, CommandId, EffectId, Seq, TaskId};
 use harness_core::types::{Envelope, WIRE_VERSION};
 use rusqlite::{Connection, OptionalExtension as _, Row, TransactionBehavior, params};
@@ -170,6 +172,7 @@ pub(crate) fn submit(
         }
         None => return Err(StoreError::WriterGone),
     };
+    check_references(&tx, &cmd.task, &decision.events)?;
 
     let (head_seq, head_hash): (i64, Option<Vec<u8>>) = tx.query_row(
         "SELECT COALESCE(MAX(seq), 0), (SELECT hash FROM events ORDER BY seq DESC LIMIT 1) FROM events",
@@ -317,49 +320,144 @@ pub(crate) fn index_artifact(
     label: Provenance,
     by: Option<&EffectId>,
 ) -> Result<(), StoreError> {
-    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    tx.execute(
-        "INSERT INTO artifacts (id, size, media_type, label, produced_by, created_seq)
+    conn.execute(
+        "INSERT INTO artifacts (id, label, produced_by, size, media_type, created_seq)
          VALUES (?1, ?2, ?3, ?4, ?5, (SELECT COALESCE(MAX(seq), 0) FROM events))
-         ON CONFLICT(id) DO NOTHING",
+         ON CONFLICT(id, label, produced_by) DO NOTHING",
         params![
             id.as_str(),
+            wire_name!(label),
+            by.map_or("", EffectId::as_str),
             i64::try_from(size).map_err(|_| corrupt("artifact too large"))?,
             wire_name!(media),
-            wire_name!(label),
-            by.map(EffectId::as_str),
         ],
     )?;
-    let existing = artifact(&tx, id)?.ok_or_else(|| StoreError::NotFound(id.clone()))?;
-    if existing.label != label {
-        return Err(StoreError::LabelConflict {
-            id: id.clone(),
-            existing: existing.label,
-        });
-    }
-    tx.commit()?;
     failpoint("artifact:after_index");
     Ok(())
 }
 
-pub(crate) fn artifact(conn: &Connection, id: &ArtifactId) -> Result<Option<Artifact>, StoreError> {
-    let row: Option<(i64, String, String, Option<String>)> = conn
-        .query_row(
-            "SELECT size, media_type, label, produced_by FROM artifacts WHERE id = ?1",
-            [id.as_str()],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
-        )
-        .optional()?;
-    let Some((size, media, label, by)) = row else {
-        return Ok(None);
+pub(crate) fn artifact_refs(
+    conn: &Connection,
+    id: &ArtifactId,
+) -> Result<Vec<Artifact>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT size, media_type, label, produced_by FROM artifacts WHERE id = ?1
+         ORDER BY created_seq, rowid",
+    )?;
+    let rows = stmt
+        .query_map([id.as_str()], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    rows.into_iter()
+        .map(|(size, media, label, by)| {
+            Ok(Artifact {
+                id: id.clone(),
+                size: u64::try_from(size).map_err(|_| corrupt("negative size"))?,
+                media_type: serde_json::from_value(Value::String(media))?,
+                label: serde_json::from_value(Value::String(label))?,
+                produced_by: (!by.is_empty()).then(|| EffectId::new(by)),
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn has_label(
+    conn: &Connection,
+    id: &ArtifactId,
+    label: Provenance,
+    by: Option<&EffectId>,
+) -> Result<bool, StoreError> {
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM artifacts WHERE id = ?1 AND label = ?2 AND produced_by = ?3)",
+        params![
+            id.as_str(),
+            wire_name!(label),
+            by.map_or("", EffectId::as_str)
+        ],
+        |r| r.get(0),
+    )?)
+}
+
+pub(crate) fn labelled_in_task(
+    conn: &Connection,
+    id: &ArtifactId,
+    label: Provenance,
+    task: &TaskId,
+) -> Result<bool, StoreError> {
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM artifacts a JOIN outbox o ON o.effect_id = a.produced_by
+                        WHERE a.id = ?1 AND a.label = ?2 AND o.task_id = ?3)",
+        params![id.as_str(), wire_name!(label), task.as_str()],
+        |r| r.get(0),
+    )?)
+}
+
+/// Every artifact an event cites must carry the label it is cited as, produced by the effect
+/// that produced it: a transcript is that run's `RuntimeClaim`, a review that run's
+/// `ReviewFindings`, verification output and checkpoint diffs that effect's `HarnessEvidence`,
+/// and evidence attached to a human stop an evidence reference produced by an effect of the
+/// same task (each of which was itself checked when its effect finished).
+fn check_references(conn: &Connection, task: &TaskId, events: &[Event]) -> Result<(), StoreError> {
+    let need = |id: &ArtifactId, label: Provenance, by: &EffectId| -> Result<(), StoreError> {
+        if has_label(conn, id, label, Some(by))? {
+            Ok(())
+        } else {
+            Err(StoreError::Unlabelled {
+                id: id.clone(),
+                label,
+                by: Some(by.clone()),
+            })
+        }
     };
-    Ok(Some(Artifact {
-        id: id.clone(),
-        size: u64::try_from(size).map_err(|_| corrupt("negative size"))?,
-        media_type: serde_json::from_value(Value::String(media))?,
-        label: serde_json::from_value(Value::String(label))?,
-        produced_by: by.map(EffectId::new),
-    }))
+    for event in events {
+        match event {
+            Event::EffectFinished { effect, outcome } => match outcome {
+                EffectOutcome::AgentRun {
+                    transcript, review, ..
+                } => {
+                    need(transcript, Provenance::RuntimeClaim, effect)?;
+                    if let Some(review) = review {
+                        need(review, Provenance::ReviewFindings, effect)?;
+                    }
+                }
+                EffectOutcome::Verify { evidence, .. } => {
+                    need(evidence, Provenance::HarnessEvidence, effect)?;
+                }
+                EffectOutcome::Checkpoint { diff, .. } => {
+                    if let Some(diff) = diff {
+                        need(diff, Provenance::HarnessEvidence, effect)?;
+                    }
+                }
+            },
+            Event::VerificationFinished {
+                effect, evidence, ..
+            } => need(evidence, Provenance::HarnessEvidence, effect)?,
+            Event::FindingsRecorded { effect, review, .. } => {
+                need(review, Provenance::ReviewFindings, effect)?;
+            }
+            Event::AwaitingHuman { evidence, .. } => {
+                for id in evidence {
+                    let ok = labelled_in_task(conn, id, Provenance::HarnessEvidence, task)?
+                        || labelled_in_task(conn, id, Provenance::ReviewFindings, task)?;
+                    if !ok {
+                        return Err(StoreError::Unlabelled {
+                            id: id.clone(),
+                            label: Provenance::HarnessEvidence,
+                            by: None,
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn events_after(

@@ -258,6 +258,79 @@ async fn cancel_token_yields_cancelled_exit() {
     assert!(started.elapsed() < Duration::from_secs(5));
 }
 
+/// `proc_bsdinfo` start time in microseconds, if the process exists.
+fn start_us(pid: i32) -> Option<i64> {
+    // SAFETY: proc_pidinfo writes at most `size` bytes into a zeroed, correctly sized struct.
+    unsafe {
+        let mut info: libc::proc_bsdinfo = std::mem::zeroed();
+        let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+        let n = libc::proc_pidinfo(pid, libc::PROC_PIDTBSDINFO, 0, (&raw mut info).cast(), size);
+        (n == size).then(|| (info.pbi_start_tvsec * 1_000_000 + info.pbi_start_tvusec) as i64)
+    }
+}
+
+/// After a restart the recorded process group number may have been reused by an unrelated
+/// process group of the same user. `kill_identity` must leave that group alone, whether the
+/// recorded leader pid is the reused group leader itself or a pid that no longer exists.
+#[tokio::test]
+async fn kill_identity_spares_an_unrelated_group_that_reused_the_pgid() {
+    use std::os::unix::process::CommandExt as _;
+    let dir = tempfile::tempdir().unwrap();
+    // An unrelated, long-lived process group: a leader and one member.
+    let mut unrelated = std::process::Command::new("/bin/sh")
+        .args(["-c", "sleep 60 & echo $! > member.pid; wait"])
+        .current_dir(dir.path())
+        .process_group(0)
+        .spawn()
+        .unwrap();
+    let leader = unrelated.id() as i32;
+    let member_file = dir.path().join("member.pid");
+    let started = Instant::now();
+    while !member_file.exists() && started.elapsed() < Duration::from_secs(5) {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::thread::sleep(Duration::from_millis(50));
+    let member: i32 = std::fs::read_to_string(&member_file)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    let leader_start = start_us(leader).unwrap();
+
+    // A pid that existed once and is gone now.
+    let mut gone = std::process::Command::new("/usr/bin/true").spawn().unwrap();
+    let gone_pid = gone.id() as i32;
+    gone.wait().unwrap();
+
+    // Recorded start times earlier than the unrelated processes', so no start-time filter
+    // excludes them: only the group-leader check can.
+    for recorded_pid in [leader, gone_pid] {
+        let forged = ProcessIdentity {
+            pgid: leader,
+            pid: recorded_pid,
+            start_us: leader_start - 1_000_000,
+            boot_id: boot_id(),
+        };
+        assert!(
+            !identity_is_alive(&forged),
+            "pid {recorded_pid}: an unrelated group is not our run"
+        );
+        let killed = harness_exec::supervisor::kill_identity(&forged).await;
+        assert!(killed.is_ok(), "pid {recorded_pid}: {killed:?}");
+        assert!(
+            !pid_is_dead(leader),
+            "pid {recorded_pid}: unrelated leader was killed"
+        );
+        assert!(
+            !pid_is_dead(member),
+            "pid {recorded_pid}: unrelated member was killed"
+        );
+    }
+    // SAFETY: killpg on the group this test created.
+    unsafe { libc::killpg(leader, libc::SIGKILL) };
+    let _ = unrelated.wait();
+}
+
 #[tokio::test]
 async fn kill_identity_ends_a_run_from_its_identity_alone() {
     let dir = tempfile::tempdir().unwrap();

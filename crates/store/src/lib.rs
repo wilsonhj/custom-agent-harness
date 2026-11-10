@@ -52,11 +52,13 @@ pub enum StoreError {
     CorruptArtifact(ArtifactId),
     #[error("artifact {0} not found")]
     NotFound(ArtifactId),
-    /// The same bytes were stored earlier under another provenance label.
-    #[error("artifact {id} is already stored as {existing:?}")]
-    LabelConflict {
+    /// An event cites an artifact that carries no reference with the label it needs from the
+    /// effect that must have produced it (`by: None`: from any effect of the same task).
+    #[error("artifact {id} has no {label:?} reference produced by {by:?}")]
+    Unlabelled {
         id: ArtifactId,
-        existing: Provenance,
+        label: Provenance,
+        by: Option<EffectId>,
     },
     /// The log and the code disagree (`apply` refused an event, or a row does not parse).
     #[error("corrupt state: {0}")]
@@ -179,7 +181,7 @@ pub struct Store {
 }
 
 const SCHEMA: &str = include_str!("schema.sql");
-const SCHEMA_VERSION: &str = "1";
+const SCHEMA_VERSION: &str = "2";
 
 fn create_private_dir(dir: &Path) -> Result<(), StoreError> {
     match fs::create_dir(dir) {
@@ -233,6 +235,16 @@ impl Store {
                 "INSERT OR IGNORE INTO schema_meta (key, value) VALUES ('version', ?1)",
                 [SCHEMA_VERSION],
             )?;
+            let version: String = tx.query_row(
+                "SELECT value FROM schema_meta WHERE key = 'version'",
+                [],
+                |r| r.get(0),
+            )?;
+            if version != SCHEMA_VERSION {
+                return Err(StoreError::Corrupt(format!(
+                    "schema version {version}, this build reads {SCHEMA_VERSION}"
+                )));
+            }
             tx.commit()?;
         }
 
@@ -308,9 +320,12 @@ impl Store {
         }
     }
 
-    /// Stores `bytes` under their SHA-256 with `label`. The bytes are durable before the index
-    /// row is written. Storing the same bytes again with the same label is a no-op; with a
-    /// different label it is `LabelConflict` (a claim can never be relabelled as evidence).
+    /// Stores `bytes` under their SHA-256 and records the reference `(id, label, by)`. The bytes
+    /// are written once and are durable before the reference row is written. Labels belong to
+    /// references, not to bytes: the same bytes may carry several references (an agent's claim
+    /// and the harness's evidence), and recording an existing reference again is a no-op. A
+    /// claim never becomes evidence, because every evidence check asks for a reference with
+    /// the evidence label produced by a given effect ([`Store::has_label`]).
     pub fn put_artifact(
         &self,
         bytes: &[u8],
@@ -330,18 +345,43 @@ impl Store {
         Ok(id)
     }
 
-    /// The artifact's bytes, re-hashed on read.
+    /// The artifact's bytes, re-hashed on read. `NotFound` unless some reference names it.
     pub fn get_artifact(&self, id: &ArtifactId) -> Result<Vec<u8>, StoreError> {
-        if self.artifact(id)?.is_none() {
+        if self.artifact_refs(id)?.is_empty() {
             return Err(StoreError::NotFound(id.clone()));
         }
         artifacts::read_object(&self.objects, id)
     }
 
-    /// The artifact's index entry (size, media type, label, producer).
-    pub fn artifact(&self, id: &ArtifactId) -> Result<Option<Artifact>, StoreError> {
+    /// Every reference to the artifact (size, media type, label, producer), oldest first.
+    pub fn artifact_refs(&self, id: &ArtifactId) -> Result<Vec<Artifact>, StoreError> {
         let id = id.clone();
-        self.call(move |conn| writer::artifact(conn, &id))
+        self.call(move |conn| writer::artifact_refs(conn, &id))
+    }
+
+    /// Does an artifact with this id carry `label` produced by effect `by` (`None`: recorded
+    /// with no producing effect)?
+    pub fn has_label(
+        &self,
+        id: &ArtifactId,
+        label: Provenance,
+        by: Option<&EffectId>,
+    ) -> Result<bool, StoreError> {
+        let id = id.clone();
+        let by = by.cloned();
+        self.call(move |conn| writer::has_label(conn, &id, label, by.as_ref()))
+    }
+
+    /// Does an artifact with this id carry `label` produced by some effect of `task`?
+    pub fn labelled_in_task(
+        &self,
+        id: &ArtifactId,
+        label: Provenance,
+        task: &TaskId,
+    ) -> Result<bool, StoreError> {
+        let id = id.clone();
+        let task = task.clone();
+        self.call(move |conn| writer::labelled_in_task(conn, &id, label, &task))
     }
 
     pub fn task(&self, id: &TaskId) -> Result<Option<Task>, StoreError> {

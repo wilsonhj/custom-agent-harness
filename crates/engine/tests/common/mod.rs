@@ -149,6 +149,19 @@ pub fn wrapper(f: &Fixture, fake: &str, scenario: &str) -> PathBuf {
     path
 }
 
+/// Like [`wrapper`], with further exported variables.
+pub fn wrapper_env(f: &Fixture, fake: &str, scenario: &str, vars: &[(&str, &str)]) -> PathBuf {
+    let path = wrapper(f, fake, scenario);
+    let script = std::fs::read_to_string(&path).unwrap();
+    let exports: String = vars
+        .iter()
+        .map(|(k, v)| format!("{k}='{v}'\nexport {k}\n"))
+        .collect();
+    let script = script.replacen("exec ", &format!("{exports}exec "), 1);
+    std::fs::write(&path, script).unwrap();
+    path
+}
+
 /// Fake Claude and fake Codex in the given scenarios, launched through wrapper scripts.
 pub fn config(f: &Fixture, claude: &str, codex: &str) -> EngineConfig {
     EngineConfig {
@@ -277,6 +290,21 @@ pub fn events(engine: &Engine) -> Vec<harness_core::decide::Event> {
 
 pub fn task(engine: &Engine, id: &TaskId) -> Task {
     engine.task(id).unwrap().unwrap()
+}
+
+/// Opens the store of a closed engine. Another test's child process may hold a copy of the
+/// engine lock descriptor for the instant between its fork and exec (the descriptor is
+/// close-on-exec), so `Locked` is retried briefly.
+pub fn reopen_store(state: &Path) -> harness_store::Store {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match harness_store::Store::open(state) {
+            Err(harness_store::StoreError::Locked) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            other => return other.unwrap(),
+        }
+    }
 }
 
 pub fn pid_alive(pid: i32) -> bool {

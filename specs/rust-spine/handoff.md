@@ -121,12 +121,58 @@ Later tasks build against these, not the plan text, where they differ.
   the exact same name in the base commit's root and is unchanged (regular files only; symlinks and
   gitlinks fail closed; ignored files count).
 
+- T9 (0c39575): `EngineConfig { state_dir, claude_bin, codex_bin, node_bin: Option<PathBuf>,
+  shim_bin, extra_read_dirs: Vec<PathBuf> }`. `Store::mark_effect(id, to, process:
+  Option<&ProcessRecord>)` (`ProcessRecord` is the store's copy of `ProcessIdentity`).
+  `ChainBroken::{At { seq, reason }, Unreadable(String)}`. A rejected command leaves no receipt
+  (it can be retried with other facts). `StoreError::IdempotencyConflict { key }` for a reused key
+  with another body. The per-task last `TreeGone` is kept in memory only; after a restart it is
+  recovered by `kill_identity` on the workspace's last recorded process. Feature `failpoints`
+  (store and engine; `ENG_FAILPOINT=<name>` SIGKILLs the process there) also builds the
+  `eng-test-shim` binary for the engine's integration tests.
+- T9 fixes (this commit):
+  - exec: `kill_identity` and every scan/`killpg` apply the group-reuse rule documented in
+    `supervisor.rs` ("Process group reuse"): if a process with pid == recorded pgid exists with
+    another start time, the group is foreign and nothing is signalled; `kill_identity` then
+    returns `TreeGone` unless a live process has the recorded leader pid and start time
+    (`KillFailed { survivors: [pid] }`). With no process at pid == pgid, group members are taken
+    as our orphans (residual ambiguity documented there).
+  - exec: `workspace::validate_task_id(&TaskId) -> Result<(), WorkspaceError>` is public:
+    1-64 of `[A-Za-z0-9_-]`, not starting with `-` (stricter than before: no `.`, max 64).
+  - store: schema version 2; `artifacts` is keyed by `(id, label, produced_by)` (`''` = none),
+    bytes stored once. `StoreError::LabelConflict` removed; added `StoreError::Unlabelled { id,
+    label: Provenance, by: Option<EffectId> }`. `Store::artifact(id) -> Option<Artifact>` replaced
+    by `Store::artifact_refs(id) -> Vec<Artifact>`; added `Store::has_label(id, label, by:
+    Option<&EffectId>) -> bool` and `Store::labelled_in_task(id, label, &TaskId) -> bool`.
+    `submit` refuses (`Unlabelled`, nothing written) an event citing an artifact without the
+    right reference: transcript = that run's `RuntimeClaim`; review = its `ReviewFindings`;
+    verify evidence and checkpoint diff = that effect's `HarnessEvidence`; `AwaitingHuman`
+    evidence = an evidence label produced by an effect of the same task. Opening a version-1
+    database fails with `StoreError::Corrupt`.
+  - engine: `Engine::artifact` replaced by `Engine::artifact_refs(id) -> Vec<Artifact>`.
+    `CreateTask` with an invalid task id gets a rejected receipt before anything is stored; the
+    id is validated again before every path join. An existing `<state>/worktrees/<id>` is used
+    only if it is a real directory (not a symlink) whose canonical parent is the canonical
+    worktrees root and that has a `.git`. Per-task state moved to `<state>/tasks/<id>/`: agent
+    homes `homes/implementer` and `homes/reviewer` (separate; each run's sandbox can read only
+    its own). Each `Verify` runs in `tasks/<id>/verify/<effect>/`: `checkout` (hardened `git
+    worktree add --detach <candidate>`, writable, the command's cwd) and `home` (fresh, empty,
+    0700, `HOME` = `TMPDIR`), `Network::None`; the task worktree is not mounted (it lies in the
+    denied state dir). The scratch is removed (then `git worktree prune`) after `TreeGone`, by
+    recovery after killing a crashed verify, and before a retry; never after `KillFailed`.
+
 ## Known limitations
 
 - Adapter fixtures will be provisional until plan Task 11 records real transcripts.
 - Two research reports contain a local home-directory path once each; scrub before the
   repository is made public.
 - The human decision is protected by the sandbox and file permissions, not by a signature.
+- The shared runtime login directory `<state>/runtimes/<runtime>` is read-only inside the
+  sandbox. Whether real Claude Code and Codex need to write there (token refresh, session files)
+  is decided in Task 11.
+- `kill_identity` after a restart cannot tell our orphaned group members from members of an
+  unrelated group that reused the group number and whose own leader has exited (see
+  `supervisor.rs`, "Process group reuse").
 
 ## Unresolved decisions
 

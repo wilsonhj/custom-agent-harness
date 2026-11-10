@@ -40,6 +40,24 @@
 //! engine restart, has no recorded set, so it can find escapees only by responsibility while the
 //! leader lives, and by group and ancestry.
 //!
+//! # Process group reuse
+//!
+//! POSIX does not reuse a pid while a process group with that id is non-empty, so the group
+//! number is ours exactly as long as the group never emptied. After an engine restart that is
+//! unknown, and the number may name an unrelated group of the same user. The rule, applied by
+//! every scan, by every `killpg` and by [`kill_identity`]:
+//!
+//! - If a process with pid == the recorded pgid exists and its start time is not the recorded
+//!   leader start time, the group is **foreign**: nothing is matched by group, no `killpg` is
+//!   sent, and [`kill_identity`] signals nothing at all. It returns [`TreeGone`] if no live
+//!   process has the recorded leader pid and start time (the only identity it knows), and
+//!   [`KillFailed`] naming that pid otherwise.
+//! - If no process with pid == pgid exists, the members of that group are taken to be orphans of
+//!   our group (whose leader exited while they kept the group alive) and may be killed. This
+//!   is ambiguous in one case: our group emptied, an unrelated process reused the number as its
+//!   own group, and that leader then exited while its members live on. Only the start-time
+//!   filter (no earlier than our leader) narrows it.
+//!
 //! Only processes with our uid (effective or real) that started no earlier than the leader are
 //! ever candidates, and never the supervisor itself.
 //!
@@ -536,10 +554,15 @@ impl Tracker {
         }
     }
 
-    /// `killpg` the run's group, unless its leader pid now names an unrelated process.
+    /// True if a process with pid == the recorded pgid exists with another start time: the
+    /// group number now belongs to someone else (see "Process group reuse").
+    fn group_foreign(&self) -> bool {
+        proc_info(self.pgid).is_some_and(|p| p.start_us != self.leader_start)
+    }
+
+    /// `killpg` the run's group, unless the group is foreign.
     fn signal_group(&self, sig: i32) {
-        let reused = proc_info(self.pgid).is_some_and(|p| p.start_us != self.leader_start);
-        if !reused && self.pgid > 1 {
+        if !self.group_foreign() && self.pgid > 1 {
             // SAFETY: killpg has no memory-safety preconditions.
             unsafe { libc::killpg(self.pgid, sig) };
         }
@@ -563,6 +586,7 @@ impl Tracker {
         }
         let leader = proc_info(self.leader_pid);
         let leader_reused = leader.is_some_and(|p| p.start_us != self.leader_start);
+        let group_ours = !leader_reused && !self.group_foreign();
         let leader_alive = leader.is_some_and(|p| p.start_us == self.leader_start && !p.zombie);
         let spi = if leader_alive {
             responsibility_spi()
@@ -573,7 +597,7 @@ impl Tracker {
         let mut matched: HashSet<i32> = HashSet::new();
         for p in procs.values() {
             let hit = self.members.get(&p.pid) == Some(&p.start_us)
-                || (!leader_reused && p.pgid == self.pgid)
+                || (group_ours && p.pgid == self.pgid)
                 // SAFETY: the SPI takes a pid by value and returns a pid.
                 || spi.is_some_and(|s| unsafe { (s.responsible_pid)(p.pid) } == self.leader_pid);
             if hit {
@@ -754,10 +778,24 @@ pub fn identity_is_alive(id: &ProcessIdentity) -> bool {
 }
 
 /// Runs the kill sequence against a run known only by its identity (after an engine restart).
-/// See the module docs for what it can and cannot find.
+/// See the module docs for what it can and cannot find, and "Process group reuse" for the
+/// foreign-group rule: a group whose leader has another start time is never signalled.
 pub async fn kill_identity(id: &ProcessIdentity) -> Result<TreeGone, KillFailed> {
-    if !rebooted(id) {
-        terminate(&mut Tracker::new(id), None).await?;
+    if rebooted(id) {
+        return Ok(TreeGone::confirmed());
     }
+    let mut tracker = Tracker::new(id);
+    if tracker.group_foreign() {
+        let leader_alive =
+            proc_info(id.pid).is_some_and(|p| p.start_us == id.start_us && !p.zombie);
+        return if leader_alive {
+            Err(KillFailed {
+                survivors: vec![id.pid],
+            })
+        } else {
+            Ok(TreeGone::confirmed())
+        };
+    }
+    terminate(&mut tracker, None).await?;
     Ok(TreeGone::confirmed())
 }

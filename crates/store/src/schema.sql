@@ -1,4 +1,4 @@
--- harness-store schema, version 1 (research-2026-11-09/5-rust-core.md §4.1, without `anchors`).
+-- harness-store schema, version 2 (research-2026-11-09/5-rust-core.md §4.1, without `anchors`).
 -- Pragmas (WAL, synchronous=FULL, foreign_keys=ON) are set per connection in `lib.rs`.
 
 CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -59,14 +59,17 @@ CREATE TABLE IF NOT EXISTS outbox (
 CREATE INDEX IF NOT EXISTS outbox_pending ON outbox(state)
   WHERE state IN ('intended','starting','started');
 
--- Index of content-addressed artifacts; the bytes live under `objects/`.
+-- References to content-addressed artifacts; the bytes live once under `objects/`. A label
+-- belongs to a reference, not to bytes: the same bytes may be an agent's claim and, separately,
+-- the harness's evidence. `produced_by` is '' when no effect produced the reference.
 CREATE TABLE IF NOT EXISTS artifacts (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  produced_by TEXT NOT NULL DEFAULT '',
   size INTEGER NOT NULL,
   media_type TEXT NOT NULL,
-  label TEXT NOT NULL,
-  produced_by TEXT,
-  created_seq INTEGER NOT NULL);
+  created_seq INTEGER NOT NULL,
+  PRIMARY KEY (id, label, produced_by));
 
 -- Worktree lock records. `holder_effect` NULL means released; the identity columns keep the
 -- last process that ran in the worktree.
