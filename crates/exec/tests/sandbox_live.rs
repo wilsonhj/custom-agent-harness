@@ -246,6 +246,136 @@ fn read_of_repo_agent_config_is_denied_but_agents_md_is_readable() {
     assert_eq!(run(&p, &["/bin/cat", "CLAUDE.md"]).stdout, b"claude");
 }
 
+/// The first `/dev/ttys<digits>` this user can open for writing outside any sandbox, if any.
+fn openable_tty() -> Option<PathBuf> {
+    let mut ttys: Vec<PathBuf> = fs::read_dir("/dev")
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let name = e.file_name();
+            let name = name.to_string_lossy();
+            name.strip_prefix("ttys")
+                .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        })
+        .map(|e| e.path())
+        .collect();
+    ttys.sort();
+    // Opening without writing anything: nothing reaches the terminal.
+    ttys.into_iter()
+        .find(|t| fs::OpenOptions::new().write(true).open(t).is_ok())
+}
+
+#[test]
+fn opening_a_terminal_device_is_denied() {
+    let Some(tty) = openable_tty() else {
+        eprintln!("skipped: no /dev/ttys* device is openable by this user here");
+        return;
+    };
+    let f = fixture();
+    let p = profile(&f);
+    // `:` writes nothing; only the open is attempted.
+    let o = sh(&p, &format!(": > '{}'", s(&tty)));
+    assert!(denied(&o), "write open of {tty:?}: {o:?}");
+    let o = sh(&p, &format!(": < '{}'", s(&tty)));
+    assert!(denied(&o), "read open of {tty:?}: {o:?}");
+    assert!(ok(&run(&p, &["/bin/sh", "-c", "echo x > /dev/null"])));
+}
+
+#[test]
+fn home_is_unreadable_except_worktree_task_home_and_allowed_dirs() {
+    // A fake $HOME laid out like the real one: the worktree, the state directory with the task
+    // home inside it, and a runtime install directory all live under it.
+    let f = fixture();
+    let user = f.root.join("user");
+    let wt = user.join("src/wt");
+    let state = user.join("Library/Application Support/eng");
+    let task_home = state.join("tasks/t1/home");
+    let install = user.join(".local/share/claude/versions");
+    for d in [&wt, &task_home, &install] {
+        fs::create_dir_all(d).unwrap();
+    }
+    let secrets = [
+        user.join(".config/gh/hosts.yml"),
+        user.join(".netrc"),
+        user.join("Library/Keychains/x"),
+        user.join(".claude/x"),
+        state.join("state.db"),
+    ];
+    for secret in &secrets {
+        fs::create_dir_all(secret.parent().unwrap()).unwrap();
+        fs::write(secret, "secret").unwrap();
+    }
+    fs::write(wt.join("src.rs"), "wt").unwrap();
+    fs::write(task_home.join("cfg"), "home").unwrap();
+    fs::write(install.join("2.1.318"), "bin").unwrap();
+
+    let p = SandboxProfile {
+        worktree: wt.clone(),
+        worktree_writable: true,
+        task_home: task_home.clone(),
+        read_deny: default_read_deny(&user, &state, &wt, &f.root.join("repo.git")),
+        read_allow_extra: vec![install.clone()],
+        network: Network::None,
+    };
+
+    for secret in &secrets {
+        let o = run(&p, &["/bin/cat", s(secret)]);
+        assert!(denied(&o), "{secret:?}: {o:?}");
+    }
+    assert!(denied(&run(&p, &["/bin/ls", s(&user)])));
+    assert_eq!(run(&p, &["/bin/cat", s(&wt.join("src.rs"))]).stdout, b"wt");
+    assert_eq!(
+        run(&p, &["/bin/cat", s(&task_home.join("cfg"))]).stdout,
+        b"home"
+    );
+    assert_eq!(
+        run(&p, &["/bin/cat", s(&install.join("2.1.318"))]).stdout,
+        b"bin"
+    );
+    // Resolving an allowed path walks its denied ancestors (Node does this for every module).
+    let o = run(&p, &["/bin/realpath", s(&install.join("2.1.318"))]);
+    assert!(ok(&o), "{o:?}");
+    assert!(ok(&run(&p, &["/usr/bin/touch", s(&task_home.join("w"))])));
+}
+
+#[test]
+fn case_variants_of_agent_config_are_denied() {
+    // APFS is case-insensitive: `.Claude` is the directory a runtime later opens as `.claude`.
+    // Worktree names with a space and with regex metacharacters must not break the rule.
+    for wt_name in ["a b", "c++.x (1) [y]"] {
+        let f = fixture_in(&std::env::temp_dir(), wt_name);
+        fs::create_dir(f.wt.join(".Codex")).unwrap();
+        fs::write(f.wt.join(".Codex/config.toml"), "planted").unwrap();
+        // No read_deny: the case-insensitive rules alone must hold. (Seatbelt on an APFS
+        // case-insensitive volume also folds case for the exact-name subpath rules.)
+        let p = profile(&f);
+
+        for planted in [".Claude/x", ".MCP.json", ".GIT/x", ".cLaUdE/settings.json"] {
+            let target = f.wt.join(planted);
+            let o = sh(
+                &p,
+                &format!(
+                    "mkdir -p '{}' && echo x > '{}'",
+                    s(target.parent().unwrap()),
+                    s(&target)
+                ),
+            );
+            assert!(denied(&o), "{wt_name}: {planted}: {o:?}");
+            assert!(!target.exists(), "{wt_name}: {planted} was created");
+        }
+        let o = run(&p, &["/bin/cat", s(&f.wt.join(".codex/config.toml"))]);
+        assert!(denied(&o), "{wt_name}: read .Codex: {o:?}");
+        assert!(ok(&run(
+            &p,
+            &["/usr/bin/touch", s(&f.wt.join("claude-notes.md"))]
+        )));
+        assert!(ok(&run(
+            &p,
+            &["/usr/bin/touch", s(&f.wt.join(".github-like"))]
+        )));
+    }
+}
+
 #[test]
 fn nested_sandbox_exec_fails_inside_profile() {
     // Documents research-2026-11-09/1a §4: Seatbelt does not nest, so every agent's own

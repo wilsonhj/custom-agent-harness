@@ -20,6 +20,19 @@
 //! the longest. This lets a deny on a parent (a repositories root, the state directory) coexist
 //! with an allow on a child (the worktree, a task home stored under the state directory), and a
 //! deny on a grandchild (`<worktree>/.claude`) win again.
+//!
+//! Reads are allowed outside the denied trees, and [`default_read_deny`] denies the whole real
+//! `$HOME`, so inside it only the worktree, the task home and `read_allow_extra` are readable.
+//! The directories above an allowed root that lie in a denied tree get metadata reads only
+//! (`stat`, not listing): resolving a path (`realpath`, which Node does for every module) looks
+//! at each of them.
+//!
+//! Two rule groups are emitted after the path rules, so they win over every allow:
+//! - the names in [`WORKTREE_DENY_NAMES`] directly under the worktree, matched case-insensitively
+//!   by a regex built from the `WT_RE` parameter (the worktree path with regex metacharacters
+//!   escaped), because a case-insensitive volume would open a planted `.Claude` as `.claude`;
+//! - every terminal device (`/dev/tty*`): the shim starts the child in a new session with pipes
+//!   and no controlling terminal, and the owner's ptys would otherwise be open to it.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -45,8 +58,8 @@ pub const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
 /// an IPC channel out of the sandbox.
 ///
 /// File reads are not listed here: the profile allows every read and then denies specific
-/// trees (secrets, state, Git metadata, repository agent configuration), because the CLIs read
-/// widely across the system to start.
+/// trees (the whole `$HOME`, state, Git metadata, repository agent configuration), because the
+/// CLIs read widely across the system to start.
 pub const MACH_LOOKUP_ALLOW: &[&str] = &[
     "com.apple.system.opendirectoryd.libinfo",
     "com.apple.system.opendirectoryd.membership",
@@ -82,6 +95,21 @@ pub struct SandboxProfile {
     /// resolved through its nearest existing ancestor so it is protected before it is created.
     pub read_deny: Vec<PathBuf>,
     /// Trees re-allowed for reading inside a denied tree. Must exist.
+    ///
+    /// Usage: the runtime being launched must be listed here when it is installed under `$HOME`
+    /// (denied by [`default_read_deny`]). Pass its real install directory and launch it by its
+    /// real path: a symlink such as `~/.local/bin/claude` sits in a denied directory, so the
+    /// kernel cannot follow it. Executing a file needs no read rule; the runtime reading its
+    /// own files does. Verified on 2026-11-09 with `--version`, `HOME` set to the task home,
+    /// stdin `/dev/null` and stdout a pipe (no terminal and no `file-ioctl` rule needed):
+    /// - Claude Code 2.1.318: launched as `~/.local/share/claude/versions/2.1.318` (the target
+    ///   of `~/.local/bin/claude`), a single executable. It starts with nothing listed here;
+    ///   list that file so later reads of itself keep working.
+    /// - codex-cli 0.166.0: launched as `~/.nvm/versions/node/v24.20.0/lib/node_modules/
+    ///   @openai/codex/bin/codex.js` (the target of `.../bin/codex`) with `.../v24.20.0/bin`
+    ///   on `PATH` for `node`. Needs `.../lib/node_modules/@openai/codex` (the JavaScript entry
+    ///   and its bundled native binary); without it Node cannot load the module. The node tree
+    ///   `~/.nvm/versions/node/v24.20.0` also works but exposes every global package.
     pub read_allow_extra: Vec<PathBuf>,
     pub network: Network,
 }
@@ -171,10 +199,23 @@ pub fn wrap(p: &SandboxProfile, plan: LaunchPlan) -> Result<LaunchPlan, ProfileE
     })
 }
 
-/// Reads the run must never see (design §6.1): the user's SSH and AWS secrets, the harness
-/// state directory, all Git metadata, and repository agent configuration that a CLI would
-/// execute (`.claude/`, `.mcp.json`, `.codex/`, `.agents/`, `.cursor/`). The same paths are
-/// also never writable. Paths are returned as given; [`resolve`] canonicalises them.
+/// Names directly under the worktree that are never readable or writable: Git metadata and
+/// repository agent configuration that a CLI would execute.
+pub const WORKTREE_DENY_NAMES: &[&str] = &[
+    ".git",
+    ".claude",
+    ".mcp.json",
+    ".codex",
+    ".agents",
+    ".cursor",
+];
+
+/// Reads the run must never see (design §6.1): the whole `$HOME` (its dotfiles, `~/.config`,
+/// `~/Library/Keychains`, browser profiles and the owner's own runtime logins), the user's SSH
+/// and AWS secrets, the harness state directory, all Git metadata, and repository agent
+/// configuration that a CLI would execute ([`WORKTREE_DENY_NAMES`]). The same paths are also
+/// never writable. The more specific entries still win inside trees re-allowed under `$HOME`.
+/// Paths are returned as given; [`resolve`] canonicalises them.
 pub fn default_read_deny(
     home: &Path,
     state_dir: &Path,
@@ -182,23 +223,13 @@ pub fn default_read_deny(
     git_common_dir: &Path,
 ) -> Vec<PathBuf> {
     let mut deny = vec![
+        home.to_path_buf(),
         home.join(".ssh"),
         home.join(".aws"),
         state_dir.to_path_buf(),
         git_common_dir.to_path_buf(),
     ];
-    deny.extend(
-        [
-            ".git",
-            ".claude",
-            ".mcp.json",
-            ".codex",
-            ".agents",
-            ".cursor",
-        ]
-        .iter()
-        .map(|name| worktree.join(name)),
-    );
+    deny.extend(WORKTREE_DENY_NAMES.iter().map(|name| worktree.join(name)));
     deny
 }
 
@@ -275,6 +306,40 @@ fn resolve_maybe_missing(path: &Path) -> Result<String, ProfileError> {
     Err(unresolvable(path, "no existing ancestor"))
 }
 
+/// `path` with every regex metacharacter backslash-escaped, so it matches only itself.
+fn regex_escape(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for c in path.chars() {
+        if "\\.+*?()|[]{}^$".contains(c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// A regex matching `name` in any letter case: `.git` becomes `\.[gG][iI][tT]`.
+fn case_insensitive_regex(name: &str) -> String {
+    let mut out = String::new();
+    for c in name.chars() {
+        if c.is_ascii_alphabetic() {
+            out.push_str(&format!(
+                "[{}{}]",
+                c.to_ascii_lowercase(),
+                c.to_ascii_uppercase()
+            ));
+        } else {
+            out.push_str(&regex_escape(&c.to_string()));
+        }
+    }
+    out
+}
+
+/// `s` as the body of an SBPL string literal.
+fn sbpl_string(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Rule {
     Allow,
@@ -282,18 +347,38 @@ enum Rule {
 }
 
 impl ResolvedProfile {
+    /// Ancestors of the allowed roots (worktree, task home, `read_allow_extra`) that lie inside
+    /// a denied tree. Sorted, without duplicates.
+    fn denied_ancestors(&self) -> Vec<String> {
+        let roots = [&self.worktree, &self.task_home]
+            .into_iter()
+            .chain(&self.read_allow_extra);
+        let mut out: Vec<String> = roots
+            .flat_map(|root| Path::new(root.as_str()).ancestors().skip(1))
+            .filter(|a| self.read_deny.iter().any(|d| a.starts_with(d)))
+            .filter_map(|a| a.to_str().map(str::to_string))
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
     /// `-D` parameters referenced by [`render`](Self::render), in a stable order.
     pub fn params(&self) -> Vec<(String, String)> {
         let mut params = vec![
             ("WT".to_string(), self.worktree.clone()),
             ("GITFILE".to_string(), format!("{}/.git", self.worktree)),
             ("TASKHOME".to_string(), self.task_home.clone()),
+            ("WT_RE".to_string(), regex_escape(&self.worktree)),
         ];
         for (i, d) in self.read_deny.iter().enumerate() {
             params.push((format!("DENY_{i}"), d.clone()));
         }
         for (i, a) in self.read_allow_extra.iter().enumerate() {
             params.push((format!("ALLOW_{i}"), a.clone()));
+        }
+        for (i, a) in self.denied_ancestors().into_iter().enumerate() {
+            params.push((format!("ANC_{i}"), a));
         }
         if let Network::ProxyOnly { port } = self.network {
             params.push(("PROXY_PORT".to_string(), port.to_string()));
@@ -314,8 +399,6 @@ impl ResolvedProfile {
         out.push_str("(allow signal (target same-sandbox))\n");
         out.push_str("(allow sysctl-read)\n");
         out.push_str("(allow ipc-posix*)\n");
-        out.push_str("(allow pseudo-tty)\n");
-        out.push_str("(allow file-ioctl)\n");
         out.push_str("; MACH_LOOKUP_ALLOW\n(allow mach-lookup (global-name");
         for name in MACH_LOOKUP_ALLOW {
             out.push_str(&format!(" \"{name}\""));
@@ -364,12 +447,21 @@ impl ResolvedProfile {
                 .map(|(p, n)| (p, n.as_str(), Rule::Deny)),
         );
         path_rules("file-read*", reads, &mut out);
+        let ancestors = self.denied_ancestors();
+        if !ancestors.is_empty() {
+            out.push_str("; Directories above an allowed root: metadata only, so paths resolve.\n");
+            out.push_str("(allow file-read-metadata");
+            for i in 0..ancestors.len() {
+                out.push_str(&format!(" (literal (param \"ANC_{i}\"))"));
+            }
+            out.push_str(")\n");
+        }
         out.push('\n');
 
         out.push_str(
             "; Writes: task home, the worktree if writable, never Git metadata or denied trees.\n",
         );
-        out.push_str("(allow file-write* (literal \"/dev/null\") (literal \"/dev/tty\") (regex #\"^/dev/ttys[0-9]+$\"))\n");
+        out.push_str("(allow file-write* (literal \"/dev/null\"))\n");
         let mut writes = vec![(&self.task_home, "TASKHOME", Rule::Allow)];
         if self.worktree_writable {
             writes.push((&self.worktree, "WT", Rule::Allow));
@@ -386,6 +478,18 @@ impl ResolvedProfile {
         out.push_str(
             "(deny file-write-unlink (literal (param \"WT\")) (literal (param \"TASKHOME\")))\n\n",
         );
+
+        out.push_str(
+            "; Repository agent configuration and Git metadata in any letter case (WORKTREE_DENY_NAMES).\n",
+        );
+        for name in WORKTREE_DENY_NAMES {
+            let tail = sbpl_string(&format!("/{}(/|$)", case_insensitive_regex(name)));
+            out.push_str(&format!(
+                "(deny file-read* file-write* (regex (string-append \"^\" (param \"WT_RE\") \"{tail}\")))\n"
+            ));
+        }
+        out.push_str("; No terminal: the child has pipes and no controlling terminal.\n");
+        out.push_str("(deny file-read* file-write* file-ioctl (regex #\"^/dev/tty\"))\n\n");
 
         match self.network {
             Network::None => out.push_str("; Network: none (no rule allows any network access).\n"),

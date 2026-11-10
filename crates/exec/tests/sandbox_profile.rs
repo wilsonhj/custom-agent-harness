@@ -169,6 +169,7 @@ fn default_read_deny_lists_secrets_state_git_and_agent_config() {
         Path::new("/r/.git"),
     );
     for want in [
+        "/h",
         "/h/.ssh",
         "/h/.aws",
         "/s",
@@ -182,6 +183,64 @@ fn default_read_deny_lists_secrets_state_git_and_agent_config() {
     ] {
         assert!(deny.contains(&PathBuf::from(want)), "missing {want}");
     }
+}
+
+#[test]
+fn profile_grants_no_terminal_access() {
+    // The shim starts a new session without a controlling terminal and gives the child pipes,
+    // so nothing inside needs a terminal. The owner's ptys are theirs: writable, readable and
+    // ioctl-able by any process of theirs that the sandbox lets through.
+    let (_tmp, wt, home) = dirs();
+    let text = render_profile(&profile(&wt, &home)).unwrap();
+    for line in text.lines().filter(|l| l.starts_with("(allow")) {
+        assert!(!line.contains("tty"), "terminal allowed: {line}");
+        // Neither runtime needs an ioctl on a path (verified with `--version`, see
+        // `SandboxProfile::read_allow_extra`), so none is allowed.
+        assert!(!line.contains("file-ioctl"), "ioctl allowed: {line}");
+    }
+    assert!(text.contains("(deny file-read* file-write* file-ioctl (regex #\"^/dev/tty\"))"));
+}
+
+#[test]
+fn agent_config_names_are_denied_case_insensitively_under_the_worktree() {
+    // Seatbelt on this machine already folds case for subpath rules on a case-insensitive
+    // volume (sandbox_live::case_variants_of_agent_config_are_denied passes either way); the
+    // profile does not rely on that undocumented behaviour.
+    let tmp = tempfile::tempdir().unwrap();
+    let wt = tmp.path().join("c++.x (1) [y] a b");
+    let home = tmp.path().join("home");
+    fs::create_dir(&wt).unwrap();
+    fs::create_dir(&home).unwrap();
+    let p = profile(&wt, &home);
+
+    let text = render_profile(&p).unwrap();
+    for class in [
+        "\\\\.[gG][iI][tT]",
+        "\\\\.[cC][lL][aA][uU][dD][eE]",
+        "\\\\.[mM][cC][pP]\\\\.[jJ][sS][oO][nN]",
+        "\\\\.[cC][oO][dD][eE][xX]",
+        "\\\\.[aA][gG][eE][nN][tT][sS]",
+        "\\\\.[cC][uU][rR][sS][oO][rR]",
+    ] {
+        let rule = format!(
+            "(deny file-read* file-write* (regex (string-append \"^\" (param \"WT_RE\") \"/{class}(/|$)\")))"
+        );
+        assert!(text.contains(&rule), "missing {rule}\n{text}");
+    }
+
+    let wrapped = wrap(&p, plan()).unwrap();
+    let canonical = fs::canonicalize(&wt).unwrap();
+    let escaped: String = canonical
+        .to_str()
+        .unwrap()
+        .chars()
+        .flat_map(|c| {
+            let meta = "\\.+*?()|[]{}^$".contains(c);
+            meta.then_some('\\').into_iter().chain([c])
+        })
+        .collect();
+    assert_eq!(param(&wrapped.argv, "WT_RE"), Some(escaped.as_str()));
+    assert!(escaped.contains("c\\+\\+\\.x \\(1\\) \\[y\\] a b"));
 }
 
 #[test]
