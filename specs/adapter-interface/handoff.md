@@ -160,8 +160,7 @@ recorded them; it did not mark T2 complete or approve any transition.
 
 ## Exact next action
 
-Review the conflict-free follow-up branch and its supported-host CI, then request the
-T2 -> T3 transition through the external approval ledger for the decisions already
+Request the T2 -> T3 transition through the external approval ledger for the decisions already
 recorded in requirements.md "T2 decisions". T3 starts by refactoring `harness/local`
 into shared modules (D2). This handoff grants no task-phase approval.
 
@@ -183,5 +182,7 @@ into shared modules (D2). This handoff grants no task-phase approval.
   (expected `/worker failed/`, received the Linux-only error). These inherited Linux
   execution tests are not represented as passing locally. Supported Linux CI is required
   on the published integration; future adapter/Kiro suites remain unexecuted.
-- Exact next action: external agent reviews the integrated packet and conflict resolution,
-  then the owner checks current Linux CI and chooses how to update or replace PR 9.
+- External review, 2026-11-10: the integrated packet and conflict resolution were reviewed
+  against PR 9; no credential or evidence rule was weakened. Linux `verify` passed on
+  `55a35ef`. The owner chose to merge this branch (PR 15) and close PR 9 as superseded.
+  The single next action is the "Exact next action" section above.
