@@ -397,8 +397,8 @@ Each step names its proof. Steps marked ∥ can run in parallel worktrees once `
    command returns the same receipt.
 4. ∥ `harness-exec`, macOS only. Proof: process-kill, lock and regression cases ported from
    the pilot (whose originals run only on Linux, in CI); macOS denial probes.
-5. ∥ `harness-adapters`. Proof: parsers against transcripts recorded from real runs,
-   including truncated lines.
+5. ∥ `harness-adapters`. Proof: parsers against screened synthetic fixtures reconstructed
+   from reviewed event shapes, including truncated-line cases (section 11; plan Task 11).
 6. `harness-engine`. Proof: kill the engine at each effect state; outcomes match 5.4.
 7. `harness` CLI: `eng task new`, `run`, `status`, `cancel`, `decide`, `audit verify`,
    `doctor`. Proof: full flow with fake agents, then one supervised real run.

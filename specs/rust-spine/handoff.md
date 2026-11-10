@@ -28,6 +28,10 @@
 | Canonicalisation required every optional deny target to exist. | Resolve missing deny targets through their nearest existing ancestor, preserving the deny; keep required-root and other resolution failures fatal. | R-9; design §6.1; research `1a-macos-sandbox.md` §1 |
 | A live probe requested real login/Keychain values and then saved transcripts as fixtures. | Use synthetic non-secret canaries with readability status only, retain real credential accessibility as UNVERIFIED, and reconstruct screened synthetic fixtures. | Design §4 decision 6, §§6.3, 11; `docs/security/data-egress.md` |
 
+Independent review follow-up: design §10's parser proof now requires the same screened
+synthetic fixtures reconstructed from reviewed event shapes, including truncated-line
+cases, as design §11 and plan Task 11.
+
 ## Tests run and results
 
 | Command | Result | Evidence |
