@@ -25,17 +25,52 @@ pub fn resolve_config(state_dir: PathBuf) -> Result<EngineConfig, EngineError> {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let get = |k: &str| std::env::var_os(k);
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("eng"));
+    let codex_bin =
+        pick(get(ENV_CODEX).as_deref(), "codex", &path).unwrap_or_else(|_| PathBuf::from("codex"));
+    let node_bin = node_for_codex(
+        &codex_bin,
+        pick(get(ENV_NODE).as_deref(), "node", &path).ok(),
+    );
+    // The sandbox resolver rejects relative paths, so a relative `--state-dir` is anchored here.
+    let state_dir = std::path::absolute(&state_dir)?;
     Ok(EngineConfig {
         state_dir,
         claude_bin: pick(get(ENV_CLAUDE).as_deref(), "claude", &path)
             .unwrap_or_else(|_| PathBuf::from("claude")),
-        codex_bin: pick(get(ENV_CODEX).as_deref(), "codex", &path)
-            .unwrap_or_else(|_| PathBuf::from("codex")),
-        node_bin: pick(get(ENV_NODE).as_deref(), "node", &path).ok(),
+        codex_bin,
+        node_bin,
         shim_bin: shim_path(get(ENV_SHIM).as_deref(), &exe),
         extra_read_dirs: extra_read_dirs(get(ENV_EXTRA_READ).as_deref())
             .map_err(EngineError::Workspace)?,
     })
+}
+
+/// `node` only when Codex's entry point is a JavaScript file (a `.js`/`.mjs`/`.cjs` extension,
+/// or a first line `#!` naming `node`); a native binary or a shell wrapper is run directly.
+fn node_for_codex(codex: &Path, node: Option<PathBuf>) -> Option<PathBuf> {
+    node.filter(|_| is_js_entry(codex))
+}
+
+fn is_js_entry(path: &Path) -> bool {
+    use std::io::Read as _;
+    if path
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|e| matches!(e, "js" | "mjs" | "cjs"))
+    {
+        return true;
+    }
+    let mut head = [0u8; 256];
+    let Ok(n) = std::fs::File::open(path).and_then(|mut f| f.read(&mut head)) else {
+        return false;
+    };
+    let line = head[..n].split(|b| *b == b'\n').next().unwrap_or_default();
+    let Some(rest) = line.strip_prefix(b"#!") else {
+        return false;
+    };
+    String::from_utf8_lossy(rest)
+        .split_whitespace()
+        .any(|w| w.rsplit('/').next() == Some("node"))
 }
 
 /// Fails with the first runtime that [`resolve_config`] could not find.
@@ -179,5 +214,41 @@ mod tests {
         );
         cfg.codex_bin = "/real/codex".into();
         assert_eq!(require_runtimes(&cfg), Ok(()));
+    }
+
+    fn write(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
+        let p = dir.join(name);
+        std::fs::write(&p, bytes).unwrap_or_default();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap_or_default();
+        p
+    }
+
+    #[test]
+    fn node_is_used_only_for_a_javascript_codex() {
+        let d = tmp("node");
+        let node = Some(PathBuf::from("/real/node"));
+        let js = write(&d, "codex.js", b"console.log(1)\n");
+        assert_eq!(node_for_codex(&js, node.clone()), node);
+        let env_node = write(&d, "codex-env", b"#!/usr/bin/env node\nrequire('x')\n");
+        assert_eq!(node_for_codex(&env_node, node.clone()), node);
+        let native = write(
+            &d,
+            "codex-native",
+            b"\xcf\xfa\xed\xfe\x07\x00\x00\x01 binary",
+        );
+        assert_eq!(node_for_codex(&native, node.clone()), None);
+        let sh = write(&d, "codex-sh", b"#!/bin/sh\nexec /opt/codex \"$@\"\n");
+        assert_eq!(node_for_codex(&sh, node.clone()), None);
+        // A bare, unresolved name has nothing to read.
+        assert_eq!(node_for_codex(Path::new("codex"), node), None);
+    }
+
+    #[test]
+    fn relative_state_dir_becomes_absolute() {
+        let cfg = resolve_config(PathBuf::from("./eng-state-relative"))
+            .unwrap_or_else(|e| panic!("resolve: {e}"));
+        assert!(cfg.state_dir.is_absolute());
+        assert!(cfg.state_dir.ends_with("eng-state-relative"));
+        assert!(!cfg.state_dir.exists());
     }
 }

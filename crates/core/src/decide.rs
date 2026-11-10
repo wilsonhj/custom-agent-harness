@@ -400,6 +400,15 @@ fn stop_of(spec: &EffectSpec, outcome: &EffectOutcome) -> Option<Stop> {
     }
 }
 
+/// Whether a verify outcome means the check itself failed. An interrupted verify (lost on
+/// restart, limit, cancel) says nothing about the check: its retry decides.
+fn check_failed(outcome: &EffectOutcome) -> bool {
+    matches!(
+        outcome.run(),
+        RunOutcome::Failed { code } if *code != FailureCode::LostOnRestart
+    )
+}
+
 /// Builds a decision, handing out effect ids in order. Running out does not stop the build;
 /// `finish` then reports how many were needed.
 struct Out<'a> {
@@ -760,7 +769,7 @@ fn effect_outcome(
             }
         }
         (EffectSpec::Verify { .. }, EffectOutcome::Verify { evidence: e, .. }) => {
-            verify_failed |= !succeeded;
+            verify_failed |= check_failed(outcome);
             evidence.push(e.clone());
             out.event(Event::VerificationFinished {
                 effect: effect.clone(),
@@ -987,6 +996,9 @@ pub fn apply(task: Option<Task>, event: &Envelope<Event>) -> Result<Task, Corrup
             if batch_done {
                 t.run = StageRunState::Pending;
             }
+            if matches!(spec, EffectSpec::Verify { .. }) {
+                t.progress.verify_failed |= check_failed(outcome);
+            }
             let stop = stop_of(&spec, outcome);
             if let Some(Stop::Gate { .. }) = stop {
                 t.progress.retry.push(spec);
@@ -1005,11 +1017,10 @@ pub fn apply(task: Option<Task>, event: &Envelope<Event>) -> Result<Task, Corrup
                 commit: commit.clone(),
             });
         }
-        Event::VerificationFinished {
-            passed, evidence, ..
-        } => {
+        Event::VerificationFinished { evidence, .. } => {
+            // `passed` is not folded: whether the check failed comes from the effect's
+            // outcome (`EffectFinished`), so an interrupted verify cannot taint the round.
             t.progress.evidence.push(evidence.clone());
-            t.progress.verify_failed |= !passed;
         }
         Event::FindingsRecorded {
             review, blocking, ..

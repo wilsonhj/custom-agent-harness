@@ -627,3 +627,89 @@ async fn a_symlink_planted_at_the_worktree_path_is_refused() {
     );
     assert_eq!(tgit(&f.repo, &["status", "--porcelain"]), "");
 }
+
+/// R-10: the egress proxy's decisions are stored as harness evidence of the agent run.
+/// The agent makes two CONNECTs through the proxy that the policy denies (a host off the
+/// allowlist and an allowed host on port 80); a permitted CONNECT would dial the real host,
+/// which tests must not do, so the allowed-line format is covered by a unit test.
+#[tokio::test]
+async fn egress_decisions_are_stored_for_the_agent_run() {
+    let f = fixture();
+    let cfg = config(&f, "clean", "clean");
+    let bin = f.tmp.path().join("bin");
+    std::fs::write(
+        bin.join("connect.mjs"),
+        "import net from 'node:net';\n\
+         const u = new URL(process.env.HTTPS_PROXY);\n\
+         for (const t of ['evil.invalid:443', 'api.anthropic.com:80']) {\n\
+           await new Promise((done) => {\n\
+             const s = net.connect(Number(u.port), u.hostname, () => s.write(`CONNECT ${t} HTTP/1.1\\r\\nHost: ${t}\\r\\n\\r\\n`));\n\
+             s.on('data', () => s.destroy());\n\
+             s.on('close', done);\n\
+             s.on('error', done);\n\
+           });\n\
+         }\n",
+    )
+    .unwrap();
+    let script = std::fs::read_to_string(&cfg.claude_bin).unwrap();
+    let script = script.replacen(
+        "exec ",
+        &format!(
+            "'{}' '{}'\nexec ",
+            node().display(),
+            bin.join("connect.mjs").display()
+        ),
+        1,
+    );
+    std::fs::write(&cfg.claude_bin, script).unwrap();
+
+    let engine = Engine::open(cfg).await.unwrap();
+    let id = start_task(&engine, &f, &default_pipeline()).await;
+    let t = run(&engine, &id).await;
+    assert_eq!(t.checkpoints.len(), 1);
+
+    let mut seen = 0;
+    for e in events(&engine) {
+        let Event::EffectIntended {
+            spec: EffectSpec::AgentRun { effect, role, .. },
+        } = e
+        else {
+            continue;
+        };
+        let artifact = engine.egress_log(&effect).unwrap().unwrap();
+        let refs = engine.artifact_refs(&artifact).unwrap();
+        assert!(
+            refs.iter().any(|a| a.label == Provenance::HarnessEvidence
+                && a.produced_by.as_ref() == Some(&effect)),
+            "{refs:?}"
+        );
+        let text = String::from_utf8(engine.read_artifact(&artifact).unwrap()).unwrap();
+        let lines: Vec<serde_json::Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        if role == Role::Implementer {
+            let got: Vec<(String, u64, bool)> = lines
+                .iter()
+                .map(|l| {
+                    (
+                        l["host"].as_str().unwrap().to_owned(),
+                        l["port"].as_u64().unwrap(),
+                        l["allowed"].as_bool().unwrap(),
+                    )
+                })
+                .collect();
+            assert_eq!(
+                got,
+                [
+                    ("evil.invalid".to_owned(), 443, false),
+                    ("api.anthropic.com".to_owned(), 80, false),
+                ]
+            );
+        } else {
+            assert!(lines.is_empty(), "{lines:?}");
+        }
+        seen += 1;
+    }
+    assert!(seen >= 2, "implementer and reviewer runs: {seen}");
+}

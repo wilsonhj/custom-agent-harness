@@ -2,6 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const ALLOWED_EDGES = {
   'harness-cli': ['harness-engine', 'harness-core'],
@@ -13,7 +14,8 @@ const ALLOWED_EDGES = {
 };
 const FORBIDDEN_CORE_STRINGS = ['std::fs', 'std::process', 'SystemTime::now', 'rand::'];
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+// fileURLToPath decodes percent-escapes (a checkout path with a space); URL.pathname does not.
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const r = spawnSync('cargo', ['metadata', '--format-version', '1', '--no-deps'], {
   cwd: root,
   encoding: 'utf8',

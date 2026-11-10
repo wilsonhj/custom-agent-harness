@@ -15,7 +15,7 @@ use harness_core::lifecycle::TaskState;
 use harness_core::outcome::{FailureCode, RunOutcome};
 use harness_core::prompt::{PromptInput, build_prompt};
 use harness_core::types::{Actor, Envelope, Role, RuntimeKind, WIRE_VERSION};
-use harness_exec::egress::EgressProxy;
+use harness_exec::egress::{EgressDecision, EgressProxy};
 use harness_exec::hostgit::git;
 use harness_exec::sandbox_macos::{self, Network, SandboxProfile};
 use harness_exec::supervisor::{
@@ -119,6 +119,22 @@ pub(crate) fn launch_for(cfg: &EngineConfig, kind: RuntimeKind) -> Result<Launch
     Ok(Launch { prefix, read_dirs })
 }
 
+/// One JSON line per proxy decision, in the order made.
+fn egress_jsonl(decisions: &[EgressDecision]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for d in decisions {
+        let line = serde_json::json!({
+            "host": d.host,
+            "port": d.port,
+            "allowed": d.allowed,
+            "at_us": d.at_us,
+        });
+        out.extend_from_slice(line.to_string().as_bytes());
+        out.push(b'\n');
+    }
+    out
+}
+
 pub(crate) fn to_record(id: &ProcessIdentity) -> ProcessRecord {
     ProcessRecord {
         pgid: id.pgid,
@@ -141,6 +157,21 @@ fn private_dir(p: &Path) -> Result<(), EngineError> {
     fs::create_dir_all(p)?;
     fs::set_permissions(p, fs::Permissions::from_mode(0o700))?;
     Ok(())
+}
+
+/// The effect id as one path component, or `Corrupt`.
+fn path_component(effect: &EffectId) -> Result<&str, EngineError> {
+    let e = effect.as_str();
+    if e.is_empty()
+        || !e
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return Err(EngineError::Corrupt(format!(
+            "effect id {e:?} is not a path component"
+        )));
+    }
+    Ok(e)
 }
 
 fn ws_error(e: workspace::WorkspaceError) -> EngineError {
@@ -247,19 +278,70 @@ impl Engine {
         Ok(home)
     }
 
+    /// `<task dir>/egress/<effect>`: names the egress-log artifact of one agent run. Inside
+    /// the denied state directory, so a run cannot touch it.
+    fn egress_pointer(&self, task: &TaskId, effect: &EffectId) -> Result<PathBuf, EngineError> {
+        Ok(self
+            .task_dir(task)?
+            .join("egress")
+            .join(path_component(effect)?))
+    }
+
+    /// Stops the egress proxy and stores its decisions (JSON lines; none is an empty artifact)
+    /// as `HarnessEvidence` produced by the agent-run effect, so every path of a run leaves an
+    /// egress audit trail. Its id is kept where [`Engine::egress_log`] finds it.
+    async fn stop_proxy(
+        &self,
+        proxy: EgressProxy,
+        task: &TaskId,
+        effect: &EffectId,
+    ) -> Result<(), EngineError> {
+        let decisions = proxy.stop().await;
+        let id = self.store.put_artifact(
+            &egress_jsonl(&decisions),
+            MediaType::Jsonl,
+            Provenance::HarnessEvidence,
+            Some(effect),
+        )?;
+        let pointer = self.egress_pointer(task, effect)?;
+        if let Some(dir) = pointer.parent() {
+            private_dir(dir)?;
+        }
+        fs::write(pointer, id.as_str())?;
+        Ok(())
+    }
+
+    /// The egress log of an agent-run effect: the artifact holding the proxy's allow/deny
+    /// decisions as JSON lines (`host`, `port`, `allowed`, `at_us`). `None` if the run never
+    /// reached its proxy.
+    pub fn egress_log(&self, effect: &EffectId) -> Result<Option<ArtifactId>, EngineError> {
+        let Some(row) = self.store.effect(effect)? else {
+            return Ok(None);
+        };
+        let pointer = self.egress_pointer(&row.task, effect)?;
+        let Ok(text) = fs::read_to_string(pointer) else {
+            return Ok(None);
+        };
+        let id = ArtifactId::parse(text.trim())
+            .map_err(|e| EngineError::Corrupt(format!("egress pointer: {e}")))?;
+        if self
+            .store
+            .has_label(&id, Provenance::HarnessEvidence, Some(effect))?
+        {
+            Ok(Some(id))
+        } else {
+            Err(EngineError::Corrupt(format!(
+                "egress pointer {id} is not evidence of effect {effect}"
+            )))
+        }
+    }
+
     /// `<task dir>/verify/<effect>`: one verification's scratch area (its checkout and home).
     fn verify_scratch(&self, task: &TaskId, effect: &EffectId) -> Result<PathBuf, EngineError> {
-        let e = effect.as_str();
-        if e.is_empty()
-            || !e
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-        {
-            return Err(EngineError::Corrupt(format!(
-                "effect id {e:?} is not a path component"
-            )));
-        }
-        Ok(self.task_dir(task)?.join("verify").join(e))
+        Ok(self
+            .task_dir(task)?
+            .join("verify")
+            .join(path_component(effect)?))
     }
 
     /// Removes a verification scratch area and the repository's registration of its checkout.
@@ -800,7 +882,7 @@ impl Engine {
         let wrapped = match sandbox_macos::wrap(&profile, launch_plan) {
             Ok(w) => w,
             Err(_) => {
-                proxy.stop().await;
+                self.stop_proxy(proxy, &task.id, effect).await?;
                 return Ok(Finish::Outcome(fail(FailureCode::SpawnError)?));
             }
         };
@@ -818,7 +900,7 @@ impl Engine {
             {
                 Ok(c) => c,
                 Err(code) => {
-                    proxy.stop().await;
+                    self.stop_proxy(proxy, &task.id, effect).await?;
                     return Ok(Finish::Outcome(fail(code)?));
                 }
             };
@@ -828,11 +910,14 @@ impl Engine {
         let transcript_bytes = std::mem::take(&mut sink.stdout);
         let stderr = std::mem::take(&mut sink.stderr);
         drop(sink);
-        proxy.stop().await;
+        // Stored before the kill result is looked at, so a stuck run keeps its audit trail; a
+        // storing failure never hides a failed kill.
+        let logged = self.stop_proxy(proxy, &task.id, effect).await;
         let proof = match killed {
             Ok(proof) => proof,
             Err(_) => return Ok(Finish::Stuck),
         };
+        logged?;
         self.release(&task.id, &proof)?;
 
         let result = adapter.finish(state, exit.code);
@@ -1179,5 +1264,36 @@ mod tests {
         sorted.dedup();
         assert_eq!(sorted, ids);
         assert!(ids.iter().all(|i| i.len() == 26));
+    }
+
+    #[test]
+    fn egress_log_has_one_json_line_per_decision() {
+        let decisions = vec![
+            EgressDecision {
+                host: "api.anthropic.com".into(),
+                port: 443,
+                allowed: true,
+                at_us: 7,
+            },
+            EgressDecision {
+                host: "evil.example".into(),
+                port: 443,
+                allowed: false,
+                at_us: 8,
+            },
+        ];
+        let text = String::from_utf8(egress_jsonl(&decisions)).unwrap_or_default();
+        let lines: Vec<serde_json::Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap_or_default())
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                serde_json::json!({"host":"api.anthropic.com","port":443,"allowed":true,"at_us":7}),
+                serde_json::json!({"host":"evil.example","port":443,"allowed":false,"at_us":8}),
+            ]
+        );
+        assert!(egress_jsonl(&[]).is_empty());
     }
 }
