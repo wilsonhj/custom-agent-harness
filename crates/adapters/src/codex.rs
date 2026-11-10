@@ -79,6 +79,16 @@ impl RuntimeAdapter for CodexAdapter {
             s("--skip-git-repo-check"),
             s("-C"),
             path_str(&run.worktree)?,
+            // No AGENTS.md / AGENTS.override.md discovery: repository conventions
+            // reach the agent only through the harness prompt.
+            s("-c"),
+            s("project_doc_max_bytes=0"),
+            // No repository skill descriptions (`.agents/skills/*/SKILL.md`) in the prompt
+            // either. Not listed in `codex --help` for 0.166.0; verified offline with
+            // `codex debug prompt-input`. The sandbox also denies reads of `.agents`, so this
+            // is defence in depth; Task 11 rechecks it on the pinned version.
+            s("-c"),
+            s("skills.include_instructions=false"),
         ];
         if run.role == Role::Reviewer {
             let schema = run

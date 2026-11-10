@@ -104,6 +104,15 @@ impl RuntimeAdapter for ClaudeAdapter {
             s(r#"{"sandbox":{"enabled":false}}"#),
             s("--tools"),
             s(tools),
+            // `-p` cannot ask anyone: pre-approve exactly the role's tools and
+            // auto-deny everything else. Never bypassPermissions; the sandbox,
+            // not Claude, is the write boundary.
+            s("--allowedTools"),
+            s(tools),
+            s("--permission-mode"),
+            s("dontAsk"),
+            s("--permission-prompts"),
+            s("none"),
         ];
         if run.role == Role::Reviewer {
             // Claude takes the schema inline; the adapter cannot read `review_schema`.

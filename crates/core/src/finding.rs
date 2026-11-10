@@ -211,6 +211,74 @@ pub fn validate_review(
 }
 
 /// JSON Schema for [`RawReview`], handed to the reviewer runtime.
+///
+/// Shaped for OpenAI Structured Outputs in strict mode (what
+/// `codex exec --output-schema` uses), which Claude's `--json-schema` also
+/// accepts: `$ref`s are inlined, every object lists all its properties in
+/// `required` with `additionalProperties: false` (an `Option` field is
+/// required but nullable, `["<type>", "null"]`), and keywords strict mode
+/// refuses (`format`, `minimum`, `$schema`, ...) are dropped. The lost bounds
+/// are enforced by [`validate_review`].
 pub fn review_json_schema() -> serde_json::Value {
-    schemars::schema_for!(RawReview).to_value()
+    let mut root = schemars::schema_for!(RawReview).to_value();
+    let defs = root
+        .as_object_mut()
+        .and_then(|o| o.remove("$defs"))
+        .unwrap_or_default();
+    strict(&root, &defs)
+}
+
+const STRICT_KEYWORDS: [&str; 9] = [
+    "type",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+    "enum",
+    "anyOf",
+    "description",
+    "title",
+];
+
+fn strict(node: &serde_json::Value, defs: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    let Some(obj) = node.as_object() else {
+        return node.clone();
+    };
+    if let Some(name) = obj
+        .get("$ref")
+        .and_then(Value::as_str)
+        .and_then(|r| r.strip_prefix("#/$defs/"))
+    {
+        return strict(&defs[name], defs);
+    }
+    let mut out = serde_json::Map::new();
+    for (k, v) in obj {
+        let v = match k.as_str() {
+            "properties" => Value::Object(
+                v.as_object()
+                    .into_iter()
+                    .flatten()
+                    .map(|(name, s)| (name.clone(), strict(s, defs)))
+                    .collect(),
+            ),
+            "items" => strict(v, defs),
+            "anyOf" => Value::Array(
+                v.as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|s| strict(s, defs))
+                    .collect(),
+            ),
+            k if STRICT_KEYWORDS.contains(&k) => v.clone(),
+            _ => continue,
+        };
+        out.insert(k.clone(), v);
+    }
+    if let Some(Value::Object(props)) = out.get("properties") {
+        let all = props.keys().cloned().map(Value::String).collect();
+        out.insert("required".into(), Value::Array(all));
+        out.insert("additionalProperties".into(), Value::Bool(false));
+    }
+    Value::Object(out)
 }
