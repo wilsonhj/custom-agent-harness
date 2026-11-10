@@ -429,6 +429,44 @@ async fn nested_repo_or_gitlink_is_git_metadata_touched() {
 }
 
 #[tokio::test]
+async fn agent_config_names_at_the_root_fail_the_scan_in_any_spelling() {
+    let f = fixture();
+    // `.agentſ` (U+017F folds to "s") may alias `.agents` on APFS; ASCII case variants too.
+    // `.gİt` (U+0130) is folded conservatively to `.git`.
+    for (i, name) in [
+        ".agent\u{17F}",
+        ".CLAUDE",
+        ".Codex",
+        ".MCP.json",
+        ".g\u{130}t",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let ws = workspace(&f, &format!("t-alias-{i}")).await;
+        write(&ws.path.join(name).join("settings.json"), "{}\n");
+        assert_eq!(
+            scan(&ws).await,
+            Err(FailureCode::GitMetadataTouched),
+            "{name:?} at the root passed the scan"
+        );
+    }
+    // Only exact folds alias: Kelvin sign folds to `k`, not `c`. A plain file is refused too.
+    let ws = workspace(&f, "t-alias-file").await;
+    write(&ws.path.join(".\u{212A}ursor"), "x\n");
+    assert_eq!(scan(&ws).await, Ok(()), "`.Kursor` is not `.cursor`");
+    write(&ws.path.join(".mcp.json"), "{}\n");
+    assert_eq!(scan(&ws).await, Err(FailureCode::GitMetadataTouched));
+
+    // Below the root, or a different name, is fine; so is the worktree's own `.git` link.
+    let ws = workspace(&f, "t-alias-ok").await;
+    write(&ws.path.join("docs/.claude/settings.json"), "{}\n");
+    write(&ws.path.join("claude.md"), "# notes\n");
+    write(&ws.path.join(".agents-notes"), "x\n");
+    assert_eq!(scan(&ws).await, Ok(()));
+}
+
+#[tokio::test]
 async fn hidden_ref_is_not_pushed_by_default_refspec() {
     let f = fixture();
     let remote = f.base_dir.join("remote.git");

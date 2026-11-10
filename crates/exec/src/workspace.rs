@@ -146,13 +146,16 @@ pub fn encode_packet(files: &[(String, String)]) -> Vec<u8> {
 }
 
 /// `Err(GitMetadataTouched)` if the worktree holds a nested repository (any `.git` entry
-/// below the root, any letter case), a gitlink in its index, or a `.git` link that no longer
-/// points at this worktree's entry in the common dir. Run before any host Git reads the
-/// worktree; I/O errors fail closed with the same code.
+/// below the root, any letter case), a gitlink in its index, a `.git` link that no longer
+/// points at this worktree's entry in the common dir, or an entry directly under the root
+/// that aliases one of [`PROTECTED_ROOT_NAMES`] (see [`fold_to_ascii`]). Run before any host
+/// Git reads the worktree; I/O errors fail closed with the same code.
 pub async fn scan(ws: &Workspace) -> Result<(), FailureCode> {
     let owned = ws.clone();
     let clean = tokio::task::spawn_blocking(move || {
-        dot_git_is_ours(&owned) && no_nested_git(&owned.path, true)
+        dot_git_is_ours(&owned)
+            && no_nested_git(&owned.path, true)
+            && no_protected_root_name(&owned.path)
     })
     .await
     .unwrap_or(false);
@@ -402,6 +405,82 @@ fn dot_git_is_ours(ws: &Workspace) -> bool {
         let back = Path::new(back.trim_end_matches('\n'));
         std::fs::canonicalize(entry.join(back)).is_ok_and(|b| b == dot_git)
     })
+}
+
+/// Agent and Git configuration names the sandbox denies at the worktree root. The sandbox's
+/// case-insensitive deny rules match ASCII letters only, so a name that the file system may
+/// treat as the same name but spells differently must not exist at all.
+pub const PROTECTED_ROOT_NAMES: &[&str] = &[
+    ".git",
+    ".claude",
+    ".mcp.json",
+    ".codex",
+    ".agents",
+    ".cursor",
+];
+
+/// No entry directly under `root` whose name folds ([`fold_to_ascii`]) to one of
+/// [`PROTECTED_ROOT_NAMES`], except the worktree's own `.git` link (exactly `.git`, checked by
+/// [`dot_git_is_ours`]). Unreadable directories and non-UTF-8 names count as touched.
+fn no_protected_root_name(root: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return false;
+    };
+    for entry in entries {
+        let Ok(entry) = entry else { return false };
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            return false;
+        };
+        if name == ".git" {
+            continue;
+        }
+        if fold_to_ascii(name).is_some_and(|f| PROTECTED_ROOT_NAMES.contains(&f.as_str())) {
+            return false;
+        }
+    }
+    true
+}
+
+/// The name after NFC normalisation and full Unicode case folding, if that result is ASCII;
+/// `None` if it cannot be (then it cannot equal an ASCII name). Every protected name is ASCII,
+/// so only characters whose NFC form or full case fold (Unicode `CaseFolding.txt`, status C
+/// and F) is entirely ASCII matter; they are, besides ASCII itself:
+///
+/// - U+212A KELVIN SIGN: NFC is `K`, folds to `k`.
+/// - U+017F LATIN SMALL LETTER LONG S: folds to `s`.
+/// - U+00DF and U+1E9E (sharp s): fold to `ss`.
+/// - U+FB00..U+FB06 (Latin ligatures): fold to `ff`, `fi`, `fl`, `ffi`, `ffl`, `st`, `st`.
+/// - U+0130 (I with dot above) and U+0131 (dotless i): folded to `i`. Full folding gives
+///   U+0130 `i` + U+0307 and leaves U+0131 alone; the Turkic folding gives `i` and `ı`.
+///   Treating both as `i` over-rejects, which fails closed.
+///
+/// Every other non-ASCII character, combining marks included, leaves a non-ASCII character
+/// in the NFC + case-folded result, so the name cannot equal an ASCII name. Not covered,
+/// because APFS does not equate them: compatibility forms such as fullwidth letters (NFKC,
+/// not NFC) and default-ignorable characters such as U+200C (ignored by HFS+, not APFS).
+fn fold_to_ascii(name: &str) -> Option<String> {
+    let mut out = String::with_capacity(name.len());
+    for c in name.chars() {
+        if c.is_ascii() {
+            out.push(c.to_ascii_lowercase());
+            continue;
+        }
+        out.push_str(match c {
+            '\u{212A}' => "k",
+            '\u{017F}' => "s",
+            '\u{00DF}' | '\u{1E9E}' => "ss",
+            '\u{FB00}' => "ff",
+            '\u{FB01}' => "fi",
+            '\u{FB02}' => "fl",
+            '\u{FB03}' => "ffi",
+            '\u{FB04}' => "ffl",
+            '\u{FB05}' | '\u{FB06}' => "st",
+            '\u{0130}' | '\u{0131}' => "i",
+            _ => return None,
+        });
+    }
+    Some(out)
 }
 
 /// No entry named `.git` (any case) anywhere below `dir`, skipping only the root's own link.
