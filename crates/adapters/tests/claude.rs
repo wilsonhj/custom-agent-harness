@@ -89,6 +89,36 @@ fn claude_reviewer_has_no_shell_tool() {
 }
 
 #[test]
+fn claude_roles_preapprove_their_tools_and_auto_deny_the_rest() {
+    for (role, tools) in [
+        (Role::Implementer, "Bash,Read,Edit,Write,Grep,Glob"),
+        (Role::Reviewer, "Read,Grep,Glob"),
+    ] {
+        let p = plan(role);
+        assert_eq!(value_after(&p.argv, "--tools"), tools, "{role:?}");
+        assert_eq!(value_after(&p.argv, "--allowedTools"), tools, "{role:?}");
+        assert_eq!(value_after(&p.argv, "--permission-mode"), "dontAsk");
+        assert_eq!(value_after(&p.argv, "--permission-prompts"), "none");
+        assert_eq!(
+            p.argv.iter().filter(|a| *a == "--permission-mode").count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn claude_both_roles_disable_claude_md_discovery() {
+    for role in [Role::Implementer, Role::Reviewer] {
+        let p = plan(role);
+        assert!(
+            p.env
+                .contains(&("CLAUDE_CODE_DISABLE_CLAUDE_MDS".into(), "1".into())),
+            "{role:?}"
+        );
+    }
+}
+
+#[test]
 fn claude_ok_run_succeeds_with_session_and_usage() {
     let r = run("ok.jsonl", Role::Implementer, Some(0));
     assert_eq!(r.outcome, RunOutcome::Succeeded);

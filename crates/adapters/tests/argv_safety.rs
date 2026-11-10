@@ -28,6 +28,21 @@ fn no_adapter_argv_contains_a_forbidden_flag() {
                 max_turns: 5,
             };
             let plan = adapter_for(kind).plan(&spec).unwrap();
+            if kind == RuntimeKind::Claude {
+                // Unattended and never bypassing: anything outside --allowedTools is denied.
+                let i = plan
+                    .argv
+                    .iter()
+                    .position(|a| a == "--permission-mode")
+                    .expect("explicit permission mode");
+                assert_eq!(plan.argv[i + 1], "dontAsk", "{role:?}");
+                let j = plan
+                    .argv
+                    .iter()
+                    .position(|a| a == "--permission-prompts")
+                    .expect("explicit prompt policy");
+                assert_eq!(plan.argv[j + 1], "none", "{role:?}");
+            }
             for arg in &plan.argv {
                 for bad in FORBIDDEN {
                     assert!(

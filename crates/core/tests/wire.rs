@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used)]
+
 use std::collections::BTreeSet;
 
 use harness_core::artifact::Provenance;
@@ -326,15 +328,20 @@ fn deserialize_validates_hex_ids() {
     );
 }
 
+fn names(v: &serde_json::Value) -> BTreeSet<String> {
+    v.as_object()
+        .map(|o| o.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+fn finding_schema(schema: &serde_json::Value) -> &serde_json::Value {
+    &schema["properties"]["findings"]["items"]
+}
+
 #[test]
 fn review_schema_names_every_raw_finding_field() {
     let schema = review_json_schema();
-    let names = |v: &serde_json::Value| -> BTreeSet<String> {
-        v.as_object()
-            .map(|o| o.keys().cloned().collect())
-            .unwrap_or_default()
-    };
-    let finding_props = names(&schema["$defs"]["RawFinding"]["properties"]);
+    let finding_props = names(&finding_schema(&schema)["properties"]);
     let expected: BTreeSet<String> = [
         "severity",
         "category",
@@ -359,5 +366,125 @@ fn review_schema_names_every_raw_finding_field() {
         .collect();
     assert_eq!(review_props, expected_review);
     assert_eq!(schema["additionalProperties"], false);
-    assert_eq!(schema["$defs"]["RawFinding"]["additionalProperties"], false);
+    assert_eq!(finding_schema(&schema)["additionalProperties"], false);
+}
+
+/// Keywords OpenAI Structured Outputs (strict) accepts and this schema uses.
+/// Anything else (`format`, `minimum`, `$ref`, `$defs`, `$schema`, `oneOf`, ...)
+/// is refused so the schema works with `codex exec --output-schema`.
+const STRICT_KEYWORDS: [&str; 9] = [
+    "type",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+    "enum",
+    "anyOf",
+    "description",
+    "title",
+];
+
+/// Visits every subschema (not property names).
+fn walk(node: &serde_json::Value, visit: &mut dyn FnMut(&serde_json::Value)) {
+    visit(node);
+    if let Some(props) = node.get("properties").and_then(|p| p.as_object()) {
+        for v in props.values() {
+            walk(v, visit);
+        }
+    }
+    if let Some(items) = node.get("items") {
+        walk(items, visit);
+    }
+    if let Some(any) = node.get("anyOf").and_then(|a| a.as_array()) {
+        for v in any {
+            walk(v, visit);
+        }
+    }
+}
+
+#[test]
+fn review_schema_is_structured_outputs_strict() {
+    let schema = review_json_schema();
+    assert_eq!(schema["type"], "object");
+    let mut objects = 0;
+    walk(&schema, &mut |node| {
+        let obj = node.as_object().expect("every subschema is an object");
+        for k in obj.keys() {
+            assert!(
+                STRICT_KEYWORDS.contains(&k.as_str()),
+                "unsupported keyword {k:?} in {node}"
+            );
+        }
+        if obj.contains_key("properties") || node["type"] == "object" {
+            objects += 1;
+            let required: BTreeSet<String> = node["required"]
+                .as_array()
+                .expect("object lists required")
+                .iter()
+                .map(|v| v.as_str().expect("required is strings").to_owned())
+                .collect();
+            assert_eq!(required, names(&node["properties"]), "required in {node}");
+            assert_eq!(node["additionalProperties"], false, "in {node}");
+        }
+    });
+    assert_eq!(objects, 2, "RawReview and RawFinding");
+}
+
+fn allows_null(node: &serde_json::Value) -> bool {
+    let ty_null = |t: &serde_json::Value| {
+        t == "null" || t.as_array().is_some_and(|a| a.iter().any(|x| x == "null"))
+    };
+    ty_null(&node["type"])
+        || node["anyOf"]
+            .as_array()
+            .is_some_and(|a| a.iter().any(|s| ty_null(&s["type"])))
+}
+
+#[test]
+fn review_schema_marks_exactly_the_option_fields_nullable() {
+    let schema = review_json_schema();
+    let props = finding_schema(&schema)["properties"]
+        .as_object()
+        .expect("finding properties");
+    let nullable: BTreeSet<&str> = props
+        .iter()
+        .filter(|(_, v)| allows_null(v))
+        .map(|(k, _)| k.as_str())
+        .collect();
+    assert_eq!(
+        nullable,
+        BTreeSet::from(["file", "line_start", "line_end", "suggested_check"])
+    );
+    for (k, v) in schema["properties"].as_object().expect("review properties") {
+        assert!(!allows_null(v), "{k} must not be nullable");
+    }
+}
+
+#[test]
+fn review_with_explicit_nulls_parses_into_raw_review() {
+    let json = r#"{
+        "verdict": "changes_requested",
+        "summary": "s",
+        "findings": [{
+            "severity": "high",
+            "category": "tests",
+            "file": null,
+            "line_start": null,
+            "line_end": null,
+            "claim": "c",
+            "failure_scenario": "f",
+            "recommendation": "r",
+            "suggested_check": null,
+            "confidence": 0.5
+        }]
+    }"#;
+    let raw: RawReview = serde_json::from_str(json).expect("explicit nulls parse");
+    let f = &raw.findings[0];
+    assert_eq!(
+        (&f.file, f.line_start, f.line_end, &f.suggested_check),
+        (&None, None, None, &None)
+    );
+    let back: RawReview =
+        serde_json::from_value(serde_json::to_value(&raw).expect("serialize")).expect("parse");
+    assert_eq!(back, raw);
 }

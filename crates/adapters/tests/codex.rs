@@ -41,6 +41,21 @@ fn value_after<'a>(argv: &'a [String], flag: &str) -> &'a str {
 }
 
 #[test]
+fn codex_both_roles_disable_agents_md_discovery() {
+    for role in [Role::Implementer, Role::Reviewer] {
+        let p = plan(role);
+        let n = p
+            .argv
+            .windows(2)
+            .filter(|w| w[0] == "-c" && w[1] == "project_doc_max_bytes=0")
+            .count();
+        assert_eq!(n, 1, "{role:?}: {:?}", p.argv);
+        // Options, not part of the prompt: they precede the stdin marker.
+        assert_eq!(p.argv.last().map(String::as_str), Some("-"));
+    }
+}
+
+#[test]
 fn codex_reviewer_passes_output_schema_and_disables_own_sandbox() {
     let p = plan(Role::Reviewer);
     assert_eq!(&p.argv[..3], ["codex", "exec", "--json"]);

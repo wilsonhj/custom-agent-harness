@@ -79,6 +79,10 @@ impl RuntimeAdapter for CodexAdapter {
             s("--skip-git-repo-check"),
             s("-C"),
             path_str(&run.worktree)?,
+            // No AGENTS.md / AGENTS.override.md discovery: repository conventions
+            // reach the agent only through the harness prompt.
+            s("-c"),
+            s("project_doc_max_bytes=0"),
         ];
         if run.role == Role::Reviewer {
             let schema = run
