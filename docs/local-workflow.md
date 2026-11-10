@@ -1,3 +1,5 @@
+> This is the legacy Node pilot. The current flow is the Rust `eng` CLI: see the README Quick start.
+
 # Local evidence workflow (0.1 pilot)
 
 This implements the first local slice: packet -> isolated worker -> verification -> separate
