@@ -392,26 +392,34 @@ stdin is written from its own task and `EPIPE` is ignored.
   responsibility-disclaim cases need a synthetic native helper):
 
 ```rust
-#[tokio::test] async fn shim_runs_nothing_if_identity_callback_fails() { /* marker file absent */ }
-#[tokio::test] async fn deadline_kills_group_and_reports_deadline_exceeded() {}
-#[tokio::test] async fn detached_grandchild_is_killed_before_tree_gone() { /* child double-forks + setsid; its pid is dead when run() returns */ }
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn shim_runs_nothing_if_identity_callback_fails() { /* marker file absent */ }
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn deadline_kills_group_and_reports_deadline_exceeded() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn detached_grandchild_is_killed_before_tree_gone() { /* child double-forks + setsid; its pid is dead when run() returns */ }
 #[tokio::test] async fn unproved_descendant_containment_prevents_task_spawn() { /* task marker absent; SandboxUnavailable */ }
 #[tokio::test] async fn responsibility_disclaim_cannot_produce_false_tree_gone() { /* refuse before gate unless containment is established; otherwise confirm the helper is gone */ }
-#[tokio::test] async fn normal_task_exit_keeps_supervisor_alive_until_descendant_cleanup() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn normal_task_exit_keeps_supervisor_alive_until_descendant_cleanup() {}
 #[tokio::test] async fn tracking_error_or_cleanup_timeout_retains_lock_without_tree_gone() {}
-#[tokio::test] async fn output_cap_triggers_kill() { /* `yes` => OutputLimitExceeded */ }
-#[tokio::test] async fn oversized_line_is_a_failure_not_a_panic() {}
-#[tokio::test] async fn stderr_flood_does_not_deadlock() {}
-#[tokio::test] async fn cancel_token_yields_cancelled_exit() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn output_cap_triggers_kill() { /* `yes` => OutputLimitExceeded */ }
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn oversized_line_is_a_failure_not_a_panic() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn stderr_flood_does_not_deadlock() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn cancel_token_yields_cancelled_exit() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn supervisor_loss_during_run_yields_kill_failed_never_tree_gone_and_lock_is_retained() { /* supervisor lost mid-run => KillFailed, never TreeGone; lock retained */ }
 ```
 
-- [ ] **Step 2: Run.** `cargo test -p harness-exec --test supervisor`. Expected: FAIL.
+Tests that run now (no task process is spawned): `unproved_descendant_containment_prevents_task_spawn`,
+`responsibility_disclaim_cannot_produce_false_tree_gone` in its refuse-before-gate form, and
+`tracking_error_or_cleanup_timeout_retains_lock_without_tree_gone` driven without a spawn.
+Every test that needs a task process to actually run is execution-dependent: write and compile
+it, but mark it `#[ignore = "R-11: needs a containment backend"]` (as above) until a backend
+exists (T13); it must then be un-ignored and pass as part of that task.
+
+- [ ] **Step 2: Run.** `cargo test -p harness-exec --test supervisor`. Expected: the tests that run now FAIL; ignored tests are listed as ignored.
 - [ ] **Step 3: Implement.** Expose `pub fn descendant_tracking_available() -> bool` only as
   a capability check for containment satisfying the cases above, not symbol availability.
   `eng doctor` (Task 10), `spawn_gated` and recovery must fail closed when that capability
   cannot be established. Research §6's responsibility sweep is evidence of a limited probe,
   not evidence that arbitrary descendants cannot disclaim responsibility.
-- [ ] **Step 4: Run.** Expected: PASS, three consecutive times (`for i in 1 2 3; do cargo test -p harness-exec --test supervisor || break; done`).
+- [ ] **Step 4: Run.** Expected: PASS for the tests that run now (not the ignored execution-dependent ones), three consecutive times (`for i in 1 2 3; do cargo test -p harness-exec --test supervisor || break; done`).
 - [ ] **Step 5: Commit.** `git commit -am "feat(exec): gated spawn, bounded streams, process-tree kill with TreeGone proof"`
 
 ### Task 6: Exec — macOS sandbox and egress proxy
@@ -670,27 +678,35 @@ or unavailable containment retains the lock and stops recovery for the human (R-
 - [ ] **Step 2: Write the failing engine tests** (agents are `conformance/fixtures/fake-claude.mjs` and `fake-codex.mjs`, scripts that edit files and emit the Task 8 fixture formats, configured through `EngineConfig`):
 
 ```rust
-#[tokio::test] async fn clean_flow_stops_at_awaiting_human_with_one_checkpoint() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn clean_flow_stops_at_awaiting_human_with_one_checkpoint() {}
 #[tokio::test] async fn missing_or_unknown_class_denies_hosted_spawn() { /* PolicyDenied; fake-agent marker absent */ }
 #[tokio::test] async fn unauthorized_provider_or_unverified_baa_config_denies_spawn() {}
-#[tokio::test] async fn reviewed_any_provider_input_allows_explicitly_authorized_runtime() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn reviewed_any_provider_input_allows_explicitly_authorized_runtime() {}
 #[tokio::test] async fn derived_input_uses_most_restrictive_class_before_spawn() {}
-#[tokio::test] async fn secret_bearing_output_is_not_retained_as_an_artifact() { /* synthetic canary only */ }
-#[tokio::test] async fn blocking_finding_runs_two_repair_rounds_then_stops() {}
-#[tokio::test] async fn failing_verify_command_triggers_repair_without_review() {}
-#[tokio::test] async fn agent_that_writes_a_token_fails_with_secret_in_diff() {}
-#[tokio::test] async fn accept_moves_to_verified_and_creates_branch_harness_task_id() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn secret_bearing_output_is_not_retained_as_an_artifact() { /* synthetic canary only */ }
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn blocking_finding_runs_two_repair_rounds_then_stops() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn failing_verify_command_triggers_repair_without_review() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn agent_that_writes_a_token_fails_with_secret_in_diff() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn accept_moves_to_verified_and_creates_branch_harness_task_id() {}
 // recovery.rs — kill -9 a child engine process at a named failpoint, reopen, assert
-#[tokio::test] async fn crash_in_starting_reruns_effect_and_nothing_ran_twice() {}
-#[tokio::test] async fn crash_during_agent_run_gives_lost_on_restart_and_reset_worktree() {}
-#[tokio::test] async fn crash_during_verify_retries_once() {}
-#[tokio::test] async fn crash_during_checkpoint_yields_same_commit_sha() {}
-#[tokio::test] async fn lock_is_not_released_while_orphan_is_alive() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn crash_in_starting_reruns_effect_and_nothing_ran_twice() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn crash_during_agent_run_gives_lost_on_restart_and_resets_worktree_only_after_tree_gone() { /* no TreeGone => worktree and lock retained; stop for the human */ }
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn crash_during_verify_retries_once() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn crash_during_checkpoint_yields_same_commit_sha() {}
+#[tokio::test] #[ignore = "R-11: needs a containment backend"] async fn lock_is_not_released_while_orphan_is_alive() {}
 ```
+
+Run now: all store tests and the policy-denial engine tests that refuse before spawn
+(`missing_or_unknown_class_denies_hosted_spawn`, `unauthorized_provider_or_unverified_baa_config_denies_spawn`,
+`derived_input_uses_most_restrictive_class_before_spawn`). Execution-dependent (marked
+`#[ignore = "R-11: needs a containment backend"]`, written and compiled): every engine and
+recovery test that needs a running agent, verify command or live orphan, i.e. the rest of the
+engine list above, including the crash-during-agent-run test, which resets the worktree only
+once `TreeGone` exists and otherwise retains the worktree and lock and stops for the human (R-5, R-11).
 
 - [ ] **Step 3: Run.** `cargo test -p harness-store -p harness-engine`. Expected: FAIL.
 - [ ] **Step 4: Implement store, then engine.**
-- [ ] **Step 5: Run.** `cargo test --workspace && node scripts/check-deps.mjs`. Expected: PASS.
+- [ ] **Step 5: Run.** `cargo test --workspace && node scripts/check-deps.mjs`. Expected: PASS for the tests that run now; execution-dependent tests are reported as ignored.
 - [ ] **Step 6: Commit.** `git commit -am "feat: durable store and engine loop with restart recovery"`
 
 ### Task 10: CLI, doctor and conformance flow
@@ -718,16 +734,17 @@ eng login claude|codex                       execs the official CLI's login with
 `eng decide` refuses unless stdin is a terminal and prints the digest or commit and waits for the typed word `yes`; `--json` output is one object per command with `ok`, `task`, `state`, `error` fields. Exit codes: `0` ok, `2` usage, `3` rejected by policy, `4` awaiting human, `5` failed, `70` internal.
 
 - [ ] **Step 1: Write the failing conformance cases** (Node `node:test`, spawning `$ENG_BIN` with a temp `--state-dir`, fake agents on `PATH` via `ENG_CLAUDE_BIN`/`ENG_CODEX_BIN`):
-  - `flow.test.mjs`: new → approve-spec → run exits `4` with `gate: "review_clean"`; `status --json` lists one checkpoint; `refs/harness/tasks/<id>/cp/1` exists; no branch moved.
+  - `flow.test.mjs`: new → approve-spec → run exits `4` with `gate: "review_clean"`; `status --json` lists one checkpoint; `refs/harness/tasks/<id>/cp/1` exists; no branch moved. Execution-dependent: written and compiled, but skipped (`{ skip: "R-11: needs a containment backend" }`).
   - `flow.test.mjs`: `run` before `approve-spec` exits `3`.
   - `flow.test.mjs`: with `ENG_FORCE_SANDBOX_UNAVAILABLE=1` (honoured only in debug builds), `run` exits `5` with `error: "sandbox_unavailable"` and no agent process was started.
-  - `decide.test.mjs`: `decide accept` with stdin not a terminal exits `3`; with a pseudo-terminal and `yes` the state is `verified` and branch `harness/<id>` exists.
-  - `audit.test.mjs`: after a flow, `audit verify` exits `0`; after flipping one byte in `state.db` events body via `sqlite3`, it exits `5`.
+  - `decide.test.mjs`: `decide accept` with stdin not a terminal exits `3`; with a pseudo-terminal and `yes` the state is `verified` and branch `harness/<id>` exists. Execution-dependent: written and compiled, but skipped (`{ skip: "R-11: needs a containment backend" }`).
+  - `audit.test.mjs`: after a flow, `audit verify` exits `0`; after flipping one byte in `state.db` events body via `sqlite3`, it exits `5`. Execution-dependent: written and compiled, but skipped (`{ skip: "R-11: needs a containment backend" }`).
   - `doctor.test.mjs`: with a fake `claude` printing version `9.9.9`, `doctor` exits non-zero and names `version_mismatch`.
+  - Run now: the `run`-before-`approve-spec` case, the `ENG_FORCE_SANDBOX_UNAVAILABLE=1` case and the `doctor.test.mjs` case (until a backend exists `eng doctor` exits non-zero anyway, so the version-mismatch case must assert that `version_mismatch` is named). The other cases need a running agent and are execution-dependent as marked.
 - [ ] **Step 2: Run.** `cargo build -p harness-cli && ENG_BIN=target/debug/eng npm run conformance`. Expected: FAIL.
 - [ ] **Step 3: Implement the CLI** as argument parsing plus calls into `Engine`; no logic beyond formatting and the terminal check.
-- [ ] **Step 4: Run.** Same command, then `cargo test --workspace`. Expected: PASS.
-- [ ] **Step 5: Update the packet.** Fill `specs/rust-spine/handoff.md` with base and head SHA, commands run and results, and the exact next action "Owner: run Task 11 with the architect".
+- [ ] **Step 4: Run.** Same command, then `cargo test --workspace`. Expected: PASS for the cases that run now; skipped and ignored execution-dependent cases are reported as such.
+- [ ] **Step 5: Update the packet.** Fill `specs/rust-spine/handoff.md` with base and head SHA, commands run and results, and the exact next action "Owner: run Task 11 with the architect once the R-11 containment backend (T13) exists".
 - [ ] **Step 6: Commit.** `git commit -am "feat(cli): eng commands, doctor, conformance flow; docs"`
 
 ### Task 11: Live tests and the first real run (owner present)
@@ -736,7 +753,7 @@ eng login claude|codex                       execs the official CLI's login with
 - Modify: `crates/adapters/fixtures/**` (reconstruct synthetic fixtures from validated event shapes), `crates/adapters/src/{claude,codex}.rs` (only where those shapes contradict the provisional format), `specs/rust-spine/handoff.md`
 
 **Interfaces:**
-- Consumes: the built `eng`. Each authenticated step needs the owner's explicit go-ahead
+- Consumes: the built `eng`. **All live steps below are blocked until the R-11 containment backend (T13) exists**: they start task processes, and `eng doctor` cannot exit 0 without it. Each authenticated step needs the owner's explicit go-ahead
   and design §9 project/provider authorization; R-11 containment must be established first.
   Use only synthetic non-secret repository content for probes. Design acceptance alone
   does not authorize credential inspection or project disclosure (design §14).
