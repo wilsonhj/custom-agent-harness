@@ -700,6 +700,93 @@ fn lost_on_restart_agent_run_stops_for_human() {
     assert_eq!(d.effects.len(), 1);
 }
 
+/// Reaches the verify batch of the first round (two commands) with the checkpoint done.
+fn at_verify() -> (Sim, Vec<EffectSpec>) {
+    let mut sim = Sim::new();
+    sim.approved();
+    ok(sim.run());
+    sim.implemented();
+    let specs = sim.checkpointed(&sha(2));
+    assert_eq!(specs.len(), 2);
+    (sim, specs)
+}
+
+fn verify_outcome(sim: &mut Sim, spec: &EffectSpec, run: RunOutcome, chunks: Option<u32>) {
+    ok(sim.outcome(
+        spec.effect(),
+        EffectOutcome::Verify {
+            outcome: run,
+            evidence: art(&format!("verify-{}", spec.effect().as_str())),
+        },
+        None,
+        chunks,
+    ));
+}
+
+const LOST: RunOutcome = RunOutcome::Failed {
+    code: FailureCode::LostOnRestart,
+};
+
+#[test]
+fn lost_verify_is_not_a_failed_check_and_the_retry_decides() {
+    let (mut sim, specs) = at_verify();
+    verify_outcome(&mut sim, &specs[0], RunOutcome::Succeeded, Some(1));
+    verify_outcome(&mut sim, &specs[1], LOST, Some(1));
+    assert_eq!(gate(sim.task()), Some(HumanGate::LostOnRestart));
+    assert!(!sim.task().progress.verify_failed);
+    let d = ok(sim.run());
+    assert_eq!(d.effects.len(), 1);
+    verify_outcome(&mut sim, &d.effects[0], RunOutcome::Succeeded, Some(1));
+    // Review starts; no repair round is spent.
+    assert_eq!(sim.task().round, 0);
+    assert_eq!(sim.task().state, TaskState::Reviewing);
+    assert!(matches!(
+        sim.in_flight().as_slice(),
+        [EffectSpec::AgentRun {
+            role: Role::Reviewer,
+            ..
+        }]
+    ));
+}
+
+#[test]
+fn lost_verify_whose_retry_fails_goes_to_repair() {
+    let (mut sim, specs) = at_verify();
+    verify_outcome(&mut sim, &specs[0], RunOutcome::Succeeded, Some(1));
+    verify_outcome(&mut sim, &specs[1], LOST, Some(1));
+    let d = ok(sim.run());
+    verify_outcome(
+        &mut sim,
+        &d.effects[0],
+        RunOutcome::Failed {
+            code: FailureCode::ExitNonzero,
+        },
+        Some(1),
+    );
+    assert_eq!(sim.task().state, TaskState::Repair);
+    assert_eq!(sim.task().round, 1);
+}
+
+#[test]
+fn genuine_verify_failure_survives_a_lost_sibling_and_its_retry() {
+    let (mut sim, specs) = at_verify();
+    verify_outcome(
+        &mut sim,
+        &specs[0],
+        RunOutcome::Failed {
+            code: FailureCode::ExitNonzero,
+        },
+        Some(1),
+    );
+    verify_outcome(&mut sim, &specs[1], LOST, Some(1));
+    assert!(sim.task().progress.verify_failed);
+    let d = ok(sim.run());
+    verify_outcome(&mut sim, &d.effects[0], RunOutcome::Succeeded, Some(1));
+    // The first command genuinely failed, so the round still goes to repair.
+    assert_eq!(sim.task().state, TaskState::Repair);
+    assert_eq!(sim.task().round, 1);
+}
+
 #[test]
 fn other_agent_failure_fails_the_task() {
     let mut sim = Sim::new();

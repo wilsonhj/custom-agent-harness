@@ -447,6 +447,89 @@ fn p4(_: &Sim) -> Result<(), String> {
     Ok(())
 }
 
+/// A verify lost on restart, a human `Run`, and a passing retry reach review, not repair
+/// (P5). `lost` picks which of the two commands is lost; `chunks` is the diff size.
+fn lost_verify_then_passing_retry(lost: usize, chunks: u32) -> Result<(), String> {
+    let mut sim = Sim::new()?;
+    sim.create()?;
+    sim.decision(DecisionKind::ApproveSpec, Subject::PacketDigest(packet()))?;
+    sim.run(4)?;
+    let in_flight = |sim: &Sim| -> Result<Vec<EffectSpec>, String> {
+        sim.task
+            .as_ref()
+            .map(|t| t.progress.in_flight.clone())
+            .ok_or_else(|| "no task".to_string())
+    };
+    let finish = |sim: &mut Sim, spec: &EffectSpec, run: RunOutcome, chunks: Option<u32>| {
+        let effect = spec.effect().clone();
+        let outcome = match spec {
+            EffectSpec::Verify { .. } => EffectOutcome::Verify {
+                outcome: run,
+                evidence: art(&format!("v-{}", effect.as_str())),
+            },
+            EffectSpec::Checkpoint { .. } => EffectOutcome::Checkpoint {
+                outcome: run,
+                commit: Some(sha(2)?),
+                diff: Some(art("diff")),
+            },
+            EffectSpec::AgentRun { .. } => EffectOutcome::AgentRun {
+                outcome: run,
+                transcript: art("t"),
+                review: None,
+            },
+        };
+        let cmd = Command::RecordEffectOutcome {
+            effect: effect.clone(),
+            outcome,
+        };
+        sim.submit(Actor::Effect { effect }, cmd, None, chunks, 4)
+    };
+    let implementer = in_flight(&sim)?;
+    finish(&mut sim, &implementer[0], RunOutcome::Succeeded, None)?;
+    let checkpoint = in_flight(&sim)?;
+    finish(&mut sim, &checkpoint[0], RunOutcome::Succeeded, None)?;
+    let verifies = in_flight(&sim)?;
+    for (i, spec) in verifies.iter().enumerate() {
+        let run = if i == lost {
+            RunOutcome::Failed {
+                code: FailureCode::LostOnRestart,
+            }
+        } else {
+            RunOutcome::Succeeded
+        };
+        finish(&mut sim, spec, run, Some(chunks))?;
+    }
+    sim.run(4)?;
+    let retry = in_flight(&sim)?;
+    if retry.len() != 1 {
+        return Err(format!("expected one retried verify, got {}", retry.len()));
+    }
+    finish(&mut sim, &retry[0], RunOutcome::Succeeded, Some(chunks))?;
+    let task = sim.task.as_ref().ok_or("no task")?;
+    let repaired = sim
+        .events()
+        .any(|e| matches!(e, Event::RepairRoundStarted { .. }));
+    if repaired || task.round != 0 {
+        return Err("a lost verify with a passing retry started a repair round".into());
+    }
+    let reviewing = task.state == TaskState::Reviewing
+        && !task.progress.in_flight.is_empty()
+        && task.progress.in_flight.iter().all(|s| {
+            matches!(
+                s,
+                EffectSpec::AgentRun {
+                    role: Role::Reviewer,
+                    ..
+                }
+            )
+        });
+    if reviewing {
+        Ok(())
+    } else {
+        Err(format!("expected review, got state {:?}", task.state))
+    }
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
@@ -468,5 +551,10 @@ proptest! {
     #[test]
     fn p4_apply_never_reports_corrupt_for_decided_events(steps in steps()) {
         if let Err(m) = simulate(&steps, p4) { prop_assert!(false, "{}", m); }
+    }
+
+    #[test]
+    fn p5_lost_verify_with_passing_retry_reaches_review(lost in 0usize..2, chunks in 1u32..4) {
+        if let Err(m) = lost_verify_then_passing_retry(lost, chunks) { prop_assert!(false, "{}", m); }
     }
 }

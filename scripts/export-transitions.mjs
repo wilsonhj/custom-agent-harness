@@ -2,6 +2,7 @@
 // Run with Node 24 type stripping; no flags needed.
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ALLOWED_TRANSITIONS, RESUMABLE_STATES, canTransition } from '../harness/policy/transitions.ts';
 
 const SHA = 'a'.repeat(40);
@@ -60,6 +61,7 @@ const allowed = {};
 for (const s of [...states].sort(cmp)) allowed[s] = [...ALLOWED_TRANSITIONS[s]].sort(cmp);
 
 const out = { states: [...states].sort(cmp), allowed, matrix };
-const file = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../conformance/golden/transitions.json');
+// fileURLToPath decodes percent-escapes (a checkout path with a space); URL.pathname does not.
+const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../conformance/golden/transitions.json');
 fs.writeFileSync(file, JSON.stringify(out, null, 2) + '\n');
 console.log(`wrote ${path.relative(process.cwd(), file)}: ${out.states.length} states, ${matrix.length} rows`);
