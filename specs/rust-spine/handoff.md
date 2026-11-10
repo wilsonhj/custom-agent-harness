@@ -203,6 +203,9 @@ Reviewer: `chatgpt-codex-connector` on wilsonhj/custom-agent-harness#13. All mer
 | 9 | Relative `--state-dir` breaks runs (P2) | `resolve_config` makes it absolute | db33438 |
 | 10 | Native or shell-wrapper `codex` launched through `node` (P2) | `node_bin` only for a JS entry point | db33438 |
 | 11 | Scripts break on paths with spaces (P2) | `fileURLToPath` | db33438 |
+| 12 | Packet read from a repository subdirectory comes back empty: `ls-tree` without `--full-tree` (P2, on 6ce3a56) | Reproduced with plain Git; `--full-tree` added; test `packet_is_read_in_full_from_a_repository_subdirectory` (compiles and runs only in macOS CI) | this commit |
+| 13 | Node discovery is dropped when Codex is a native binary, so `node` is unavailable to implementers and verification commands (P2, on 6ce3a56) | Open: not fixed | n/a |
+| 14 | No data-egress policy check before a hosted spawn (P1, on 6e79be2) | Open: R-17, see "Check against PR #17's corrected contracts" | n/a |
 
 Contract changes from these fixes: `shim::STATUS_FD = 4`, `shim::ANCHOR_ARGV0`; `spawn_gated` also uses fd 4;
 `Engine::egress_log(&EffectId) -> Result<Option<ArtifactId>, EngineError>`; `review_json_schema()` output is

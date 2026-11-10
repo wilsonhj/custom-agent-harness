@@ -111,7 +111,9 @@ pub async fn packet_digest(
     if kind != "tree" {
         return Err(WorkspaceError::BadPacketPath(packet_path.to_owned()));
     }
-    let listing = git(repo, &["ls-tree", "-r", "-z", &spec]).await?;
+    // `--full-tree`: without it Git limits the listing to the current directory, so a `repo`
+    // that is a subdirectory of the checkout would yield an empty packet.
+    let listing = git(repo, &["ls-tree", "-r", "-z", "--full-tree", &spec]).await?;
     let mut files = Vec::new();
     for entry in listing.split(|&b| b == 0).filter(|e| !e.is_empty()) {
         let text = std::str::from_utf8(entry)

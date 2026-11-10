@@ -1446,3 +1446,19 @@ async fn core_worktree_in_repo_config_cannot_redirect_host_git_outside_the_works
     );
     assert_eq!(scan(&ws).await, Ok(()));
 }
+
+/// From a subdirectory of the repository, `ls-tree` without `--full-tree` lists nothing, so the
+/// packet was stored (and approved) empty.
+#[tokio::test]
+async fn packet_is_read_in_full_from_a_repository_subdirectory() {
+    let f = fixture();
+    let (d0, files) = packet_digest(&f.repo, &f.base, "specs/example")
+        .await
+        .unwrap();
+    let sub = f.repo.join("subdir");
+    std::fs::create_dir(&sub).unwrap();
+    let (d_sub, files_sub) = packet_digest(&sub, &f.base, "specs/example").await.unwrap();
+    assert_eq!(files_sub.len(), 5);
+    assert_eq!(files_sub, files);
+    assert_eq!(d_sub, d0);
+}
