@@ -63,7 +63,7 @@ describe('flow', () => {
     assert.deepEqual(s.json.tasks.map((x) => x.task), [t.id]);
   });
 
-  it('native Codex keeps Node available to verification without an extra read directory', async () => {
+  it('native Codex keeps Node available to verification without an extra read directory', { skip: 'R-11: strong descendant containment backend unavailable; production execution is disabled' }, async () => {
     const c = mk('native-node');
     const codex = path.join(c.bin, 'codex-native');
     const fake = path.resolve(import.meta.dirname, '../fixtures/fake-codex.mjs');
@@ -79,7 +79,7 @@ describe('flow', () => {
     assert.equal(t.run.json.round, 0, 'verification must find Node on its clean PATH');
   });
 
-  it('status and cancel reach the active runner while another writer stays excluded', async () => {
+  it('status and cancel reach the active runner while another writer stays excluded', { skip: 'R-11: strong descendant containment backend unavailable; production execution is disabled' }, async () => {
     const c = mk('active-control', { claudeScenario: 'hang' });
     const t = await approvedTask(c);
     const child = spawn(ENG_BIN, ['run', t.id, '--json', '--state-dir', c.state], {

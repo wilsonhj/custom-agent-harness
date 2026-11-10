@@ -110,6 +110,7 @@ async fn stale_control_endpoint_is_removed_after_reacquiring_writer_lock() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; active process control requires a real backend"]
 async fn malformed_and_partial_clients_do_not_block_running_task_control() {
     use std::os::unix::fs::PermissionsExt as _;
     let f = fixture();

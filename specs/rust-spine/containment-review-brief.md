@@ -38,14 +38,20 @@ CLI audit verification now uses approval events, preserving hash-chain/tamper
 coverage without requiring execution. Pure policy, store, sandbox and workspace
 checks remain enabled.
 
-The 29 newly ignored Rust tests below cannot reach their tested behavior through
+The 30 newly ignored Rust tests below cannot reach their tested behavior through
 the production launch API without a strong containment backend. They remain
 compiled, with an explicit R-11 ignore reason. Re-enabling execution requires a
 real backend and durable recovery evidence, not removal of the guard. These
 ignores lose end-to-end checks of agent/verification/review/repair, cancellation,
 shim IPC, process teardown and crash replay. Private byte tests do not substitute
-for that missing process-level coverage. The 3 CLI skips lose successful flow,
-terminal acceptance after review and runtime-version execution checks.
+for that missing process-level coverage. The 5 CLI skips lose successful flow,
+terminal acceptance after review, runtime-version execution, Node verification with native Codex, and active-run status/cancellation checks.
+
+A private control-server unit test still covers malformed/partial clients, long
+state paths, endpoint privacy and cleanup directly against an empty store, without
+starting any task worker or runtime. Three other control integration tests remain
+active for atomic snapshots, command rejection before writes, and stale endpoints.
+This metadata/transport coverage does not replace the disabled active-worker test.
 
 ### `crates/exec/tests/supervisor.rs` (12)
 
@@ -88,9 +94,15 @@ terminal acceptance after review and runtime-version execution checks.
 
 - `revoking_the_grant_during_version_preparation_prevents_the_agent_go_byte`
 
-### CLI skips (3)
+### `crates/engine/tests/control.rs` (1)
+
+- `malformed_and_partial_clients_do_not_block_running_task_control`
+
+### CLI skips (5)
 
 - `flow.test.mjs`: new, approve-spec, run stops for a human at review_clean with one checkpoint.
+- `flow.test.mjs`: native Codex keeps Node available to verification without an extra read directory.
+- `flow.test.mjs`: status and cancel reach the active runner while another writer stays excluded.
 - `decide.test.mjs`: accept with a terminal and yes verifies the task and creates branch harness/<id>.
 - `doctor.test.mjs`: exits non-zero and names version_mismatch when claude reports 9.9.9.
 
@@ -103,6 +115,30 @@ All are in `crates/exec/tests/workspace.rs`: `bug5_prepare_rejects_a_tools_direc
 (pilot signed JSON versus Rust store commands), and `bug7_an_ignored_worker_artifact_fails_the_run_and_the_error_names_the_path`
 (replaced by the Rust exclusion/reset behavior test).
 
+## Final combined verification
+
+On the merged functional/egress/containment branch, `/usr/local/bin/node v24.0.2`
+was selected first on PATH with Cargo retained. `CARGO_TARGET_DIR` was
+`/private/tmp/harness-pr13-fixture-integration-target`; all process-dependent
+production flows stayed closed throughout these checks.
+
+| Command | Result |
+|---|---|
+| `cargo test -p harness-engine control` | private server unit and stale endpoint tests pass; worker-backed control test ignored |
+| `cargo test -p harness-engine --test control` | 3 passed, 0 failed, 1 R-11 ignore |
+| `cargo test --workspace` | 234 passed, 0 failed, 35 ignored: 30 R-11 plus 5 unchanged baseline |
+| `cargo build --workspace` | passed |
+| `ENG_BIN=/private/tmp/harness-pr13-fixture-integration-target/debug/eng npm run conformance` | 14 cases: 9 passed, 0 failed, 5 explicitly skipped |
+| `cargo fmt --check`, `git diff --check` | passed |
+| `cargo clippy --workspace --all-targets -- -D warnings` | passed |
+| `node scripts/check-deps.mjs` | passed |
+| `npm run check` and `node --check conformance/cases/flow.test.mjs` | passed |
+
+Full local logs: `/private/tmp/harness-pr13-final-combined-rust.log`,
+`/private/tmp/harness-pr13-final-control-integration.log`,
+`/private/tmp/harness-pr13-final-control-transport.log` and
+`/private/tmp/harness-pr13-final-combined-conformance.log`.
+
 ## External review focus
 
 Check that all production agent/verification launch sites still call `spawn_gated`,
@@ -113,6 +149,6 @@ R-11 containment implementation. Strong containment is absent; execution is disa
 No live model, credentials, account provisioning, process-escape proof-of-concept,
 GitHub write, approval-ledger update or release occurred in this change.
 
-The handoff records exact command results. Next action: merge the independent
-functional fixes, rerun their combined tests and obtain external review; retain
-the disabled execution state until a separately designed backend proves R-11.
+The handoff records exact command results. Next action: review the combined
+functional, egress and containment changes; retain the disabled execution state
+until a separately designed backend proves R-11.

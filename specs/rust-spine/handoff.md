@@ -280,7 +280,7 @@ Owner runs Task 11 with the architect (eng login claude; eng login codex; eng do
 
 ## PR13 functional review fixes (2026-11-10)
 
-Base: `b900dfa` (PR13 `6ce3a56` plus current main). Assigned worktree: `harness-review-fixes-pr13`; branch: `codex/review-fixes-pr13`. These results precede the separately assigned security fixes.
+Base: `b900dfa` (PR13 `6ce3a56` plus current main). Assigned worktree: `harness-review-fixes-pr13`; branch: `codex/review-fixes-pr13`. These results precede the separately assigned security fixes. The final R-11 gate described below supersedes executable workflow availability; the 13 passing conformance cases here are historical pre-gate evidence.
 
 ### Changes and constraints
 
@@ -412,15 +412,16 @@ this historical handoff are superseded by this section. `ContainmentUnavailable`
 is a typed infrastructure failure (wire code `containment_unavailable`). No strong
 backend was added; the current production launch gate remains closed.
 
-The [external containment review brief](containment-review-brief.md) lists all 29
-new Rust ignores and 3 CLI skips by test name, their missing capabilities, the 5
+The [external containment review brief](containment-review-brief.md) lists all 30
+new Rust ignores and 5 CLI skips by test name, their missing capabilities, the 5
 unchanged pilot-specific Rust ignores, and review targets. README now states that
 both real and fake-agent end-to-end execution are disabled. Private bounded-output
 unit fixtures preserve framing/limit coverage without an executable bypass.
 Same/unknown-boot recovery leaves the started row, workspace lock and dirty marker
 intact. Confirmed reboot and fresh-never-started recovery cases remain covered.
 
-Verification (2026-11-10; fake/trusted local fixtures only):
+Historical containment-branch verification (before final functional integration;
+2026-11-10; fake/trusted local fixtures only):
 
 | Command / check | Result |
 |---|---|
@@ -459,3 +460,55 @@ and obtain external review of the launch boundary and legacy-run quarantine. A
 future separately designed containment backend is required before live Task 11 or
 successful end-to-end execution can resume. No approval-ledger or release transition
 was made.
+
+
+## Final functional/containment test integration (2026-11-10)
+
+Base: `cb02dda1f2a38809092c9021cbd17814a614760f`. The coordinating session selected
+the fail-closed R-11 gate; current untrusted agents and verification cannot run
+until a real containment backend supplies descendant and durable recovery evidence.
+No test/backend/environment override was introduced.
+
+The merged suite correctly exposed `malformed_and_partial_clients_do_not_block_running_task_control`
+as process-dependent: the worker was refused and its short-lived endpoint closed
+with EOF before the test's active-run assertions. This test now retains its full
+assertions with an explicit R-11 ignore reason. The other three control integration
+tests remain active. A new private control-server unit test uses an empty Store
+and direct `Control::bind`/`serve` with nonexistent runtime paths: it covers malformed
+and partial clients, long state paths, 0700/0600 privacy, status metadata and cleanup
+without spawning a worker or obtaining any process proof.
+
+The two additional CLI skips are `native Codex keeps Node available to verification
+without an extra read directory` and `status and cancel reach the active runner
+while another writer stays excluded`. All five CLI skip names and all 30 new
+Rust ignore names are listed in `containment-review-brief.md`, separately from the
+five unchanged baseline Rust ignores. Negative containment denial, approval/status
+metadata and audit-tamper tests remain enabled. Earlier 13/13 successful fake-flow
+results precede this gate and do not describe current availability.
+
+Final verification used `/usr/local/bin/node v24.0.2` first on PATH, retained
+Cargo, and used `/private/tmp/harness-pr13-fixture-integration-target`. Socket,
+proxy and sandbox fixture checks ran outside the inherited outer sandbox; no
+untrusted agent or verifier was permitted through the closed production gate.
+
+| Command / check | Final combined result |
+|---|---|
+| `cargo test -p harness-engine control` | private transport unit and stale endpoint tests pass; worker-backed control test explicitly ignored |
+| `cargo test -p harness-engine --test control` | 3 passed, 0 failed, 1 R-11 ignore |
+| `cargo test --workspace` | 234 passed, 0 failed, 35 ignored (30 R-11, 5 baseline) |
+| `cargo build --workspace` | passed |
+| `ENG_BIN=/private/tmp/harness-pr13-fixture-integration-target/debug/eng npm run conformance` | 14 cases: 9 passed, 0 failed, 5 explicitly skipped |
+| `cargo fmt --check`, `git diff --check` | passed |
+| `cargo clippy --workspace --all-targets -- -D warnings` | passed |
+| `node scripts/check-deps.mjs` | passed |
+| `npm run check`, `node --check conformance/cases/flow.test.mjs` | passed |
+
+Full local evidence: `/private/tmp/harness-pr13-final-combined-rust.log`,
+`/private/tmp/harness-pr13-final-control-integration.log`,
+`/private/tmp/harness-pr13-final-control-transport.log`, and
+`/private/tmp/harness-pr13-final-combined-conformance.log`.
+
+Exact next action: the parent session reviews the final combined evidence and
+submits the combined change for external review. Keep production execution closed;
+Task 11 and successful end-to-end flows require a separately designed R-11 backend.
+No task approval, approval-ledger update, release, push or live runtime call occurred.

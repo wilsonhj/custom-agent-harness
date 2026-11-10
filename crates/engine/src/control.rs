@@ -290,3 +290,73 @@ async fn request(state: &Path, request: Request) -> Result<Reply, EngineError> {
     .await
     .map_err(error)?
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+    use std::os::unix::fs::PermissionsExt as _;
+
+    #[tokio::test]
+    async fn private_server_handles_malformed_and_partial_clients_with_long_state_path() {
+        let root = fs::canonicalize("/tmp")
+            .unwrap()
+            .join(format!("eng-control-test-{}", new_id()));
+        let cfg = EngineConfig {
+            state_dir: root.join("long-state-path-".repeat(8)).join("state"),
+            claude_bin: "/nonexistent/claude".into(),
+            codex_bin: "/nonexistent/codex".into(),
+            node_bin: None,
+            codex_uses_node: false,
+            shim_bin: "/nonexistent/shim".into(),
+            extra_read_dirs: vec![],
+        };
+        // Opening an empty store and serving control metadata launches no process and
+        // needs no egress grant. The production containment gate remains untouched.
+        let engine = Engine::open(cfg.clone()).await.unwrap();
+        let control = Control::bind(&cfg.state_dir).unwrap();
+        let socket = control.dir.join("socket");
+        let private_dir = control.dir.clone();
+        let endpoint = cfg.state_dir.join(ENDPOINT);
+        assert_eq!(
+            fs::metadata(&private_dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&endpoint).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let active = TaskId::new("metadata-only");
+        let cancel = CancellationToken::new();
+        let clients = async {
+            let mut bad = UnixStream::connect(&socket).await.unwrap();
+            bad.write_all(br#"{"type":"approve"}"#).await.unwrap();
+            bad.shutdown().await.unwrap();
+            let mut response = Vec::new();
+            bad.read_to_end(&mut response).await.unwrap();
+            assert!(matches!(
+                serde_json::from_slice::<Reply>(&response).unwrap(),
+                Reply::Error(_)
+            ));
+            let mut partial = UnixStream::connect(&socket).await.unwrap();
+            partial.write_all(b"{").await.unwrap(); // The server must time out this client.
+            let snapshot = status(&cfg).await.unwrap();
+            assert_eq!(snapshot.seq, Seq(0));
+            assert!(snapshot.tasks.is_empty());
+            assert!(snapshot.events.is_empty());
+            assert!(!cancel.is_cancelled());
+            drop(partial);
+        };
+        tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::select! {
+                result = control.serve(&engine, &active, &cancel) => panic!("server stopped: {result:?}"),
+                () = clients => {}
+            }
+        }).await.unwrap();
+        drop(control);
+        assert!(!endpoint.exists());
+        assert!(!private_dir.exists());
+        drop(engine);
+        fs::remove_dir_all(root).unwrap();
+    }
+}

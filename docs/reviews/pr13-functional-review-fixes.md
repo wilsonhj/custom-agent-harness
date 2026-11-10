@@ -2,6 +2,8 @@
 
 Base: `b900dfa`; branch: `codex/review-fixes-pr13`. Review this commit's diff separately from the parallel security branch, then review the combined head. This is an implementation brief, not an approval.
 
+**Current availability:** the merged R-11 gate refuses agent, verifier and runtime-version execution until a real strong containment backend exists. Successful Node verification with native Codex and active-worker status/cancellation are explicitly disabled tests. Private control-server tests retain metadata/transport coverage without launching a worker; they do not prove process cleanup. See `specs/rust-spine/containment-review-brief.md` for all unavailable checks.
+
 ## Intended behavior
 
 1. Preserve canonical Node discovery for tools and verification independently of native/JavaScript Codex invocation. `codex_uses_node` selects only the argv prefix.
@@ -16,7 +18,22 @@ Base: `b900dfa`; branch: `codex/review-fixes-pr13`. Review this commit's diff se
 - Socket directory 0700; endpoint pointer 0600; size/time bounds; malformed/partial requests; cleanup after exit/crash; long state paths; owner-exit/client-connect races.
 - The endpoint exists only during an explicit foreground run. No daemon, second writer, credentials, live agents, or containment/egress bypass was introduced. Sources: design §§5.1, 5.4, 5.5, 6.1 and R-11.
 
-## Evidence
+## Current combined verification
+
+With the production containment gate closed: **234 Rust tests passed, 35 ignored**
+(30 R-11 backend-dependent checks plus five unchanged baseline ignores), and
+**nine CLI cases passed, five skipped**. The private server unit test passed;
+three metadata control integration tests remain active, with the worker-backed
+case ignored. The five CLI skip names and every Rust ignore name appear in
+`specs/rust-spine/containment-review-brief.md`.
+
+Formatting, clippy, dependency direction, workspace build and syntax checks pass.
+Final Node commands used `/usr/local/bin/node v24.0.2`. The successful 13/13
+fake-flow result below belongs to the earlier implementation before the R-11 gate;
+current passing metadata/transport checks do not establish executable workflow
+availability or descendant-cleanup correctness.
+
+## Historical functional evidence (before the R-11 gate)
 
 All three reported functional regressions were observed failing before implementation; the additional native login regression and a concurrent snapshot sequence regression also failed before their fixes. Details are in `specs/rust-spine/handoff.md`. Rust workspace: **246 passed, 5 existing ignores**. Conformance: **13 passed**. Dependency direction, formatting, clippy, workspace build and JS syntax checks passed. Node 24.20.0 was selected explicitly; fake-agent sandbox tests ran outside the tool's outer sandbox to avoid nested Seatbelt failure.
 
@@ -24,9 +41,9 @@ The existing Linux Node pilot suite is not green on this macOS host: **44 passed
 
 ## Assumptions and limits
 
-The state owner is trusted, and file permissions plus the harness sandbox protect the private control endpoint. A transient foreground-run status/cancel endpoint stays within the CLI slice; general command transport and the daemon remain deferred. No authenticated runtime compatibility or stronger containment claim follows from fake-agent evidence. Parallel security work may intentionally gate these production flows; do not add bypass flags to preserve positive fixtures. The parent session owns integration and independent external review.
+The state owner is trusted, and file permissions plus the harness sandbox protect the private control endpoint. A transient foreground-run status/cancel endpoint stays within the CLI slice; general command transport and the daemon remain deferred. No authenticated runtime compatibility or stronger containment claim follows from fake-agent evidence. The merged security gate disables these production flows; re-enabling them requires a real R-11 backend. No bypass flags preserve positive fixtures. The parent session owns integration and independent external review.
 
-## Named Node pilot failures on this host
+## Historical Node pilot failures on the earlier host PATH
 
 - bug2a: an ignored file inside the packet directory still yields a successful run
 - bug2b: a packet file with mode 0600 in the source still yields a successful run
