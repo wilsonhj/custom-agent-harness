@@ -53,7 +53,12 @@ enum Guard {
 ///
 /// - Attribute drivers selected through `$GIT_DIR/info/attributes`, which `--attr-source`
 ///   does not cover: every `filter.*`, `diff.*` and `merge.*` driver defined in the effective
-///   configuration is blanked per call (`driver_overrides`).
+///   configuration is blanked per call (`driver_overrides`). The effective configuration
+///   depends on the Git directory (`includeIf "gitdir:..."`), so a new worktree is created
+///   with `--no-checkout` and populated through [`git_in`] under its own Git directory
+///   (`workspace::add_detached`); a plain `worktree add` checks out under
+///   `<common>/worktrees/<name>` with overrides read under the common dir, missing a driver
+///   defined only behind such an include.
 /// - `diff.external`, `diff.<driver>.command` and `diff.<driver>.textconv`: every `git diff`
 ///   the harness runs passes `--no-ext-diff --no-textconv` (an empty `diff.external` would make
 ///   Git try to run `""`, so it is not overridden here).

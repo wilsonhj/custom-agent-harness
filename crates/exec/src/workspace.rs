@@ -51,7 +51,8 @@ const IDENTITY_NAME: &str = "eng";
 const IDENTITY_EMAIL: &str = "eng@localhost";
 const ZERO_OID: &str = "0000000000000000000000000000000000000000";
 
-/// `git worktree add --detach <root>/<task-id> <base>`. Moves no branch and runs no hook.
+/// A detached worktree of `repo` at `<root>/<task-id>`, checked out at `base` through
+/// [`add_detached`]. Moves no branch and runs no hook.
 pub async fn create(
     repo: &Path,
     task: &TaskId,
@@ -71,24 +72,43 @@ pub async fn create(
     }
     std::fs::create_dir_all(&root_real)?;
     let path = root_real.join(task.as_str());
+    let ws = Workspace {
+        task: task.clone(),
+        path,
+        git_common_dir: common,
+        base: base.clone(),
+    };
+    add_detached(repo, &ws).await?;
+    Ok(ws)
+}
+
+/// `git worktree add --no-checkout --detach <ws.path> <ws.base>`, then populates it with
+/// `reset --hard` through [`git_in`], pinned to the new worktree's own Git directory. The
+/// checkout thus reads configuration under the same Git directory its driver overrides were
+/// computed from (see [`crate::hostgit`]); `ws.git_common_dir` must be `repo`'s.
+pub async fn add_detached(repo: &Path, ws: &Workspace) -> Result<(), WorkspaceError> {
     git(
         repo,
         &[
             "worktree",
             "add",
             "--quiet",
+            "--no-checkout",
             "--detach",
-            utf8(&path)?,
-            base.as_str(),
+            utf8(&ws.path)?,
+            ws.base.as_str(),
         ],
     )
     .await?;
-    Ok(Workspace {
-        task: task.clone(),
-        path,
-        git_common_dir: common,
-        base: base.clone(),
-    })
+    let git_dir = git_dir_of(ws)
+        .await
+        .ok_or(WorkspaceError::GitMetadataTouched)?;
+    git_in(
+        pinned(ws, &git_dir),
+        &["reset", "--hard", "--quiet", ws.base.as_str()],
+    )
+    .await?;
+    Ok(())
 }
 
 /// The packet directory as stored in the `base` commit (never the working directory):

@@ -989,6 +989,51 @@ async fn smudge_filter_does_not_run_on_create_or_reset() {
 }
 
 #[tokio::test]
+async fn smudge_filter_behind_a_worktree_only_include_does_not_run_on_create() {
+    let f = fixture();
+    let (evil, marker) = trap(&f, "include-smudge", "cat");
+    // Visible only when the Git directory is `<common>/worktrees/<name>`, as during the
+    // checkout `git worktree add` performs, not when read from the source repository.
+    tgit(
+        &f.repo,
+        &["config", "includeIf.gitdir:**/worktrees/**.path", "x.cfg"],
+    );
+    write(
+        &f.repo.join(".git/x.cfg"),
+        format!("[filter \"x\"]\n\tsmudge = {evil}\n"),
+    );
+    write(&f.repo.join(".git/info/attributes"), "* filter=x\n");
+
+    let ws = create(&f.repo, &task("t-include"), &f.base, &f.root)
+        .await
+        .unwrap();
+    assert!(
+        !marker.exists(),
+        "a smudge filter from a conditional include ran when the worktree was made"
+    );
+    assert_eq!(
+        fs::read_to_string(ws.path.join("answer.txt")).unwrap(),
+        "before\n"
+    );
+
+    let plain = f.base_dir.join("plain");
+    let _ = tgit_raw(
+        &f.repo,
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            plain.to_str().unwrap(),
+            f.base.as_str(),
+        ],
+    );
+    assert!(
+        marker.exists(),
+        "fixture filter never fires; the test proves nothing"
+    );
+}
+
+#[tokio::test]
 async fn textconv_and_external_diff_do_not_run_for_the_candidate_diff() {
     let f = fixture();
     let (textconv, textconv_marker) = trap(&f, "textconv", "echo CONVERTED");

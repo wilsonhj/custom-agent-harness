@@ -1159,21 +1159,14 @@ impl Engine {
         fs::create_dir(&home)?;
         fs::set_permissions(&home, fs::Permissions::from_mode(0o700))?;
         let checkout = scratch.join("checkout");
-        let Ok(checkout_arg) = utf8(&checkout) else {
-            return Ok(Finish::Outcome(fail(FailureCode::SpawnError)?));
+        // Populated through the pinned path, like a task workspace (see `workspace::create`).
+        let checkout_ws = Workspace {
+            task: task.id.clone(),
+            path: checkout.clone(),
+            git_common_dir: ws.git_common_dir.clone(),
+            base: candidate.clone(),
         };
-        let added = git(
-            Path::new(&task.repo.path),
-            &[
-                "worktree",
-                "add",
-                "--quiet",
-                "--detach",
-                &checkout_arg,
-                candidate.as_str(),
-            ],
-        )
-        .await;
+        let added = workspace::add_detached(Path::new(&task.repo.path), &checkout_ws).await;
         if added.is_err() {
             return Ok(Finish::Outcome(fail(FailureCode::SpawnError)?));
         }
