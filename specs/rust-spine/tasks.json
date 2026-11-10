@@ -9,6 +9,7 @@
   { "id": "T8", "title": "Adapters: Claude and Codex launch plans and parsers", "owner_role": "implementer", "worktree": "rust-spine-t8", "status": "Planned", "depends_on": ["T2"] },
   { "id": "T9", "title": "Store and engine loop with restart recovery", "owner_role": "implementer", "worktree": "rust-spine-t9", "status": "Planned", "depends_on": ["T4", "T5", "T6", "T7", "T8"] },
   { "id": "T10", "title": "CLI, doctor, conformance flow, docs", "owner_role": "implementer", "worktree": "rust-spine-t10", "status": "Planned", "depends_on": ["T9"] },
-  { "id": "T11", "title": "Live tests on the owner's subscriptions and first real run", "owner_role": "implementer", "worktree": "rust-spine-t10", "status": "Planned", "depends_on": ["T10"] },
-  { "id": "T12", "title": "Independent review of T1-T11 diff by a different model family", "owner_role": "reviewer", "worktree": "rust-spine-review", "status": "Planned", "depends_on": ["T11"] }
+  { "id": "T11", "title": "Live tests on the owner's subscriptions and first real run", "owner_role": "implementer", "worktree": "rust-spine-t11", "status": "Planned", "depends_on": ["T10", "T13"] },
+  { "id": "T12", "title": "Independent review of T1-T11 diff by a different model family", "owner_role": "reviewer", "worktree": "rust-spine-review", "status": "Planned", "depends_on": ["T11"] },
+  { "id": "T13", "title": "Containment backend satisfying R-11 (design and implementation; needs its own feature packet and an owner decision on the mechanism)", "owner_role": "implementer", "worktree": "rust-spine-t13", "status": "Planned", "depends_on": [] }
 ]

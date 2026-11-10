@@ -38,7 +38,7 @@
 | R-2 | `harness-core` contains no I/O, async, clock or randomness. | design §5 |
 | R-3 | A command, its events and its pending work commit in one SQLite transaction before any work runs, and a repeated command returns the first receipt. | design §4 row 10, §5.4 |
 | R-4 | The event log is hash-chained and append-only, and `eng audit verify` detects a changed event. | design §4 row 11 |
-| R-5 | After a crash, an agent run is never replayed: it fails with `LostOnRestart`, the worktree resets to the last checkpoint, and the task stops for the human; verification is retried. | design §4 row 12, §5.4 |
+| R-5 | After a crash, an agent run is never replayed: it fails with `LostOnRestart`, the worktree resets to the last checkpoint only once R-11 proof that the old process tree is gone exists (otherwise the worktree and its lock are retained), and the task stops for the human; verification is retried. | design §4 row 12, §5.4 |
 | R-6 | Repair starts automatically when harness verification fails or a finding is at or above the severity threshold, for at most `max_repair_rounds` (default 2). | design §4 row 19, §6.5 |
 | R-7 | `Planned -> Approved` and `Reviewing -> Verified` require a human decision bound to the exact packet digest or commit, entered at a terminal. | design §4 row 13, §6.5 |
 | R-8 | Every agent and verification process runs under a generated macOS sandbox profile; a failed probe fails the run before any process starts. | design §6.1 |

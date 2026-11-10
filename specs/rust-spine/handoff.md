@@ -32,6 +32,21 @@ Independent review follow-up: design §10's parser proof now requires the same s
 synthetic fixtures reconstructed from reviewed event shapes, including truncated-line
 cases, as design §11 and plan Task 11.
 
+## 2026-11-10 — corrections after external review of PR 17
+
+Three corrections were made after external review of PR 17; none changes R-11's strength or
+any other requirement:
+
+- Plan Tasks 5, 9, 10 and 11: tests that need a running task process are execution-dependent,
+  written and compiled but ignored/skipped with "R-11: needs a containment backend"; "Expected:
+  PASS" now applies only to the tests that run now. Task 11's live steps are blocked until the
+  backend exists. A supervisor-loss test was added to Task 5.
+- `tasks.json`: added T13 (containment backend, needs its own packet and an owner decision on
+  the mechanism); T11 depends on it, and T12 through T11; T11 has its own worktree name.
+- R-5, design §4 row 12 and the plan's crash-recovery test: the worktree resets only once R-11's proof the old
+  process tree is gone exists; otherwise the worktree and its lock are retained and the task
+  stops for the human.
+
 ## Tests run and results
 
 | Command | Result | Evidence |
@@ -89,7 +104,8 @@ the design, plan and future acceptance criteria above; it does not establish run
 
 ## Exact next action
 
-Parent session: submit the exact correction commit and this findings-to-fixes mapping to
-the shared independent external review. Record reviewer findings and resolutions here;
-do not mark a phase approved or start live authenticated tests. The runtime backend work
-must separately establish R-11 containment before any task execution.
+Owner decision (open): choose the containment mechanism that satisfies R-11 (design §6.2)
+and create its feature packet for T13; until then no task executes and execution-dependent
+tests stay ignored. Parent session: submit the exact correction commit and this
+findings-to-fixes mapping to the shared independent external review. Record reviewer findings
+and resolutions here; do not mark a phase approved or start live authenticated tests.

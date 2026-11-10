@@ -89,7 +89,7 @@ stages, and stops for the human at the points where a human decision is required
 | 9 | Agents get no Git metadata, read or write; the harness makes every commit under hidden refs | Architect | Repository hooks and config are untrusted; a shared object store exposes other tasks' work |
 | 10 | SQLite, one writer; a command, its events and its pending work commit in one transaction | Architect | Crash safety and idempotent retries |
 | 11 | The event log is the audit chain (hash-chained, never pruned); the run-ledger JSONL of PR #7 becomes an export of it | Architect | One source of truth |
-| 12 | An interrupted agent run is never replayed; the worktree resets to the last checkpoint and the task stops for the human | Architect | An agent run is not idempotent |
+| 12 | An interrupted agent run is never replayed; the worktree resets to the last checkpoint only once the old process tree is proven gone (R-11), and the task stops for the human | Architect | An agent run is not idempotent |
 | 13 | A task becomes approved or verified only through a human decision recorded at the CLI for an exact packet digest or commit; the harness never does it on its own | Architect | Replaces the unwritten approval policy for local, single-user use (6.5) |
 | 19 | Repair runs automatically for a bounded number of rounds (default 2), then the task stops for the human | Architect | Removes the courier work; an agent's findings can cause more work but never acceptance |
 | 20 | The first slice is macOS only, and covers implement, review and repair on a hand-supplied packet | Architect | Smallest slice that removes the main friction |
