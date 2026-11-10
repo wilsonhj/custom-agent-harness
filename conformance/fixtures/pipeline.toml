@@ -1,0 +1,9 @@
+verify_commands = [["sh", "-c", "test -f feature.txt"]]
+run_deadline_ms = 60000
+max_turns = 5
+
+[implement]
+runtime = "claude"
+
+[review]
+runtime = "codex"
