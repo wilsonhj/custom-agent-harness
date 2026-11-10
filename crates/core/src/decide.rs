@@ -356,21 +356,24 @@ pub fn classify(role: Option<Role>, outcome: &RunOutcome) -> TerminationReason {
         RunOutcome::Succeeded => TerminationReason::Succeeded,
         RunOutcome::Cancelled => TerminationReason::Cancelled,
         RunOutcome::LimitExhausted { .. } => TerminationReason::BudgetExhausted,
-        RunOutcome::Failed { code } => {
-            match code {
-                DeadlineExceeded => match role {
-                    Some(Role::Implementer | Role::Reviewer) => TerminationReason::BudgetExhausted,
-                    None => TerminationReason::TaskFailure,
-                },
-                ExitNonzero | OutputLimitExceeded | InvalidAgentOutput => {
-                    TerminationReason::TaskFailure
-                }
-                SpawnError | SandboxUnavailable | VersionMismatch | ConfigChanged
-                | LostOnRestart => TerminationReason::InfrastructureFailure,
-                PacketChanged | CandidateChanged | GitMetadataTouched | SecretInDiff
-                | PolicyDenied => TerminationReason::PolicyViolation,
+        RunOutcome::Failed { code } => match code {
+            DeadlineExceeded => match role {
+                Some(Role::Implementer | Role::Reviewer) => TerminationReason::BudgetExhausted,
+                None => TerminationReason::TaskFailure,
+            },
+            ExitNonzero | OutputLimitExceeded | InvalidAgentOutput => {
+                TerminationReason::TaskFailure
             }
-        }
+            SpawnError
+            | SandboxUnavailable
+            | ContainmentUnavailable
+            | VersionMismatch
+            | ConfigChanged
+            | LostOnRestart => TerminationReason::InfrastructureFailure,
+            PacketChanged | CandidateChanged | GitMetadataTouched | SecretInDiff | PolicyDenied => {
+                TerminationReason::PolicyViolation
+            }
+        },
     }
 }
 

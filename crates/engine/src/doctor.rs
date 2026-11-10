@@ -1,6 +1,7 @@
 //! `doctor`: does this Mac satisfy what a run needs? Nothing here calls a model.
 //!
-//! Each runtime's `--version` goes through the launch path a real agent run uses: the
+//! Runtime execution is skipped while strong descendant containment is unavailable.
+//! With a supported backend, each runtime's `--version` goes through the launch path: the
 //! resolved real path, a read-only sandbox profile on a throwaway empty directory, no
 //! network, the gating shim and the supervisor. A passing check therefore also proves the
 //! runtime can start inside the harness sandbox.
@@ -13,7 +14,7 @@ use harness_adapters::adapter_for;
 use harness_core::types::RuntimeKind;
 use harness_exec::LaunchPlan;
 use harness_exec::sandbox_macos::{self, Network, SandboxProfile};
-use harness_exec::supervisor::{self, Limits, LineSink, Stream, descendant_tracking_available};
+use harness_exec::supervisor::{self, Limits, LineSink, Stream, containment_available};
 use tokio_util::sync::CancellationToken;
 
 use crate::worker::{launch_for, path_env, runtime_name};
@@ -46,12 +47,12 @@ fn fail(name: &'static str, code: &str, detail: impl AsRef<str>) -> DoctorCheck 
     }
 }
 
-/// Runs every check, in a fixed order: sandbox, descendant tracking, both runtime versions,
+/// Runs every check, in a fixed order: sandbox, containment, both runtime versions,
 /// the shim, the state directory.
 pub async fn doctor(cfg: &EngineConfig) -> Vec<DoctorCheck> {
     vec![
         sandbox(),
-        descendants(),
+        containment(),
         version(cfg, RuntimeKind::Claude).await,
         version(cfg, RuntimeKind::Codex).await,
         shim(&cfg.shim_bin),
@@ -70,17 +71,14 @@ fn sandbox() -> DoctorCheck {
     }
 }
 
-fn descendants() -> DoctorCheck {
-    if descendant_tracking_available() {
-        pass(
-            "descendant_tracking",
-            "process-table scan and responsible-process link work",
-        )
+fn containment() -> DoctorCheck {
+    if containment_available() {
+        pass("containment", "strong descendant containment is available")
     } else {
         fail(
-            "descendant_tracking",
-            "descendant_tracking_unavailable",
-            "cannot enumerate descendants; the harness would not be able to prove a process tree gone",
+            "containment",
+            "containment_unavailable",
+            "no strong descendant containment backend; polling and responsibility links are insufficient",
         )
     }
 }
@@ -125,6 +123,13 @@ async fn version(cfg: &EngineConfig, kind: RuntimeKind) -> DoctorCheck {
         RuntimeKind::Claude => "claude_version",
         RuntimeKind::Codex => "codex_version",
     };
+    if !containment_available() {
+        return fail(
+            name,
+            "containment_unavailable",
+            "skipped runtime execution because strong descendant containment is unavailable",
+        );
+    }
     let bin = match kind {
         RuntimeKind::Claude => &cfg.claude_bin,
         RuntimeKind::Codex => &cfg.codex_bin,

@@ -12,7 +12,7 @@ describe('flow', () => {
   };
   after(() => ctxs.forEach((c) => c.cleanup()));
 
-  it('new, approve-spec, run stops for a human at review_clean with one checkpoint', async () => {
+  it('new, approve-spec, run stops for a human at review_clean with one checkpoint', { skip: 'R-11: strong descendant containment backend unavailable; production execution is disabled' }, async () => {
     const c = mk('flow');
     const t = await runToGate(c);
     assert.equal(t.run.status, 4, `${t.run.stdout}${t.run.stderr}`);
@@ -32,6 +32,17 @@ describe('flow', () => {
     // No branch moved.
     assert.equal(git(c.repo, 'rev-parse', 'main'), c.base);
     assert.equal(git(c.repo, 'for-each-ref', '--format=%(refname)', 'refs/heads'), 'refs/heads/main');
+  });
+
+  it('approved run fails closed without strong containment and starts no agent', async () => {
+    const c = mk('nocontainment');
+    const t = await approvedTask(c);
+    const r = c.eng(['run', t.id], { json: true });
+    assert.equal(r.status, 5, `${r.stdout}${r.stderr}`);
+    assert.equal(r.json.ok, false);
+    assert.equal(r.json.error, 'containment_unavailable');
+    assert.equal(fs.existsSync(c.marker), false, 'an agent process was started');
+    assert.equal(c.eng(['status', t.id], { json: true }).json.checkpoints.length, 0);
   });
 
   it('status without a task lists the tasks', () => {

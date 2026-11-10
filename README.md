@@ -2,7 +2,7 @@
 
 A prototype engineering control plane for Claude Code and Codex: keep the specification, candidate commit, verification results, review findings, and human decision together as durable artifacts.
 
-The repository currently has two distinct tracks. The default `main` branch contains a working **offline Linux evidence-workflow pilot**. This review branch also contains the **macOS Rust first slice from [PR #13](https://github.com/wilsonhj/custom-agent-harness/pull/13)**. Its CLI runs with fake agents; authenticated Claude/Codex compatibility and reviewed safety gates remain unfinished.
+The repository currently has two distinct tracks. The default `main` branch contains a working **offline Linux evidence-workflow pilot**. This review branch also contains the **macOS Rust first slice from [PR #13](https://github.com/wilsonhj/custom-agent-harness/pull/13)**. Its CLI supports task metadata and policy checks; agent and verification execution is disabled until strong descendant containment exists. Authenticated Claude/Codex compatibility remains unverified.
 
 The Rust implementation and its review corrections are branch-specific; see the feature-packet handoff for exact revisions and verification evidence.
 
@@ -11,7 +11,7 @@ The Rust implementation and its review corrections are branch-specific; see the 
 | Track | Implemented scope | Current limits |
 |---|---|---|
 | Linux pilot on `main` | Isolated worktree; operator-configured worker, verifier, and reviewer processes; content-addressed evidence; signed human review attestation; durable handoff | Linux, Node 24, Git, SSH signing tools, and working Bubblewrap namespaces. No hosted-model adapter, task-phase approval, migration, or deployment execution. |
-| Rust spine in PR #13 | Task lifecycle and repair policy; Claude/Codex launch plans and stream parsers; process, sandbox, and Git modules; SQLite command log, hash-chained events, artifact store; engine and restart-recovery implementation | macOS-first development. `eng` implements the task/review/repair flow with fake agents. Adapter transcripts remain provisional; authenticated runtime compatibility and strong descendant containment are not established. |
+| Rust spine in PR #13 | Task lifecycle and repair policy; Claude/Codex launch plans and stream parsers; process, sandbox, and Git modules; SQLite command log, hash-chained events, artifact store; engine and restart-recovery implementation | macOS-first development. Agent and verification launches fail closed with `containment_unavailable`; fake-agent end-to-end execution is also disabled. Adapter transcripts and authenticated compatibility remain unverified. |
 | Company Brain | Separate [companion repository](https://github.com/wilsonhj/company-brain-starter) for company context and reviewed knowledge | Harness retrieval and knowledge-update integration are planned. No operational connection is established by this repository. |
 
 See the [Linux operator guide](docs/local-workflow.md) for the pilot's actual behavior and the [Rust design](docs/superpowers/specs/2026-11-09-unified-harness-design.md) for the proposed next system. Design documents and feature packets describe intent; their presence does not establish implementation or approval.
@@ -37,15 +37,20 @@ To prepare an actual pilot run, follow [operator configuration, execution, and h
 
 This review branch contains the first Rust CLI slice. It implements task creation,
 human decisions, execution, status, cancellation, audit verification and doctor.
-Authenticated runtime compatibility and the remaining reviewed containment limits
-must be resolved before claiming production readiness. The adapter transcripts are
-hand-written fixtures, not evidence of a successful hosted-model run.
+Agent and verification launches currently fail with `containment_unavailable`:
+macOS process polling and responsibility links cannot guarantee every descendant
+remains tracked. `eng doctor` reports that failure and skips runtime version execution.
+There is no environment, feature or debug override. Existing same-boot legacy runs
+remain quarantined with their locks and workspaces intact; only a confirmed different
+boot proves their descendants gone. The adapter transcripts are hand-written fixtures,
+not evidence of a successful hosted-model run.
 
 ### Rust CLI commands
 
 Requires macOS 26 on Apple silicon, a Rust toolchain (`rust-toolchain.toml`), Node 24, and
-Claude Code and Codex at the pinned versions. Real Claude runs are refused until the Task 11
-live tests settle the sandbox confirmation (see [Overview](#rust-cli-eng)).
+Claude Code and Codex at the pinned versions for future execution. The commands below
+document the intended workflow; signing in does not enable execution while containment
+is unavailable. Task 11 live compatibility checks also remain outstanding.
 
 ### 1. Build
 
@@ -72,7 +77,7 @@ eng doctor                       # exit 0 only if every check passes
 ```bash
 eng task new --repo . --packet specs/my-feature     # prints the task id and packet digest
 eng decide <task> approve-spec                      # needs a terminal; type yes
-eng run <task>                                      # exit 4 = waiting for you
+eng run <task>                                      # currently exit 5: containment unavailable
 eng status <task>
 eng decide <task> accept                            # or reject / send-back
 eng audit verify                                    # recomputes the hash chain
@@ -124,7 +129,8 @@ Each agent effect records the exact policy snapshot and SHA-256 as harness evide
 rechecked at the version and agent launch gates. A changed or deleted policy denies
 the pending launch. Revocation affects future launches; stop an active task to end
 an already authorized session. Previously disclosed content cannot be recalled.
-`doctor` uses synthetic empty directories for version probes and sends no task content.
+`doctor` skips runtime version probes while containment is unavailable. An egress grant
+does not override the independent containment gate.
 
 ### Testing the CLI
 
@@ -132,7 +138,8 @@ an already authorized session. Previously disclosed content cannot be recalled.
 cargo build --workspace && ENG_BIN=target/debug/eng npm run conformance
 ```
 
-The conformance cases drive only the `eng` binary, with fake agents from `conformance/fixtures/`.
+The conformance cases drive only the `eng` binary with temporary fixtures. Positive
+execution cases are explicitly skipped while the containment backend is unavailable.
 
 ### Rust verification
 
@@ -147,8 +154,12 @@ cargo build --workspace
 ENG_BIN=target/debug/eng npm run conformance
 ```
 
-The conformance suite uses fake agents. See [the feature packet](specs/rust-spine/)
-and its handoff for exact commit-bound results, unresolved gates and next actions.
+The Rust suite has 29 newly ignored execution-dependent tests and the conformance
+suite has 3 explicit skips because the strong containment backend is unavailable.
+Passing remaining checks does not establish an end-to-end or live hosted-model workflow.
+The [containment review brief](specs/rust-spine/containment-review-brief.md) lists every
+new ignore/skip and the capabilities they no longer exercise. See [the feature packet](specs/rust-spine/)
+and its handoff for exact results, pre-existing ignores and next actions.
 
 ## Trust boundaries and planned integration
 

@@ -139,6 +139,7 @@ async fn approved_policy_snapshot_is_bound_to_the_effect_before_preparation() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn revoking_the_grant_during_version_preparation_prevents_the_agent_go_byte() {
     let f = fixture();
     let mut cfg = config(&f, "clean", "clean");
@@ -187,4 +188,36 @@ async fn revoking_the_grant_during_version_preparation_prevents_the_agent_go_byt
             ..
         }
     )));
+}
+
+#[tokio::test]
+async fn doctor_reports_containment_unavailable_without_executing_runtimes() {
+    let f = fixture();
+    let mut cfg = config(&f, "clean", "clean");
+    let marker = f.tmp.path().join("doctor-runtime-ran");
+    let fake = f.tmp.path().join("bin/doctor-marker");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\ntouch '{}'\necho '2.1.318 (Claude Code)'\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    cfg.claude_bin = fake.clone();
+    cfg.codex_bin = fake;
+    let checks = harness_engine::doctor(&cfg).await;
+    let containment = checks
+        .iter()
+        .find(|c| c.name == "containment")
+        .expect("containment check");
+    assert!(!containment.ok);
+    assert!(containment.detail.starts_with("containment_unavailable: "));
+    for name in ["claude_version", "codex_version"] {
+        let check = checks.iter().find(|c| c.name == name).unwrap();
+        assert!(!check.ok);
+        assert!(check.detail.starts_with("containment_unavailable: skipped"));
+    }
+    assert!(!marker.exists());
 }

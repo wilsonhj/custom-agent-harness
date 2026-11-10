@@ -8,13 +8,17 @@ describe('doctor', () => {
   const c = setup('doctor');
   after(() => c.cleanup());
 
-  it('passes with agents at the pinned versions', () => {
+  it('reports unavailable containment and skips runtime execution', () => {
     const r = c.eng(['doctor'], { json: true });
-    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
-    assert.equal(r.json.ok, true);
+    assert.notEqual(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.equal(r.json.ok, false);
+    assert.equal(r.json.error, 'containment_unavailable');
+    for (const name of ['claude_version', 'codex_version']) {
+      assert.match(r.json.checks.find((x) => x.name === name).detail, /^containment_unavailable: skipped/);
+    }
     assert.deepEqual(r.json.checks.map((x) => x.name), [
       'sandbox',
-      'descendant_tracking',
+      'containment',
       'claude_version',
       'codex_version',
       'shim',
@@ -22,7 +26,7 @@ describe('doctor', () => {
     ]);
   });
 
-  it('exits non-zero and names version_mismatch when claude reports 9.9.9', () => {
+  it('exits non-zero and names version_mismatch when claude reports 9.9.9', { skip: 'R-11: strong descendant containment backend unavailable; production execution is disabled' }, () => {
     const fake = path.join(c.bin, 'claude-999');
     fs.writeFileSync(fake, '#!/bin/sh\necho "9.9.9 (Claude Code)"\n', { mode: 0o755 });
     const text = c.eng(['doctor'], { env: { ENG_CLAUDE_BIN: fake } });

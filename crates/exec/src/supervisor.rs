@@ -1,92 +1,24 @@
-//! Process supervisor: gated spawn, bounded output streams, and process-tree termination that
-//! ends with a [`TreeGone`] proof.
+//! Process supervision and bounded output streams.
 //!
-//! # Launch
+//! # Containment gate (R-11, design §6.2)
 //!
-//! [`spawn_gated`] starts the `eng-shim` binary (see [`crate::shim`]) with the plan's argv,
-//! complete environment and working directory, the read end of a gate pipe on fd 3 and the
-//! write end of a status pipe on fd 4. The shim makes itself its own responsible process and a
-//! session and process-group leader, and waits. `on_identity` receives the shim's
-//! [`ProcessIdentity`] before anything runs; if it fails, the gate is dropped and the shim exits
-//! having run nothing. [`Supervised::run`] writes the go byte, after which the shim starts the
-//! plan as its child; the plan's stdin is then written from its own task (`EPIPE` ignored), and
-//! stdout and stderr are drained concurrently through length-limited line framing. When the
-//! plan exits, the shim reports its wait status on the status pipe and stays alive (the
-//! *anchor*) until the supervisor releases it by closing the gate.
+//! Production [`spawn_gated`] refuses before starting the shim, invoking the identity
+//! callback, or running the plan unless strong descendant containment is available.
+//! No supported backend currently provides that guarantee. Process groups, ancestry,
+//! polling and macOS responsible-process links are useful tracking mechanisms, but a
+//! descendant can disclaim responsibility and leave its group before the next scan.
+//! Their availability cannot prove that every descendant is gone.
 //!
-//! # Finding every descendant on macOS
+//! The gated shim and bounded termination algorithms remain here for a future backend:
+//! the shim waits on fd 3, reports plan status on fd 4, and remains an anchor until
+//! released. Scans match recorded identities, group/ancestry and responsibility; a
+//! reused group leader excludes its foreign group. SIGTERM is followed by a bounded
+//! freeze/kill sweep. These algorithms alone are not a containment proof.
 //!
-//! macOS has no PID namespaces, cgroups or sub-reapers. A process that double-forks and calls
-//! `setsid` (or is spawned with `POSIX_SPAWN_SETSID`) leaves the session and process group, and
-//! once its parent exits it is reparented to launchd, so neither `killpg` nor a parent-chain walk
-//! finds it (research 1a §6). The supervisor therefore matches a process as "ours" if any of the
-//! following holds, evaluated against a snapshot of every process taken with the public libproc
-//! calls `proc_listallpids` and `proc_pidinfo(PROC_PIDTBSDINFO)` (pid, ppid, pgid, uid, status,
-//! start time):
-//!
-//! 1. **Recorded.** From before the go byte until teardown a background thread rescans every
-//!    [`POLL_INTERVAL`] and records `(pid, start time)` of each match. A recorded pid matches
-//!    for the rest of the run as long as its start time is unchanged (so a reused pid never
-//!    does), even after it has been reparented to launchd.
-//! 2. **Group or ancestry.** It is in the shim's process group, or its parent matches and it
-//!    started no earlier than that parent.
-//! 3. **Responsibility** (private SPI, isolated in [`responsibility_spi`]). The shim re-executes
-//!    itself with the "disclaim" spawn attribute, which makes it its own responsible process.
-//!    Every descendant inherits that responsible pid and keeps it across `setsid`,
-//!    `POSIX_SPAWN_SETSID` and reparenting, so an escaped grandchild still reports the shim.
-//!    Probed on macOS 26.6: this holds only while the responsible process is alive; once it has
-//!    exited (even as an unreaped zombie) the escapee reports itself. That is why the shim does
-//!    not exec the plan but outlives it: the supervisor never signals the shim, and it exits only
-//!    after the supervisor's sweep and once no live process names it as responsible.
-//!
-//! Because the anchor is alive for every scan up to and including the last one of the sweep,
-//! rule 3 finds every escapee no matter when it escaped or when its parents exited. If the shim
-//! is gone before the sweep ends (something killed it) that is no longer true, and the run ends
-//! in [`KillFailed`] (fail closed) unless the shim exited [`RAN_NOTHING`] or [`EXEC_FAILED`],
-//! i.e. no plan ever ran.
-//!
-//! Residual gap (probed, not closable from user space): any process can itself spawn a child
-//! with the disclaim attribute, making that child its own responsible process. A descendant that
-//! does this together with `POSIX_SPAWN_SETSID`, and whose parent then exits within one poll
-//! interval, is found by none of the rules. Seatbelt cannot deny it: `(deny syscall-unix
-//! (syscall-number SYS_setsid))` stops `setsid(2)` but not `POSIX_SPAWN_SETSID`, and neither
-//! the disclaim attribute nor spawn flags can be filtered.
-//!
-//! [`kill_identity`], used after an engine restart, has no recorded set. It finds descendants by
-//! responsibility while the shim lives (it lingers while any remain), and by group and ancestry.
-//!
-//! # Process group reuse
-//!
-//! POSIX does not reuse a pid while a process group with that id is non-empty, so the group
-//! number is ours exactly as long as the group never emptied (always, while the shim lives).
-//! After an engine restart that is unknown, and the number may name an unrelated group of the
-//! same user. The rule, applied by every scan and by [`kill_identity`]:
-//!
-//! - If a process with pid == the recorded pgid exists and its start time is not the recorded
-//!   leader start time, the group is **foreign**: nothing is matched by group, and
-//!   [`kill_identity`] signals nothing at all. It returns [`TreeGone`] if no live process has
-//!   the recorded leader pid and start time (the only identity it knows), and [`KillFailed`]
-//!   naming that pid otherwise.
-//! - If no process with pid == pgid exists, the members of that group are taken to be orphans of
-//!   our group (whose leader exited while they kept the group alive) and may be killed. This
-//!   is ambiguous in one case: our group emptied, an unrelated process reused the number as its
-//!   own group, and that leader then exited while its members live on. Only the start-time
-//!   filter (no earlier than our leader) narrows it.
-//!
-//! Only processes with our uid (effective or real) that started no earlier than the leader are
-//! ever candidates, and never the supervisor itself.
-//!
-//! # Kill sequence
-//!
-//! Every match except the shim is signalled individually (no `killpg`, which would reach the
-//! shim): `SIGTERM`; up to [`KILL_GRACE`] for the tree to empty; then a sweep: `SIGSTOP` every
-//! match and rescan until no new match appears (a stopped process cannot fork, so this reaches a
-//! fixpoint), `SIGKILL` them all, and repeat until two scans [`SECOND_PASS_DELAY`] apart find
-//! nothing. The sweep is bounded by [`SWEEP_BOUND`]; past it the result is [`KillFailed`]. Then
-//! the shim must still be alive (see above), it is released and must exit within
-//! [`SWEEP_BOUND`], and the output pipes must reach end of file within [`SWEEP_BOUND`] (an open
-//! pipe means some process of the tree still holds it, which is also [`KillFailed`]). Only then
-//! is a [`TreeGone`] made.
+//! [`kill_identity`] cannot recover a same-boot legacy run's missing containment
+//! evidence. It does not signal possibly unrelated processes or issue [`TreeGone`]
+//! from empty scans, vanished/reused leaders or responsibility links. Only a confirmed
+//! different boot proves all old descendants gone; otherwise recovery stays quarantined.
 
 use std::collections::{HashMap, HashSet};
 use std::io::{Read as _, Write as _};
@@ -173,11 +105,11 @@ pub trait LineSink: Send {
 #[error("spawn aborted: {0}")]
 pub struct SpawnAbort(pub String);
 
-/// The kill sequence could not prove the process tree empty within its bound.
+/// Every descendant could not be proven gone (unavailable containment or failed teardown).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("process tree not empty after the kill bound; survivors: {survivors:?}")]
+#[error("cannot prove every descendant gone; known survivors: {survivors:?}")]
 pub struct KillFailed {
-    /// Pids still alive, if known (empty when enumeration failed or a pipe stayed open).
+    /// Pids still alive, if known; empty also means containment could not be established.
     pub survivors: Vec<i32>,
 }
 
@@ -192,14 +124,18 @@ pub struct Supervised {
     stdin: Vec<u8>,
 }
 
-/// Starts `shim` gated on fd 3 (see the module docs). `on_identity` runs before the plan can
-/// start; if it fails, the shim exits having run nothing and this returns `SpawnError`.
+/// Refuses with `ContainmentUnavailable` before any launch side effect unless strong
+/// descendant containment is available. With a backend, starts `shim` gated on fd 3;
+/// a failed `on_identity` callback returns `SpawnError` without starting the plan.
 pub async fn spawn_gated(
     shim: &Path,
     plan: LaunchPlan,
     limits: Limits,
     on_identity: impl FnOnce(ProcessIdentity) -> Result<(), SpawnAbort>,
 ) -> Result<Supervised, FailureCode> {
+    if !containment_available() {
+        return Err(FailureCode::ContainmentUnavailable);
+    }
     if plan.argv.is_empty() {
         return Err(FailureCode::SpawnError);
     }
@@ -815,13 +751,20 @@ pub(crate) fn responsible_descendant_alive(anchor: i32) -> bool {
     })
 }
 
-/// Whether every mechanism the kill sequence relies on is present: the process table can be
-/// enumerated and read, and the responsibility SPI resolves. `eng doctor` fails closed on false.
+/// Whether tracking mechanisms are present. This does NOT establish containment or
+/// authorize execution; responsibility disclaimers can evade every tracking rule.
 pub fn descendant_tracking_available() -> bool {
     let me = std::process::id() as i32;
     all_pids().is_some_and(|pids| pids.contains(&me))
         && proc_info(me).is_some()
         && responsibility_spi().is_some()
+}
+
+/// Whether an implemented backend guarantees that every descendant stays contained.
+/// macOS polling and responsibility links do not meet R-11. No supported backend does
+/// yet; this is deliberately independent of environment, features and build profile.
+pub fn containment_available() -> bool {
+    false
 }
 
 /// `kern.bootsessionuuid`, or an empty string if it cannot be read.
@@ -862,36 +805,85 @@ pub fn identity_is_alive(id: &ProcessIdentity) -> bool {
     Tracker::new(id).scan().is_none_or(|live| !live.is_empty())
 }
 
-/// Runs the kill sequence against a run known only by its identity (after an engine restart).
-/// See the module docs for what it can and cannot find, and "Process group reuse" for the
-/// foreign-group rule: a group whose leader has another start time is never signalled.
+/// Proves old descendants gone only after a confirmed reboot. Same/unknown-boot
+/// legacy identities contain no strong containment evidence and remain quarantined.
 pub async fn kill_identity(id: &ProcessIdentity) -> Result<TreeGone, KillFailed> {
     if rebooted(id) {
         return Ok(TreeGone::confirmed());
     }
-    let mut tracker = Tracker::new(id);
-    if tracker.group_foreign() {
-        let leader_alive =
-            proc_info(id.pid).is_some_and(|p| p.start_us == id.start_us && !p.zombie);
-        return if leader_alive {
-            Err(KillFailed {
-                survivors: vec![id.pid],
-            })
-        } else {
-            Ok(TreeGone::confirmed())
-        };
-    }
-    terminate(&mut tracker).await?;
-    // The shim's gate writer died with the engine that started it, so the shim exits by itself
-    // now that no descendant is left; its parent is gone, so launchd reaps it.
-    let end = Instant::now() + SWEEP_BOUND;
-    while proc_info(id.pid).is_some_and(|p| p.start_us == id.start_us && !p.zombie) {
-        if Instant::now() >= end {
-            return Err(KillFailed {
-                survivors: vec![id.pid],
-            });
+    Err(KillFailed {
+        survivors: Vec::new(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn limits(max_output_bytes: u64, max_line_bytes: usize) -> Limits {
+        Limits {
+            deadline: Duration::from_secs(1),
+            max_output_bytes,
+            max_line_bytes,
         }
-        tokio::time::sleep(GRACE_POLL).await;
     }
-    Ok(TreeGone::confirmed())
+
+    // These private fixtures exercise byte framing without reopening the launch gate.
+    #[tokio::test]
+    async fn pump_preserves_fragmented_lines_and_unterminated_tail() {
+        let (mut writer, reader) = tokio::io::duplex(2);
+        let producer = tokio::spawn(async move {
+            assert!(writer.write_all(b"one\ntwo\ntail").await.is_ok());
+        });
+        let (tx, mut rx) = mpsc::channel(CHANNEL_DEPTH);
+        pump(
+            reader,
+            Stream::Stdout,
+            limits(100, 10),
+            Arc::new(AtomicU64::new(0)),
+            tx,
+        )
+        .await;
+        assert!(producer.await.is_ok());
+        for expected in [b"one".as_slice(), b"two", b"tail"] {
+            assert!(matches!(rx.recv().await,
+                Some(Event::Line(Stream::Stdout, line)) if line == expected));
+        }
+        assert!(rx.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn pump_rejects_oversized_unterminated_lines() {
+        let (tx, mut rx) = mpsc::channel(CHANNEL_DEPTH);
+        pump(
+            &b"12345"[..],
+            Stream::Stdout,
+            limits(100, 4),
+            Arc::new(AtomicU64::new(0)),
+            tx,
+        )
+        .await;
+        assert!(matches!(rx.recv().await, Some(Event::Overflow)));
+        assert!(rx.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn pump_enforces_a_shared_stdout_stderr_budget() {
+        let (tx, mut rx) = mpsc::channel(CHANNEL_DEPTH);
+        let total = Arc::new(AtomicU64::new(0));
+        pump(
+            &b"out\n"[..],
+            Stream::Stdout,
+            limits(7, 10),
+            total.clone(),
+            tx.clone(),
+        )
+        .await;
+        pump(&b"err\n"[..], Stream::Stderr, limits(7, 10), total, tx).await;
+        assert!(
+            matches!(rx.recv().await, Some(Event::Line(Stream::Stdout, line)) if line == b"out")
+        );
+        assert!(matches!(rx.recv().await, Some(Event::Overflow)));
+        assert!(rx.recv().await.is_none());
+    }
 }

@@ -71,6 +71,7 @@ fn pid_is_dead(pid: i32) -> bool {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn shim_runs_nothing_if_identity_callback_fails() {
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("marker");
@@ -110,6 +111,7 @@ async fn shim_runs_nothing_if_identity_callback_fails() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn deadline_kills_group_and_reports_deadline_exceeded() {
     let dir = tempfile::tempdir().unwrap();
     // A background child in the same group must die too.
@@ -187,6 +189,7 @@ async fn assert_grandchild_dead_at_tree_gone(linger: &str) {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn detached_grandchild_is_killed_before_tree_gone() {
     assert!(descendant_tracking_available());
     assert_grandchild_dead_at_tree_gone("; sleep 0.2").await;
@@ -195,6 +198,7 @@ async fn detached_grandchild_is_killed_before_tree_gone() {
 /// The escape and the plan's exit fall within one poll interval: no scan ever sees the
 /// grandchild while its parent chain is alive.
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn detached_grandchild_escaping_as_the_plan_exits_is_killed_before_tree_gone() {
     assert!(descendant_tracking_available());
     for _ in 0..5 {
@@ -203,6 +207,7 @@ async fn detached_grandchild_escaping_as_the_plan_exits_is_killed_before_tree_go
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn plan_inherits_neither_the_gate_nor_the_status_fd() {
     let dir = tempfile::tempdir().unwrap();
     // A plan that could write fd 4 could fake its own exit status; one that held fd 3 could
@@ -222,6 +227,7 @@ async fn plan_inherits_neither_the_gate_nor_the_status_fd() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn plan_that_cannot_start_reports_exec_failed_and_tree_gone() {
     let dir = tempfile::tempdir().unwrap();
     let mut plan = sh("", dir.path());
@@ -238,6 +244,7 @@ async fn plan_that_cannot_start_reports_exec_failed_and_tree_gone() {
 /// Without the anchor the responsibility rule no longer holds, so the supervisor cannot
 /// establish that nothing escaped: it must fail closed even though the tree is in fact empty.
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn plan_that_kills_the_anchor_yields_kill_failed() {
     let dir = tempfile::tempdir().unwrap();
     let supervised = spawn_gated(
@@ -254,6 +261,7 @@ async fn plan_that_kills_the_anchor_yields_kill_failed() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn output_cap_triggers_kill() {
     let dir = tempfile::tempdir().unwrap();
     let mut l = limits(Duration::from_secs(20));
@@ -265,6 +273,7 @@ async fn output_cap_triggers_kill() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn oversized_line_is_a_failure_not_a_panic() {
     let dir = tempfile::tempdir().unwrap();
     let mut l = limits(Duration::from_secs(20));
@@ -280,6 +289,7 @@ async fn oversized_line_is_a_failure_not_a_panic() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn stderr_flood_does_not_deadlock() {
     let dir = tempfile::tempdir().unwrap();
     // 5 MB of stderr in 100-byte lines while stdout and stdin are also in use.
@@ -316,6 +326,7 @@ async fn stderr_flood_does_not_deadlock() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn cancel_token_yields_cancelled_exit() {
     let dir = tempfile::tempdir().unwrap();
     let cancel = CancellationToken::new();
@@ -394,7 +405,10 @@ async fn kill_identity_spares_an_unrelated_group_that_reused_the_pgid() {
             "pid {recorded_pid}: an unrelated group is not our run"
         );
         let killed = harness_exec::supervisor::kill_identity(&forged).await;
-        assert!(killed.is_ok(), "pid {recorded_pid}: {killed:?}");
+        assert!(
+            killed.is_err(),
+            "same-boot identity cannot prove containment: {killed:?}"
+        );
         assert!(
             !pid_is_dead(leader),
             "pid {recorded_pid}: unrelated leader was killed"
@@ -410,6 +424,7 @@ async fn kill_identity_spares_an_unrelated_group_that_reused_the_pgid() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn kill_identity_ends_a_run_from_its_identity_alone() {
     let dir = tempfile::tempdir().unwrap();
     let mut identity = None;
@@ -438,4 +453,62 @@ async fn kill_identity_ends_a_run_from_its_identity_alone() {
     let (exit, gone) = runner.await.unwrap();
     assert!(gone.is_ok());
     assert!(exit.signal.is_some(), "{exit:?}");
+}
+
+#[tokio::test]
+async fn unavailable_containment_denies_before_shim_callback_or_plan() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = tempfile::tempdir().unwrap();
+    let fake_shim = dir.path().join("shim");
+    std::fs::write(&fake_shim, "#!/bin/sh\ntouch shim-marker\nexit 0\n").unwrap();
+    std::fs::set_permissions(&fake_shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+    for shim_path in [fake_shim.as_path(), shim()] {
+        let mut callback_ran = false;
+        let result = spawn_gated(
+            shim_path,
+            sh("touch plan-marker", dir.path()),
+            limits(Duration::from_secs(1)),
+            |_| {
+                callback_ran = true;
+                Err(SpawnAbort("test stops any baseline launch".into()))
+            },
+        )
+        .await;
+        assert!(!callback_ran, "identity callback ran without containment");
+        assert!(
+            !dir.path().join("shim-marker").exists(),
+            "shim ran without containment"
+        );
+        assert!(!dir.path().join("plan-marker").exists());
+        assert_eq!(result.err(), Some(FailureCode::ContainmentUnavailable));
+    }
+}
+
+#[tokio::test]
+async fn same_or_unknown_boot_without_a_leader_cannot_prove_tree_gone() {
+    for recorded_boot in [boot_id(), String::new()] {
+        let id = ProcessIdentity {
+            pid: i32::MAX,
+            pgid: i32::MAX,
+            start_us: 1,
+            boot_id: recorded_boot,
+        };
+        assert!(harness_exec::supervisor::kill_identity(&id).await.is_err());
+    }
+}
+
+#[tokio::test]
+async fn a_confirmed_reboot_proves_old_processes_gone() {
+    let current = boot_id();
+    assert!(
+        !current.is_empty(),
+        "test requires a readable boot identity"
+    );
+    let id = ProcessIdentity {
+        pid: i32::MAX,
+        pgid: i32::MAX,
+        start_us: 1,
+        boot_id: format!("previous-{current}"),
+    };
+    assert!(harness_exec::supervisor::kill_identity(&id).await.is_ok());
 }

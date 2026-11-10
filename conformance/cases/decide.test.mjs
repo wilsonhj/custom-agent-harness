@@ -28,7 +28,7 @@ describe('decide', () => {
     assert.equal(c.eng(['status', t.id], { json: true }).json.state, 'planned');
   });
 
-  it('accept with a terminal and yes verifies the task and creates branch harness/<id>', async () => {
+  it('accept with a terminal and yes verifies the task and creates branch harness/<id>', { skip: 'R-11: strong descendant containment backend unavailable; production execution is disabled' }, async () => {
     const c = mk('accept');
     const t = await runToGate(c);
     assert.equal(t.run.status, 4, `${t.run.stdout}${t.run.stderr}`);

@@ -23,6 +23,7 @@ async fn run(engine: &Engine, task: &harness_core::ids::TaskId) -> harness_core:
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn clean_flow_stops_at_awaiting_human_with_one_checkpoint() {
     let f = fixture();
     // Launch both fakes by their own paths: Claude as an executable script, Codex as
@@ -108,6 +109,7 @@ async fn clean_flow_stops_at_awaiting_human_with_one_checkpoint() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn blocking_finding_runs_two_repair_rounds_then_stops() {
     let f = fixture();
     let engine = Engine::open(config(&f, "clean", "blocking")).await.unwrap();
@@ -153,6 +155,7 @@ async fn blocking_finding_runs_two_repair_rounds_then_stops() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn failing_verify_command_triggers_repair_without_review() {
     let f = fixture();
     let engine = Engine::open(config(&f, "clean", "clean")).await.unwrap();
@@ -209,6 +212,7 @@ async fn failing_verify_command_triggers_repair_without_review() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn agent_that_writes_a_token_fails_with_secret_in_diff() {
     let f = fixture();
     let engine = Engine::open(config(&f, "write_token", "clean"))
@@ -237,6 +241,7 @@ async fn agent_that_writes_a_token_fails_with_secret_in_diff() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn accept_moves_to_verified_and_creates_branch_harness_task_id() {
     let f = fixture();
     let engine = Engine::open(config(&f, "clean", "clean")).await.unwrap();
@@ -310,6 +315,7 @@ async fn accept_moves_to_verified_and_creates_branch_harness_task_id() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn claude_run_without_confirmed_own_sandbox_off_is_policy_denied() {
     let f = fixture();
     let engine = Engine::open(config(&f, "sandbox_unconfirmed", "clean"))
@@ -342,6 +348,7 @@ async fn second_engine_on_the_same_state_dir_refuses_to_open() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn cancel_kills_the_running_agent_and_cancels_the_task() {
     let f = fixture();
     let engine = Engine::open(config(&f, "hang", "clean")).await.unwrap();
@@ -376,6 +383,7 @@ fn verification_outputs(engine: &Engine) -> Vec<String> {
 /// Item 2: verification checks out the candidate into its own writable scratch directory; the
 /// task worktree is neither written nor readable, and nothing outside the scratch is writable.
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn verification_runs_in_a_writable_scratch_checkout() {
     let f = fixture();
     let outside = f.tmp.path().join("outside.txt");
@@ -424,6 +432,7 @@ echo verified"#,
 /// Item 5: verification gets a fresh, empty, private HOME that no agent run could write, and
 /// the reviewer cannot read the implementer's home.
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn verification_home_is_fresh_and_reviewer_cannot_read_implementer_home() {
     let f = fixture();
     let script = r#"set -e
@@ -471,6 +480,7 @@ echo verified"#;
 /// Item 3: an agent may print exactly the bytes of a later evidence artifact (here the
 /// checkpoint diff, which it can predict). That must not block the task.
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn agent_output_equal_to_a_later_evidence_artifact_does_not_block_the_task() {
     // First, learn the checkpoint diff the clean scenario produces.
     let first = fixture();
@@ -633,6 +643,7 @@ async fn a_symlink_planted_at_the_worktree_path_is_refused() {
 /// allowlist and an allowed host on port 80); a permitted CONNECT would dial the real host,
 /// which tests must not do, so the allowed-line format is covered by a unit test.
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled"]
 async fn egress_decisions_are_stored_for_the_agent_run() {
     let f = fixture();
     let cfg = config(&f, "clean", "clean");

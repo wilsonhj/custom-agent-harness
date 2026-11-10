@@ -2,15 +2,14 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';
 import { after, describe, it } from 'node:test';
-import { runToGate, setup } from './support.mjs';
+import { approvedTask, setup } from './support.mjs';
 
 describe('audit', () => {
   const c = setup('audit');
   after(() => c.cleanup());
 
-  it('verify passes after a flow, and fails after one event body is altered', async () => {
-    const t = await runToGate(c);
-    assert.equal(t.run.status, 4, `${t.run.stdout}${t.run.stderr}`);
+  it('verify passes after task approval, and fails after one event body is altered', async () => {
+    await approvedTask(c);
     const ok = c.eng(['audit', 'verify'], { json: true });
     assert.equal(ok.status, 0, `${ok.stdout}${ok.stderr}`);
     assert.ok(ok.json.head_seq > 0);

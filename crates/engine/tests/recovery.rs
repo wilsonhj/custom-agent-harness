@@ -116,6 +116,7 @@ fn kill_pid(pid: i32) {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled; recovery requires backend evidence"]
 async fn crash_in_starting_reruns_effect_and_nothing_ran_twice() {
     let f = fixture();
     let cfg = config(&f, "clean", "clean");
@@ -157,6 +158,7 @@ async fn crash_in_starting_reruns_effect_and_nothing_ran_twice() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled; recovery requires backend evidence"]
 async fn crash_during_agent_run_gives_lost_on_restart_and_reset_worktree() {
     let f = fixture();
     let cfg = config(&f, "hang", "clean");
@@ -198,6 +200,7 @@ fn with_engine_store_closed<T>(engine: Engine, f: &Fixture, read: impl FnOnce(&S
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled; recovery requires backend evidence"]
 async fn crash_during_verify_retries_once() {
     let f = fixture();
     let cfg = config(&f, "clean", "clean");
@@ -251,6 +254,7 @@ async fn crash_during_verify_retries_once() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled; recovery requires backend evidence"]
 async fn crash_during_checkpoint_yields_same_commit_sha() {
     let f = fixture();
     let cfg = config(&f, "clean", "clean");
@@ -279,6 +283,7 @@ async fn crash_during_checkpoint_yields_same_commit_sha() {
 }
 
 #[tokio::test]
+#[ignore = "R-11: strong descendant containment backend unavailable; production execution is disabled; recovery requires backend evidence"]
 async fn lock_is_not_released_while_orphan_is_alive() {
     let f = fixture();
     let cfg = config(&f, "hang", "clean");
@@ -313,4 +318,68 @@ async fn lock_is_not_released_while_orphan_is_alive() {
     assert!(!alive_after);
     let ws = with_engine_store_closed(engine, &f, |s| s.workspace(&id).unwrap().unwrap());
     assert_eq!(ws.holder, None, "released only once the tree is gone");
+}
+
+#[tokio::test]
+async fn same_boot_legacy_run_remains_quarantined_even_without_a_live_leader() {
+    let f = fixture();
+    let cfg = config(&f, "clean", "clean");
+    let id = prepared(&cfg, &f, &default_pipeline()).await;
+    let ws = harness_exec::workspace::create(&f.repo, &id, &f.base, &f.state.join("worktrees"))
+        .await
+        .unwrap();
+    let marker = ws.path.join("unverified.txt");
+    std::fs::write(&marker, b"must not reset or adopt").unwrap();
+    let effect = with_store(&f, |s| {
+        let effect = s.pending_effects().unwrap()[0].effect.clone();
+        s.record_workspace(&id, &ws.path).unwrap();
+        s.mark_effect(&effect, OutboxState::Starting, None).unwrap();
+        s.mark_effect(
+            &effect,
+            OutboxState::Started,
+            Some(&harness_store::ProcessRecord {
+                pgid: i32::MAX,
+                pid: i32::MAX,
+                start_us: 1,
+                boot_id: harness_exec::supervisor::boot_id(),
+            }),
+        )
+        .unwrap();
+        effect
+    });
+    let engine = Engine::open(cfg).await.unwrap();
+    assert!(matches!(
+        engine.run_until_idle(&id, CancellationToken::new()).await,
+        Err(harness_engine::EngineError::WorkspaceLocked { .. })
+    ));
+    drop(engine);
+    with_store(&f, |s| {
+        assert_eq!(
+            s.effect(&effect).unwrap().unwrap().state,
+            OutboxState::Started
+        );
+        assert_eq!(s.workspace(&id).unwrap().unwrap().holder, Some(effect));
+    });
+    assert_eq!(std::fs::read(&marker).unwrap(), b"must not reset or adopt");
+}
+
+#[tokio::test]
+async fn fresh_starting_effect_without_a_process_is_recoverable() {
+    let f = fixture();
+    let cfg = config(&f, "clean", "clean");
+    let id = prepared(&cfg, &f, &default_pipeline()).await;
+    let effect = with_store(&f, |s| {
+        let effect = s.pending_effects().unwrap()[0].effect.clone();
+        s.mark_effect(&effect, OutboxState::Starting, None).unwrap();
+        effect
+    });
+    let engine = Engine::open(cfg).await.unwrap();
+    drop(engine);
+    with_store(&f, |s| {
+        let row = s.effect(&effect).unwrap().unwrap();
+        assert_eq!(row.state, OutboxState::Intended);
+        assert_eq!(row.attempt, 0);
+        assert!(row.process.is_none());
+        assert!(s.workspace(&id).unwrap().is_none());
+    });
 }
