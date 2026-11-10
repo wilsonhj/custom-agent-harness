@@ -22,6 +22,9 @@ pub struct Workspace {
     pub path: PathBuf,
     /// Canonical Git common dir of the source repository.
     pub git_common_dir: PathBuf,
+    /// The commit the worktree was created at. [`scan`] allows agent configuration at the
+    /// root only where it is byte-for-byte what this commit has.
+    pub base: CommitSha,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -84,6 +87,7 @@ pub async fn create(
         task: task.clone(),
         path,
         git_common_dir: common,
+        base: base.clone(),
     })
 }
 
@@ -148,18 +152,17 @@ pub fn encode_packet(files: &[(String, String)]) -> Vec<u8> {
 /// `Err(GitMetadataTouched)` if the worktree holds a nested repository (any `.git` entry
 /// below the root, any letter case), a gitlink in its index, a `.git` link that no longer
 /// points at this worktree's entry in the common dir, or an entry directly under the root
-/// that aliases one of [`PROTECTED_ROOT_NAMES`] (see [`fold_to_ascii`]). Run before any host
+/// that aliases one of [`PROTECTED_ROOT_NAMES`] (see [`fold_to_ascii`]) and is not exactly
+/// what the base commit has (see [`protected_root_entries_unchanged`]). Run before any host
 /// Git reads the worktree; I/O errors fail closed with the same code.
 pub async fn scan(ws: &Workspace) -> Result<(), FailureCode> {
     let owned = ws.clone();
     let clean = tokio::task::spawn_blocking(move || {
-        dot_git_is_ours(&owned)
-            && no_nested_git(&owned.path, true)
-            && no_protected_root_name(&owned.path)
+        dot_git_is_ours(&owned) && no_nested_git(&owned.path, true)
     })
     .await
     .unwrap_or(false);
-    if !clean {
+    if !clean || !protected_root_entries_unchanged(ws).await {
         return Err(FailureCode::GitMetadataTouched);
     }
     let index = git(&ws.path, &["ls-files", "--stage", "-z"])
@@ -192,7 +195,7 @@ pub async fn commit_candidate(
     parent: &CommitSha,
     n: u32,
     author_time: Timestamp,
-    _proof: TreeGone,
+    _proof: &TreeGone,
 ) -> Result<(CommitSha, String), FailureCode> {
     scan(ws).await?;
     check_task_id(&ws.task).map_err(|_| FailureCode::SpawnError)?;
@@ -254,7 +257,7 @@ pub async fn commit_candidate(
 pub async fn reset_to(
     ws: &Workspace,
     commit: &CommitSha,
-    _proof: TreeGone,
+    _proof: &TreeGone,
 ) -> Result<(), WorkspaceError> {
     let owned = ws.clone();
     let ours = tokio::task::spawn_blocking(move || dot_git_is_ours(&owned))
@@ -419,23 +422,174 @@ pub const PROTECTED_ROOT_NAMES: &[&str] = &[
     ".cursor",
 ];
 
-/// No entry directly under `root` whose name folds ([`fold_to_ascii`]) to one of
-/// [`PROTECTED_ROOT_NAMES`], except the worktree's own `.git` link (exactly `.git`, checked by
-/// [`dot_git_is_ours`]). Unreadable directories and non-UTF-8 names count as touched.
-fn no_protected_root_name(root: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(root) else {
+/// Every entry directly under the worktree root whose name folds ([`fold_to_ascii`]) to one
+/// of [`PROTECTED_ROOT_NAMES`] is exactly what the base commit has, so a repository that
+/// commits its own `.claude/` or `.mcp.json` still works while an agent cannot add or alter
+/// one:
+///
+/// - The base root tree must hold an entry with the byte-identical name (so `.Claude` next to
+///   a committed `.claude` fails, as does renaming `.claude` to `.CLAUDE`).
+/// - The base entry must be a regular blob (`100644`/`100755`) or a tree containing only
+///   regular blobs; symlinks and gitlinks in committed agent configuration fail closed.
+/// - On disk, symlinks are not followed and fail; the set of regular files (ignored files
+///   included, empty directories skipped) must equal the base's, each with the same
+///   executable bit and the same blob id (`git hash-object` through the hardened [`git`]).
+///
+/// The worktree's own `.git` link (exactly `.git`, checked by [`dot_git_is_ours`]) is
+/// skipped; any other name folding to `.git` fails. Unreadable entries, non-UTF-8 names and
+/// Git errors fail closed.
+async fn protected_root_entries_unchanged(ws: &Workspace) -> bool {
+    let root = ws.path.clone();
+    let aliases = tokio::task::spawn_blocking(move || protected_root_aliases(&root)).await;
+    let Ok(Some(aliases)) = aliases else {
         return false;
     };
-    for entry in entries {
-        let Ok(entry) = entry else { return false };
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else {
+    if aliases.is_empty() {
+        return true;
+    }
+    let Some(base_root) = ls_tree(&ws.path, &["ls-tree", "-z", ws.base.as_str()]).await else {
+        return false;
+    };
+    for name in aliases {
+        let Some(entry) = base_root.iter().find(|e| e.path == name) else {
             return false;
         };
+        let mut expected = match entry.mode.as_str() {
+            "100644" | "100755" => vec![entry.clone()],
+            "040000" => {
+                let Some(inner) = ls_tree(&ws.path, &["ls-tree", "-r", "-z", &entry.oid]).await
+                else {
+                    return false;
+                };
+                inner
+                    .into_iter()
+                    .map(|e| TreeEntry {
+                        path: format!("{name}/{}", e.path),
+                        ..e
+                    })
+                    .collect()
+            }
+            _ => return false,
+        };
+        if expected
+            .iter()
+            .any(|e| !matches!(e.mode.as_str(), "100644" | "100755"))
+        {
+            return false;
+        }
+        expected.sort_by(|a, b| a.path.cmp(&b.path));
+        if !disk_matches(ws, &name, &expected).await {
+            return false;
+        }
+    }
+    true
+}
+
+/// Names directly under `root` (other than exactly `.git`) that fold to a protected name;
+/// `None` if the directory or a name cannot be read, or a name folds to `.git`.
+fn protected_root_aliases(root: &Path) -> Option<Vec<String>> {
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(root).ok()? {
+        let name = entry.ok()?.file_name().into_string().ok()?;
         if name == ".git" {
             continue;
         }
-        if fold_to_ascii(name).is_some_and(|f| PROTECTED_ROOT_NAMES.contains(&f.as_str())) {
+        match fold_to_ascii(&name) {
+            Some(f) if f == ".git" => return None,
+            Some(f) if PROTECTED_ROOT_NAMES.contains(&f.as_str()) => out.push(name),
+            _ => {}
+        }
+    }
+    Some(out)
+}
+
+#[derive(Debug, Clone)]
+struct TreeEntry {
+    mode: String,
+    oid: String,
+    path: String,
+}
+
+/// Runs an `ls-tree -z` and parses `<mode> <type> <oid>\t<path>` records.
+async fn ls_tree(dir: &Path, args: &[&str]) -> Option<Vec<TreeEntry>> {
+    let out = git(dir, args).await.ok()?;
+    let mut entries = Vec::new();
+    for record in out.split(|&b| b == 0).filter(|r| !r.is_empty()) {
+        let text = std::str::from_utf8(record).ok()?;
+        let (meta, path) = text.split_once('\t')?;
+        let mut fields = meta.split(' ');
+        let (mode, _kind, oid) = (fields.next()?, fields.next()?, fields.next()?);
+        entries.push(TreeEntry {
+            mode: mode.to_owned(),
+            oid: oid.to_owned(),
+            path: path.to_owned(),
+        });
+    }
+    Some(entries)
+}
+
+/// The regular files at `name` in the worktree (a file, or a directory walked without
+/// following symlinks) are exactly `expected` (sorted by path): same paths, executable bits
+/// and blob ids.
+async fn disk_matches(ws: &Workspace, name: &str, expected: &[TreeEntry]) -> bool {
+    let root = ws.path.clone();
+    let name = name.to_owned();
+    let found = tokio::task::spawn_blocking(move || {
+        let mut files = Vec::new();
+        regular_files(&root, &name, &mut files).then_some(files)
+    })
+    .await;
+    let Ok(Some(mut found)) = found else {
+        return false;
+    };
+    found.sort();
+    let same_shape = found.len() == expected.len()
+        && found
+            .iter()
+            .zip(expected)
+            .all(|((path, mode), e)| *path == e.path && *mode == e.mode);
+    if !same_shape {
+        return false;
+    }
+    let mut args = vec!["hash-object", "--"];
+    args.extend(expected.iter().map(|e| e.path.as_str()));
+    let Ok(out) = git(&ws.path, &args).await else {
+        return false;
+    };
+    let oids = String::from_utf8_lossy(&out);
+    oids.lines().count() == expected.len()
+        && oids.lines().zip(expected).all(|(oid, e)| oid == e.oid)
+}
+
+/// Collects `(path relative to root, "100644" | "100755")` for every regular file at
+/// `root/rel`. `false` on a symlink, any other non-regular entry, a non-UTF-8 name or an
+/// I/O error.
+fn regular_files(root: &Path, rel: &str, out: &mut Vec<(String, &'static str)>) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(meta) = std::fs::symlink_metadata(root.join(rel)) else {
+        return false;
+    };
+    let kind = meta.file_type();
+    if kind.is_file() {
+        let mode = if meta.permissions().mode() & 0o100 != 0 {
+            "100755"
+        } else {
+            "100644"
+        };
+        out.push((rel.to_owned(), mode));
+        return true;
+    }
+    if !kind.is_dir() {
+        return false;
+    }
+    let Ok(entries) = std::fs::read_dir(root.join(rel)) else {
+        return false;
+    };
+    for entry in entries {
+        let Some(child) = entry.ok().and_then(|e| e.file_name().into_string().ok()) else {
+            return false;
+        };
+        if !regular_files(root, &format!("{rel}/{child}"), out) {
             return false;
         }
     }
@@ -455,10 +609,14 @@ fn no_protected_root_name(root: &Path) -> bool {
 ///   U+0130 `i` + U+0307 and leaves U+0131 alone; the Turkic folding gives `i` and `ı`.
 ///   Treating both as `i` over-rejects, which fails closed.
 ///
+/// - U+200B..U+200F, U+202A..U+202E, U+206A..U+206F and U+FEFF are dropped: HFS+ ignores
+///   them when comparing names. APFS does not, so on APFS this over-rejects, which fails
+///   closed.
+///
 /// Every other non-ASCII character, combining marks included, leaves a non-ASCII character
 /// in the NFC + case-folded result, so the name cannot equal an ASCII name. Not covered,
-/// because APFS does not equate them: compatibility forms such as fullwidth letters (NFKC,
-/// not NFC) and default-ignorable characters such as U+200C (ignored by HFS+, not APFS).
+/// because neither APFS nor HFS+ equates them: compatibility forms such as fullwidth letters
+/// (NFKC, not NFC).
 fn fold_to_ascii(name: &str) -> Option<String> {
     let mut out = String::with_capacity(name.len());
     for c in name.chars() {
@@ -467,6 +625,10 @@ fn fold_to_ascii(name: &str) -> Option<String> {
             continue;
         }
         out.push_str(match c {
+            '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{206A}'..='\u{206F}'
+            | '\u{FEFF}' => "",
             '\u{212A}' => "k",
             '\u{017F}' => "s",
             '\u{00DF}' | '\u{1E9E}' => "ss",

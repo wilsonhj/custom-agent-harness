@@ -113,6 +113,10 @@ pub enum GitError {
         code: Option<i32>,
         stderr: String,
     },
+    /// The repository's configuration defines a `filter`, `diff` or `merge` driver whose name
+    /// is not valid UTF-8, so it cannot be blanked reliably; nothing was run.
+    #[error("repository configuration has a driver name that is not UTF-8: {0:?}")]
+    NonUtf8DriverName(String),
 }
 
 /// Runs `git -C <repo> <hardening> <args>` and returns its stdout.
@@ -143,7 +147,9 @@ pub(crate) async fn git_with_env(
 /// Every `filter.<name>`, `diff.<name>` and `merge.<name>` driver defined in the effective
 /// configuration (includes resolved) gets its program keys set empty, which Git treats as "no
 /// program", and `filter.<name>.required=false`, so no attribute source at all, including
-/// `$GIT_DIR/info/attributes`, can select a program. The configuration is re-read on every
+/// `$GIT_DIR/info/attributes`, can select a program. A driver name that is not valid UTF-8
+/// cannot be passed back as a key reliably, so it fails the call with `NonUtf8DriverName`
+/// before anything runs. The configuration is re-read on every
 /// call; it can only change between this read and the command if something writes the
 /// repository's configuration (or a file it includes) meanwhile.
 async fn driver_overrides(repo: &Path) -> Result<Vec<(String, String)>, GitError> {
@@ -163,7 +169,12 @@ async fn driver_overrides(repo: &Path) -> Result<Vec<(String, String)>, GitError
     let mut out = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
     for name in names.split(|&b| b == 0).filter(|n| !n.is_empty()) {
-        let name = String::from_utf8_lossy(name);
+        // A lossy name would blank a key with U+FFFD in it, leaving the real driver armed.
+        let Ok(name) = std::str::from_utf8(name) else {
+            return Err(GitError::NonUtf8DriverName(
+                String::from_utf8_lossy(name).into_owned(),
+            ));
+        };
         // `<section>.<subsection>.<key>`; keys without a subsection name no driver.
         let Some((section, rest)) = name.split_once('.') else {
             continue;
