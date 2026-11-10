@@ -21,3 +21,7 @@ tokio-util = { version = "0.7", features = ["codec", "rt"] }
 [dev-dependencies]
 harness-exec = { path = ".", features = ["test-support"] }
 tempfile = "3"
+
+[[bin]]
+name = "eng-shim"
+path = "src/bin/eng-shim.rs"
