@@ -394,6 +394,22 @@ impl Store {
         self.call(writer::task_ids)
     }
 
+    /// Task projections and their event history from one writer job. No command can be
+    /// committed between these reads, so a status snapshot has one sequence boundary.
+    pub fn snapshot(&self) -> Result<(Vec<Task>, Vec<EventRecord>), StoreError> {
+        self.call(|conn| {
+            let events = writer::events_after(conn, Seq(0), u32::MAX)?;
+            let tasks = writer::task_ids(conn)?
+                .iter()
+                .map(|id| {
+                    writer::load_task(conn, id)?
+                        .ok_or_else(|| StoreError::Corrupt(format!("missing task {id}")))
+                })
+                .collect::<Result<_, _>>()?;
+            Ok((tasks, events))
+        })
+    }
+
     pub fn events_after(&self, seq: Seq, limit: u32) -> Result<Vec<EventRecord>, StoreError> {
         self.call(move |conn| writer::events_after(conn, seq, limit))
     }

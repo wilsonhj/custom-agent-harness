@@ -109,7 +109,7 @@ pub(crate) fn launch_for(cfg: &EngineConfig, kind: RuntimeKind) -> Result<Launch
                 dir
             };
             read_dirs.push(package.to_path_buf());
-            match &cfg.node_bin {
+            match cfg.node_bin.as_ref().filter(|_| cfg.codex_uses_node) {
                 Some(node) => vec![utf8(&canonical(node)?)?, utf8(&entry)?],
                 None => vec![utf8(&entry)?],
             }

@@ -38,7 +38,7 @@ fn resolved(bin: &std::path::Path, name: &str) -> Result<PathBuf, String> {
 }
 
 /// Pure: the argv and environment of the login. Claude runs the CLI itself (the user types
-/// `/login`); Codex runs `codex login`, as `node <codex.js> login` when `node` is known (the
+/// `/login`); Codex runs `codex login`, as `node <codex.js> login` for a JavaScript entry point when Node is available (the
 /// same launch shape the engine uses).
 pub fn plan(runtime: LoginRuntime, cfg: &EngineConfig) -> Result<LoginPlan, String> {
     let runtimes = cfg.state_dir.join("runtimes");
@@ -58,7 +58,7 @@ pub fn plan(runtime: LoginRuntime, cfg: &EngineConfig) -> Result<LoginPlan, Stri
         LoginRuntime::Codex => {
             let codex = resolved(&cfg.codex_bin, "codex")?;
             let dir = runtimes.join("codex");
-            let (program, args) = match &cfg.node_bin {
+            let (program, args) = match cfg.node_bin.as_ref().filter(|_| cfg.codex_uses_node) {
                 Some(node) => (
                     node.clone(),
                     vec![codex.to_string_lossy().into_owned(), "login".into()],
@@ -116,6 +116,7 @@ mod tests {
             claude_bin: "/real/claude".into(),
             codex_bin: "/real/pkg/bin/codex.js".into(),
             node_bin: node.then(|| "/real/node".into()),
+            codex_uses_node: true,
             shim_bin: "/x/eng-shim".into(),
             extra_read_dirs: vec![],
         }
@@ -155,6 +156,16 @@ mod tests {
                 vec!["login".to_owned()]
             )
         );
+    }
+
+    #[test]
+    fn native_codex_login_runs_directly_with_node_available() {
+        let mut c = cfg(true);
+        c.codex_bin = "/real/codex-native".into();
+        c.codex_uses_node = false;
+        let p = plan(LoginRuntime::Codex, &c).unwrap();
+        assert_eq!(p.program, c.codex_bin);
+        assert_eq!(p.args, ["login"]);
     }
 
     #[test]

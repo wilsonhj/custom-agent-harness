@@ -13,6 +13,7 @@
 //! every path join.
 
 mod config;
+mod control;
 mod doctor;
 mod recovery;
 mod worker;
@@ -37,6 +38,7 @@ use harness_store::{ChainBroken, EventRecord, Receipt, Store, StoreError};
 use tokio_util::sync::CancellationToken;
 
 pub use config::{require_runtimes, resolve_config};
+pub use control::{CancelReply, StatusSnapshot, cancel_task, status};
 pub use doctor::{DoctorCheck, doctor};
 pub use harness_exec::hostgit::git;
 pub use harness_exec::workspace::{encode_packet, packet_digest};
@@ -54,12 +56,14 @@ pub struct EngineConfig {
     /// The `claude` executable (a symlink is resolved). Its directory is readable in the
     /// sandbox.
     pub claude_bin: PathBuf,
-    /// The Codex entry point: with `node_bin`, the `@openai/codex/bin/codex.js` script (a
+    /// The Codex entry point: when `codex_uses_node`, the `@openai/codex/bin/codex.js` script (a
     /// symlink to it is resolved), launched as `node <codex.js>` with the package directory
-    /// readable; without `node_bin`, an executable launched directly.
+    /// readable; otherwise an executable launched directly.
     pub codex_bin: PathBuf,
-    /// Node, for Codex. Its directory is put first on `PATH` and is readable in the sandbox.
+    /// Node for runtime tools and verification. Its directory leads `PATH` and is readable.
     pub node_bin: Option<PathBuf>,
+    /// Whether the Codex entry point needs the Node argv prefix.
+    pub codex_uses_node: bool,
     /// The `eng-shim` gate binary (shipped next to `eng`).
     pub shim_bin: PathBuf,
     /// Further directories every sandboxed process may read (tools that verification commands
@@ -94,6 +98,8 @@ pub enum EngineError {
     /// The engine's own outcome was refused by `decide` (an engine bug, never a runtime's).
     #[error("outcome of effect {effect} rejected: {reason}")]
     OutcomeRejected { effect: EffectId, reason: String },
+    #[error("run control: {0}")]
+    Control(String),
     #[error("corrupt state: {0}")]
     Corrupt(String),
 }
@@ -187,6 +193,7 @@ impl Engine {
     /// Opens the store (taking the engine lock) and runs recovery before returning.
     pub async fn open(cfg: EngineConfig) -> Result<Engine, EngineError> {
         let store = Store::open(&cfg.state_dir)?;
+        control::clear_stale_endpoint(&cfg.state_dir);
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .ok_or_else(|| EngineError::Workspace("HOME is not set".into()))?;

@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { spawn } from 'node:child_process';
 import { after, describe, it } from 'node:test';
-import { approvedTask, git, newTask, runToGate, setup } from './support.mjs';
+import { ENG_BIN, approvedTask, git, newTask, runToGate, setup } from './support.mjs';
+
+async function waitUntil(check) {
+  const deadline = Date.now() + 20_000;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error('timed out waiting for the running agent');
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
 
 describe('flow', () => {
   const ctxs = [];
@@ -40,6 +50,59 @@ describe('flow', () => {
     const s = c.eng(['status'], { json: true });
     assert.equal(s.status, 0);
     assert.deepEqual(s.json.tasks.map((x) => x.task), [t.id]);
+  });
+
+  it('native Codex keeps Node available to verification without an extra read directory', async () => {
+    const c = mk('native-node');
+    const codex = path.join(c.bin, 'codex-native');
+    const fake = path.resolve(import.meta.dirname, '../fixtures/fake-codex.mjs');
+    fs.writeFileSync(codex, `#!/bin/sh\nexec '${process.execPath}' '${fake}' "$@"\n`, { mode: 0o755 });
+    c.env.ENG_CODEX_BIN = codex;
+    c.env.ENG_EXTRA_READ_DIRS = path.dirname(fake);
+    fs.writeFileSync(path.join(c.repo, '.eng/pipeline.toml'),
+      'verify_commands = [["node", "-e", "process.exit(0)"]]\nrun_deadline_ms = 60000\nmax_turns = 5\n\n' +
+      '[implement]\nruntime = "claude"\n\n[review]\nruntime = "codex"\n');
+    const t = await runToGate(c);
+    assert.equal(t.run.status, 4, `${t.run.stdout}${t.run.stderr}`);
+    assert.equal(t.run.json.gate, 'review_clean');
+    assert.equal(t.run.json.round, 0, 'verification must find Node on its clean PATH');
+  });
+
+  it('status and cancel reach the active runner while another writer stays excluded', async () => {
+    const c = mk('active-control', { claudeScenario: 'hang' });
+    const t = await approvedTask(c);
+    const child = spawn(ENG_BIN, ['run', t.id, '--json', '--state-dir', c.state], {
+      env: c.env, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    child.stdout.on('data', (s) => { output += s; });
+    child.stderr.on('data', (s) => { output += s; });
+    const closed = new Promise((resolve) => child.once('close', resolve));
+    try {
+      const pidFile = path.join(c.state, 'worktrees', t.id, 'agent.pid');
+      await waitUntil(() => fs.existsSync(pidFile));
+      const pid = Number(fs.readFileSync(pidFile, 'utf8'));
+      const status = c.eng(['status', t.id], { json: true });
+      assert.equal(status.status, 0, status.stdout + status.stderr);
+      assert.equal(status.json.run, 'effects_in_flight');
+      const list = c.eng(['status'], { json: true });
+      assert.equal(list.status, 0, list.stdout + list.stderr);
+      assert.deepEqual(list.json.tasks.map((x) => x.task), [t.id]);
+      const competing = c.eng(['run', t.id], { json: true });
+      assert.notEqual(competing.status, 0, 'a second writer must stay excluded');
+      const cancel = c.eng(['cancel', t.id], { json: true });
+      assert.equal(cancel.status, 0, cancel.stdout + cancel.stderr);
+      assert.equal(cancel.json.state, 'cancelled');
+      assert.equal(await closed, 5, output);
+      assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+      const final = c.eng(['status', t.id], { json: true });
+      assert.equal(final.status, 0, final.stdout + final.stderr);
+      assert.equal(final.json.run, 'cancelled');
+      assert.equal(c.eng(['audit', 'verify'], { json: true }).status, 0);
+    } finally {
+      if (child.exitCode === null) child.kill('SIGINT');
+      await closed;
+    }
   });
 
   it('run before approve-spec is rejected with exit 3', () => {

@@ -74,6 +74,7 @@ eng task new --repo . --packet specs/my-feature     # prints the task id and pac
 eng decide <task> approve-spec                      # needs a terminal; type yes
 eng run <task>                                      # exit 4 = waiting for you
 eng status <task>
+eng cancel <task>                                   # also works while eng run is active
 eng decide <task> accept                            # or reject / send-back
 eng audit verify                                    # recomputes the hash chain
 ```
@@ -87,6 +88,11 @@ usage, `3` rejected by policy, `4` awaiting a human, `5` failed, `70` internal. 
 and the shim are found (default: `PATH`, and `eng-shim` beside `eng`); `ENG_EXTRA_READ_DIRS`
 (colon-separated) lets the sandbox read more directories. Debug builds also honour
 `ENG_FORCE_SANDBOX_UNAVAILABLE=1`, which makes the sandbox probe fail for real.
+
+Node remains available to verification commands and runtime tools when Codex is a native
+executable. During `eng run`, status and cancellation use that run's private local control
+endpoint; the runner remains the only state-store writer. Cancellation is recorded before
+process cleanup finishes; the runner retains the worktree lock until cleanup is confirmed.
 
 ### Testing the CLI
 

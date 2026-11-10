@@ -21,8 +21,8 @@ use harness_core::policy::Pipeline;
 use harness_core::stage::StageRunState;
 use harness_core::types::{Actor, Envelope, RepoRef, WIRE_VERSION};
 use harness_engine::{
-    DoctorCheck, Engine, EngineConfig, EngineError, doctor, encode_packet, git, new_id, now,
-    packet_digest, require_runtimes, resolve_config,
+    DoctorCheck, Engine, EngineConfig, EngineError, StatusSnapshot, cancel_task, doctor,
+    encode_packet, git, new_id, now, packet_digest, require_runtimes, resolve_config, status,
 };
 use output::{Report, emit};
 use serde_json::{Value, json};
@@ -224,8 +224,8 @@ async fn dispatch(cli: Cli) -> i32 {
             }
             with_engine(json, &cfg, |e| cmd_run(e, json, task)).await
         }
-        Cmd::Status { task } => with_engine(json, &cfg, |e| cmd_status(e, json, task)).await,
-        Cmd::Cancel { task } => with_engine(json, &cfg, |e| cmd_cancel(e, json, task)).await,
+        Cmd::Status { task } => cmd_status(&cfg, json, task).await,
+        Cmd::Cancel { task } => cmd_cancel(&cfg, json, task).await,
         Cmd::Audit {
             cmd: AuditCmd::Verify,
         } => {
@@ -582,7 +582,7 @@ async fn cmd_run(engine: Engine, json: bool, task: String) -> i32 {
             }
         }
     });
-    let mut t = match engine.run_until_idle(&id, cancel.clone()).await {
+    let mut t = match engine.run_with_control(&id, cancel.clone()).await {
         Ok(t) => t,
         Err(e) => return engine_error(json, Some(&task), &e),
     };
@@ -647,7 +647,10 @@ fn outcome(engine: &Engine, json: bool, t: &Task) -> i32 {
 }
 
 fn summary_line(engine: &Engine, t: &Task) -> String {
-    let f = findings(engine, &t.id);
+    summary_with_findings(t, &findings(engine, &t.id))
+}
+
+fn summary_with_findings(t: &Task, f: &Value) -> String {
     format!(
         "round {}, {} checkpoint(s), {} finding(s) in the last review ({} blocking)",
         t.round,
@@ -657,14 +660,11 @@ fn summary_line(engine: &Engine, t: &Task) -> String {
     )
 }
 
-async fn cmd_cancel(engine: Engine, json: bool, task: String) -> i32 {
+async fn cmd_cancel(cfg: &EngineConfig, json: bool, task: String) -> i32 {
     let id = TaskId::new(task.clone());
-    match engine
-        .submit(human(&id, Command::Cancel { key: key() }))
-        .await
-    {
+    match cancel_task(cfg, human(&id, Command::Cancel { key: key() })).await {
         Ok(r) if r.accepted => {
-            let state = engine.task(&id).ok().flatten().and_then(|t| state_name(&t));
+            let state = r.task.as_ref().and_then(state_name);
             emit(
                 json,
                 &Report::ok().task(&task, state),
@@ -691,19 +691,23 @@ fn all_events(engine: &Engine) -> Vec<(TaskId, Event)> {
 }
 
 fn findings(engine: &Engine, task: &TaskId) -> Value {
+    findings_in(&all_events(engine), task)
+}
+
+fn findings_in(events: &[(TaskId, Event)], task: &TaskId) -> Value {
     let (mut reviews, mut total, mut last_total, mut last_blocking) = (0u32, 0usize, 0usize, 0u32);
-    for (t, ev) in all_events(engine) {
+    for (t, ev) in events {
         if let (
             true,
             Event::FindingsRecorded {
                 findings, blocking, ..
             },
-        ) = (&t == task, ev)
+        ) = (t == task, ev)
         {
             reviews += 1;
             total += findings.len();
             last_total = findings.len();
-            last_blocking = blocking;
+            last_blocking = *blocking;
         }
     }
     json!({
@@ -714,18 +718,18 @@ fn findings(engine: &Engine, task: &TaskId) -> Value {
     })
 }
 
-async fn cmd_status(engine: Engine, json: bool, task: Option<String>) -> i32 {
+async fn cmd_status(cfg: &EngineConfig, json: bool, task: Option<String>) -> i32 {
+    let StatusSnapshot { tasks, events, .. } = match status(cfg).await {
+        Ok(snapshot) => snapshot,
+        Err(e) => return engine_error(json, task.as_deref(), &e),
+    };
+    let events: Vec<_> = events.into_iter().map(|e| (e.task, e.body)).collect();
     let Some(task) = task else {
-        let mut ids: Vec<TaskId> = Vec::new();
-        for (t, ev) in all_events(&engine) {
-            if matches!(ev, Event::TaskCreated { .. }) {
-                ids.push(t);
-            }
-        }
-        let rows: Vec<Value> = ids
+        let rows: Vec<Value> = tasks
             .iter()
-            .filter_map(|id| engine.task(id).ok().flatten())
-            .map(|t| json!({"task": t.id.as_str(), "state": state_name(&t), "run": string_of_run(&t)}))
+            .map(
+                |t| json!({"task": t.id.as_str(), "state": state_name(t), "run": string_of_run(t)}),
+            )
             .collect();
         let text = if rows.is_empty() {
             "no tasks".to_owned()
@@ -750,10 +754,9 @@ async fn cmd_status(engine: Engine, json: bool, task: Option<String>) -> i32 {
         );
     };
     let id = TaskId::new(task.clone());
-    let t = match engine.task(&id) {
-        Ok(Some(t)) => t,
-        Ok(None) => return rejected(json, &task, Some("no such task".into())),
-        Err(e) => return engine_error(json, Some(&task), &e),
+    let t = match tasks.iter().find(|t| t.id == id) {
+        Some(t) => t,
+        None => return rejected(json, &task, Some("no such task".into())),
     };
     let checkpoints: Vec<Value> = t
         .checkpoints
@@ -769,12 +772,12 @@ async fn cmd_status(engine: Engine, json: bool, task: Option<String>) -> i32 {
         _ => None,
     };
     let mut report = Report::ok()
-        .task(&task, state_name(&t))
-        .with("run", json!(string_of_run(&t)))
+        .task(&task, state_name(t))
+        .with("run", json!(string_of_run(t)))
         .with("round", json!(t.round))
         .with("gate", json!(gate))
         .with("failure", json!(failure))
-        .with("findings", findings(&engine, &id))
+        .with("findings", findings_in(&events, &id))
         .with("checkpoints", Value::Array(checkpoints))
         .with(
             "last_checkpoint",
@@ -785,11 +788,11 @@ async fn cmd_status(engine: Engine, json: bool, task: Option<String>) -> i32 {
     report.error = None;
     let text = format!(
         "task {task}\n  state {}\n  run {}\n  round {}\n  gate {}\n  {}\n  last checkpoint {}",
-        state_name(&t).unwrap_or_default(),
-        string_of_run(&t).unwrap_or_default(),
+        state_name(t).unwrap_or_default(),
+        string_of_run(t).unwrap_or_default(),
         t.round,
         gate.unwrap_or_else(|| "-".into()),
-        summary_line(&engine, &t),
+        summary_with_findings(t, &findings_in(&events, &id)),
         t.checkpoints
             .last()
             .map_or("-".to_owned(), |c| c.commit.to_string()),

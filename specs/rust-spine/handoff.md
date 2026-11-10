@@ -1,4 +1,4 @@
-# Handoff: rust-spine / planning
+# Handoff: rust-spine / PR13 functional review fixes
 
 | Field | Value |
 |---|---|
@@ -273,6 +273,58 @@ Contract changes (engine, additive):
 | `cargo build --workspace && ENG_BIN=target/debug/eng npm run conformance` | 11 tests, 11 pass |
 | `target/debug/eng doctor` on the development Mac | exit 0; sandbox, descendant tracking, claude 2.1.318, codex-cli 0.166.0, shim, state dir (absent) all ok |
 
-## Exact next action
+## Previous next action (Task 10)
 
 Owner runs Task 11 with the architect (eng login claude; eng login codex; eng doctor)
+
+
+## PR13 functional review fixes (2026-11-10)
+
+Base: `b900dfa` (PR13 `6ce3a56` plus current main). Assigned worktree: `harness-review-fixes-pr13`; branch: `codex/review-fixes-pr13`. These results precede the separately assigned security fixes.
+
+### Changes and constraints
+
+- `EngineConfig.node_bin` preserves a discovered Node for tool PATH and sandbox read access. New `codex_uses_node` independently selects a Node prefix for a JavaScript Codex entry point, including login. Native and shell-wrapper Codex launch directly. This preserves the canonical-runtime sandbox contract (R-9; design §6.1).
+- Committed packet enumeration uses `git ls-tree --full-tree`; a nested repository directory now yields the same five fixture packet files and digest as the root. Packet bytes still come from the base commit (R-7).
+- `eng status [task]` and `eng cancel <task>` route to a live run through engine-owned control APIs. The runner remains the sole Store writer (design §§5.1, 5.4); snapshots read events and task projections together in one writer job (design §5.5); no generic command transport, daemon, second database writer, or alternate process-kill path was added (design §5.5; packet non-goals).
+- Control accepts status and human cancellation only. Cancellation commits through `Engine::submit` and trips the existing token. The supervisor still produces `TreeGone` before the worktree is released (R-11). An accepted cancellation reports lifecycle state before cleanup necessarily finishes.
+- IPC uses a mode-0700 temporary directory, a mode-0600 state pointer, bounded request/response sizes and client/server timeouts. Normal exit removes the endpoint; the next writer removes a stale endpoint after acquiring the Store lock. The socket path stays short for macOS even with a long state path.
+
+### Assumptions / rulings
+
+- The user authorized these fixes, an isolated branch, test-first implementation and external review; no additional plan approval was requested. No credentials or live model/runtime calls were used.
+- A transient endpoint serving only the running CLI is within the CLI slice, while a background service or general command protocol remains deferred (design §5.5). If this interpretation is rejected, IPC needs redesign.
+- The local state owner is trusted; file permissions and the harness sandbox protect its endpoint from other users and sandboxed agents (design §6.1). These functional tests do not settle the separate reviewed containment/egress limitations.
+
+### Red / green evidence
+
+| Regression | Before implementation | After implementation |
+|---|---|---|
+| Native Codex with Node verification and no Node extra-read grant | conformance reached `repair_limit_reached` rather than `review_clean` | `review_clean`, round 0 |
+| Native Codex login with Node available | program was `/real/node` | program is native Codex; argv is `login` |
+| Packet from nested repository directory | 0 files rather than 5 | same nonempty files and digest as root |
+| Concurrent status snapshot | task versions totaled 8 with snapshot sequence 6 | task projections and sequence read in one Store writer job |
+| Status/cancel during a fake hanging agent | status exit 70: another engine holds lock | status/list/cancel succeed; competing run rejected; runner exits cancelled; agent PID gone; audit passes |
+
+The initial sandboxed conformance attempt failed with `sandbox_unavailable` because Seatbelt profiles cannot nest; repeating fake-only tests outside the tool's outer sandbox exposed the intended failures and verified the fixes.
+
+### Verification (Node 24.20.0, Rust 1.99.1, macOS)
+
+| Command | Result |
+|---|---|
+| `cargo test -p harness-cli native_codex_login_runs_directly_with_node_available` | observed RED, then green in the workspace suite |
+| `cargo test -p harness-exec --test workspace packet_digest_from_nested_repo_directory_keeps_all_committed_files` | observed RED, then GREEN |
+| `cargo test -p harness-exec --test workspace packet_digest` | 2 passed |
+| `cargo test -p harness-engine --test control` | 4 passed: atomic snapshot, command restriction, stale cleanup, malformed/partial clients and long/private paths |
+| `node scripts/check-deps.mjs` | passed (initial invocation omitted Cargo from PATH; corrected invocation passed) |
+| `cargo fmt --check` | passed |
+| `cargo clippy --workspace --all-targets -- -D warnings` | passed |
+| `cargo test --workspace` | 246 passed, 5 existing ignores |
+| `cargo build --workspace` | passed |
+| `ENG_BIN=target/debug/eng npm run conformance` | 13 passed |
+| `npm run check` | JavaScript syntax checks passed |
+| `npm test` | exit 1: 44 passed, 44 failed, 2 skipped; Linux pilot runtime-directory/Bubblewrap assumptions are unsupported on this macOS host. No pilot implementation/tests were changed. Full local output: `/private/tmp/pr13-functional-npm-test.log`; named failures are listed in the review brief. |
+
+## Exact next action
+
+Parent session integrates the separately assigned security changes, reconciles test fixtures with the chosen containment policy, and requests independent review using `docs/reviews/pr13-functional-review-fixes.md`. Rerun the packet acceptance checks on the combined head before any merge. No phase transition, live run, release or deployment is approved by this handoff.

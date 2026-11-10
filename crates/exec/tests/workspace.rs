@@ -705,6 +705,23 @@ async fn token_shaped_string_in_removed_line_is_ignored() {
 }
 
 #[tokio::test]
+async fn packet_digest_from_nested_repo_directory_keeps_all_committed_files() {
+    let f = fixture();
+    let root = packet_digest(&f.repo, &f.base, "specs/example")
+        .await
+        .unwrap();
+    let nested = packet_digest(&f.repo.join("specs"), &f.base, "specs/example")
+        .await
+        .unwrap();
+    assert_eq!(
+        nested.1.len(),
+        5,
+        "the packet must not silently become empty"
+    );
+    assert_eq!(nested, root);
+}
+
+#[tokio::test]
 async fn packet_digest_changes_when_any_packet_file_changes() {
     let f = fixture();
     let (d0, files) = packet_digest(&f.repo, &f.base, "specs/example")

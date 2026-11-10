@@ -169,6 +169,7 @@ pub fn config(f: &Fixture, claude: &str, codex: &str) -> EngineConfig {
         claude_bin: wrapper(f, "fake-claude", claude),
         codex_bin: wrapper(f, "fake-codex", codex),
         node_bin: None,
+        codex_uses_node: false,
         shim_bin: shim(),
         extra_read_dirs: vec![fixtures(), node().parent().unwrap().to_path_buf()],
     }

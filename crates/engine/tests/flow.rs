@@ -32,6 +32,7 @@ async fn clean_flow_stops_at_awaiting_human_with_one_checkpoint() {
         claude_bin: fixtures().join("fake-claude.mjs"),
         codex_bin: fixtures().join("fake-codex.mjs"),
         node_bin: Some(node()),
+        codex_uses_node: true,
         shim_bin: shim(),
         extra_read_dirs: vec![],
     };

@@ -57,6 +57,7 @@ if (scenario !== 'sandbox_unconfirmed') init.sandbox = { enabled: false };
 emit(init);
 
 if (scenario === 'hang') {
+  fs.writeFileSync('agent.pid', String(process.pid));
   setInterval(() => {}, 60_000);
 } else {
   emit({

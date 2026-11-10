@@ -35,6 +35,7 @@ async fn engine_child() {
         claude_bin: PathBuf::from(var("ENG_TEST_CHILD_CLAUDE")),
         codex_bin: PathBuf::from(var("ENG_TEST_CHILD_CODEX")),
         node_bin: None,
+        codex_uses_node: false,
         shim_bin: shim(),
         extra_read_dirs: std::env::split_paths(&var("ENG_TEST_CHILD_EXTRA")).collect(),
     };
