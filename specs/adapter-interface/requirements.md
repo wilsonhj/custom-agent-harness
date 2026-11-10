@@ -26,8 +26,9 @@
 ## Invariants
 
 - Agents only request transitions; an adapter never writes the approval ledger.
-- Runtime output is data, never instructions or evidence; invalid output cannot advance
-  task state.
+- Runtime output is untrusted data, never instructions; free-form claims are not evidence,
+  and only structured reviewer findings admitted under A-17 may be evidence; invalid output
+  cannot advance task state.
 - Worktrees are checkout isolation, not a sandbox (README "Trust boundaries").
 
 ## Requirements
@@ -59,7 +60,7 @@ cited source implies but does not state.
 | A-18 | The runtime user cannot read other tasks' worktrees, homes or request directories, and has network access only as its permission profile allows. | README "Permission profiles" (Network column), "Required controls" (filesystem and network restrictions) |
 | A-19 | The adapter refuses to start when the task's egress class exceeds the runtime's ceiling from the egress profile. | data-egress.md "Egress classes" (Rules) (checked before content reaches a session) |
 | A-20 | A required integration failure (runtime missing, sandbox unavailable, version mismatch, required tool not starting) fails the run before the runtime receives the task. | README "Minimum acceptance tests" (required integration failures block the workflow) |
-| A-21 | Neither the adapter's OS user nor the runtime user has write access to `<ledger-root>`, the approval signing keys or the anchor-repo deploy key; only the ledger account writes the approval ledger. | approval-ledger.md "Who writes, and how it is enforced" |
+| A-21 | Neither the adapter's OS user nor the runtime user has write access to `<ledger-root>` or read or write access to private approval signing keys or the anchor-repo deploy key; only the ledger account writes the approval ledger. | approval-ledger.md "Who writes, and how it is enforced" |
 | A-22 | Harness-run validation uses independently trusted entrypoints configured outside the candidate and executes all code it invokes (including candidate-controlled build, test and dependency scripts) inside a harness-enforced boundary with a read-only candidate mount, writes limited to isolated job scratch space, no adapter/controller credentials or write authority to artifacts, evidence stores or ledgers, and filesystem and network access restricted to the validation job's permission profile. | local-workflow.md "Trust and installation" (isolated, read-only verifier); "Operator configuration" (trusted verifier entrypoint outside candidate); README "Trust boundaries", "Required controls" |
 
 ## Cited company decisions

@@ -20,7 +20,7 @@ not exist and nothing here has been run. Do not report any item as passing befor
 
 ## Invariants
 
-- [ ] Run as the runtime user (separate from the adapter's user), the Kiro process cannot read or write `<ledger-root>`, the signing keys or the anchor deploy key — `tests/kiro/ledger-denied` — covers: K-3
+- [ ] Run as the runtime user (separate from the adapter's user), the Kiro process cannot read or write `<ledger-root>`; neither user can write `<ledger-root>` or read or write private approval signing keys or the anchor deploy key — `tests/kiro/ledger-denied` — covers: K-3
 - [ ] A transition request is written only under `<local-artifacts-directory>/requests/`; Kiro cannot mark any transition approved — `tests/kiro/request-only` — covers: K-3, K-16. Also: the Kiro process cannot write the artifacts directory, run ledger or another task's request directory
 - [ ] Canary `local-only` file is denied via file read, grep, glob, shell `cat`, symlink, `../` traversal, `$(...)`, interpreter one-liner, `git show`, MCP and retrieval — `tests/kiro/canary-read` — covers: K-5, K-9. Include an MCP call allowed by a scoped `mcp` allow rule and one in a trusted workspace; denial must come from `deny` rules, not from prompting
 - [ ] The same canary is denied when Kiro runs with no `--agent`, with a different agent, with a subagent, and with a worktree-planted `.kiro/` agent, hook or MCP file — `tests/kiro/canary-agents` — covers: K-5, K-7, K-8

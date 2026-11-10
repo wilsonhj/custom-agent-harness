@@ -33,7 +33,7 @@ has been run. "Fake runtime" is a test executable that tries the forbidden actio
 - [ ] A fake runtime that plants a nested repository with a `filter.*.clean` command, a hook or a gitlink: the adapter rejects the run before any host Git call and the command never runs on the host — `tests/adapter-commit.test.ts` — covers: A-16
 - [ ] The fake runtime cannot read another task's worktree, home or request directory, and its network access matches its profile — `tests/adapter-process.test.ts` — covers: A-18
 - [ ] Existing suites still pass under `npm test` — `npm test`
-- [ ] Neither the adapter's user nor the fake runtime's user can write `<ledger-root>`, the signing keys or the anchor deploy key — `tests/adapter-process.test.ts` — covers: A-21
+- [ ] Neither the adapter's user nor the fake runtime's user can write `<ledger-root>` or read or write private approval signing keys or the anchor deploy key — `tests/adapter-process.test.ts` — covers: A-21
 - [ ] An externally configured trusted verifier invokes malicious candidate build, test and dependency scripts: candidate/evidence/artifact/run-ledger/approval-ledger writes, controller credential reads, unrelated file reads and forbidden network access are denied; isolated scratch writes succeed and the harness captures output outside the boundary; candidate configuration cannot replace the verifier entrypoint, and unavailable isolation fails before validation code runs — `tests/adapter-validation.test.ts` — covers: A-17, A-20, A-22
 
 ## Release
