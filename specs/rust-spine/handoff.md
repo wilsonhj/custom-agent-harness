@@ -273,6 +273,32 @@ Contract changes (engine, additive):
 | `cargo build --workspace && ENG_BIN=target/debug/eng npm run conformance` | 11 tests, 11 pass |
 | `target/debug/eng doctor` on the development Mac | exit 0; sandbox, descendant tracking, claude 2.1.318, codex-cli 0.166.0, shim, state dir (absent) all ok |
 
+## Check against PR #17's corrected contracts (2026-11-10)
+
+`main` (dd5a200) was merged into this branch in e657fbe; the README conflict kept main's
+rewritten README with its Rust sections updated. The code was then read against the four
+contracts PR #17 (`codex/review-fixes-pr12`, head 8fa99aa) corrects. Not yet reviewed by Codex.
+
+| #17 contract | This branch | Gap |
+|---|---|---|
+| R-11: containment covering detachment and responsibility disclaim must be established before spawn, else start nothing; supervisor loss gives no `TreeGone` | `supervisor.rs` matches recorded, group/ancestry and responsibility (SPI); the anchor shim outlives the plan; the live path fails closed if the anchor dies | (1) The module docs record a residual gap (disclaim plus `POSIX_SPAWN_SETSID`, parent exits within one poll interval) and tasks still start, so containment is not established in #17's sense. (2) `kill_identity` (restart and `quiesce`) returns `TreeGone` when the anchor is already dead: responsibility matching is off without a live leader and the recorded set is empty after restart, so only the process group is checked; `recovery.rs` then releases the lock. The foreign-group branch also returns `TreeGone` without scanning when the leader is gone. |
+| R-9: absent deny targets via nearest existing ancestor; errors fail closed | `sandbox_macos::resolve_maybe_missing` does exactly this; required roots use `resolve_existing`; `~/.ssh`, `~/.aws`, `$HOME`, state dir, Git dir and agent config names are denied | Code conforms. Missing tests: an absent deny target stays denied after it is created, and a dangling symlink fails closed. |
+| R-17: before any hosted spawn, enforce the most restrictive input class and explicit project/provider authorization; missing class is `local-only` | No class, BAA or authorization check exists in `crates/` | Not implemented. A real Claude run is spawned with the full prompt and only its result is turned into `PolicyDenied` afterwards (`worker.rs:935`), so content reaches Anthropic before the refusal. Real Codex runs have no such stop. |
+| Credentials: synthetic canaries only, screened synthetic fixtures, no silent fallback to the everyday config directory | `eng login` uses a harness-owned config directory and reads nothing it produces; no fallback found | `crates/adapters/fixtures/README.md` still says Task 11 replaces fixtures "with recorded transcripts"; this branch's plan Task 11 step 4 asks the agent to read the config directory and Keychain (PR #17's plan replaces that step). |
+
+Validation on Linux (this host cannot build `harness-exec`, which needs macOS libproc and
+SPI symbols): `node scripts/check-deps.mjs` ok; `cargo fmt --check` ok; `cargo clippy
+--locked -p harness-core -p harness-adapters -p harness-store --all-targets -- -D warnings`
+ok; `cargo test --locked` on those three crates 124 passed, 0 failed; `npm run check` ok;
+`HARNESS_REQUIRE_SANDBOX=1 npm test` 96 tests, 95 pass, 0 fail, 1 skip. Workspace clippy,
+`cargo test --workspace` and the conformance suite were not run here; macOS CI is the gate.
+
+Merging #17 and this branch conflicts only in this file.
+
 ## Exact next action
 
-Owner runs Task 11 with the architect (eng login claude; eng login codex; eng doctor)
+Owner decides how R-11 and R-17 are to be met before Task 11: either implement them here
+(a pre-spawn class/authorization gate; no `TreeGone` from `kill_identity` without a live
+anchor; a decision on the documented disclaim gap) or accept them explicitly as recorded
+risks. Only then does the owner run Task 11 with the architect (eng login claude; eng login
+codex; eng doctor), under #17's synthetic-canary rules.

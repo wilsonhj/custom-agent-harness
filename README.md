@@ -9,7 +9,7 @@ The repository has two distinct tracks: a working **offline Linux evidence-workf
 | Track | Implemented scope | Current limits |
 |---|---|---|
 | Linux pilot on `main` | Isolated worktree; operator-configured worker, verifier, and reviewer processes; content-addressed evidence; signed human review attestation; durable handoff | Linux, Node 24, Git, SSH signing tools, and working Bubblewrap namespaces. No hosted-model adapter, task-phase approval, migration, or deployment execution. |
-| Rust spine (`eng`) | Task lifecycle and repair policy; Claude/Codex launch plans and stream parsers; gated spawn, macOS sandbox profile, egress proxy, process-tree kill and hardened host Git; SQLite command log, hash-chained events, artifact store; engine with restart recovery; `eng task new`, `decide`, `run`, `status`, `cancel`, `audit verify`, `doctor`, `login` | macOS 26 on Apple silicon only. Proven with fake agents (conformance suite); real Claude runs are refused (`PolicyDenied`) until the Task 11 live tests settle Claude's sandbox-off confirmation. Adapter fixtures are hand-written and provisional. |
+| Rust spine (`eng`) | Task lifecycle and repair policy; Claude/Codex launch plans and stream parsers; gated spawn, macOS sandbox profile, egress proxy, process-tree kill and hardened host Git; SQLite command log, hash-chained events, artifact store; engine with restart recovery; `eng task new`, `decide`, `run`, `status`, `cancel`, `audit verify`, `doctor`, `login` | macOS 26 on Apple silicon only. Proven with fake agents (conformance suite); a real Claude run still starts (its prompt reaches Anthropic), but its result is turned into `PolicyDenied` because Claude's own sandbox cannot yet be confirmed off (Task 11). There is no check of data class or provider authorization before a hosted run. Adapter fixtures are hand-written and provisional. |
 | Company Brain | Separate [companion repository](https://github.com/wilsonhj/company-brain-starter) for company context and reviewed knowledge | Harness retrieval and knowledge-update integration are planned. No operational connection is established by this repository. |
 
 See the [Linux operator guide](docs/local-workflow.md) for the pilot's actual behavior and the [Rust design](docs/superpowers/specs/2026-11-09-unified-harness-design.md) for the Rust spine. Design documents and feature packets describe intent; their presence does not establish implementation or approval.
@@ -51,7 +51,7 @@ eng audit verify                 # recomputes the hash chain
 
 Every command accepts `--json` and `--state-dir <path>` (default `~/Library/Application Support/eng`). Exit codes: `0` ok, `2` usage, `3` rejected by policy, `4` awaiting a human, `5` failed, `70` internal. The pipeline is read from `.eng/pipeline.toml` in the repository. `ENG_CLAUDE_BIN`, `ENG_CODEX_BIN`, `ENG_NODE_BIN` and `ENG_SHIM_BIN` override where runtimes and the shim are found; `ENG_EXTRA_READ_DIRS` lets the sandbox read more directories.
 
-Real Claude runs are refused until the Task 11 live tests settle whether Claude's own sandbox can be confirmed off; fake agents run today. `eng login` starts each vendor's own login flow; the harness does not read the stored login.
+A real Claude run is not stopped before it starts: it runs, and its result is then turned into `PolicyDenied` because Claude's own sandbox cannot yet be confirmed off (Task 11). Only fake agents complete a task today. Do not point `eng` at content that must not reach a hosted provider: no data-class or provider-authorization check runs before a hosted run. `eng login` starts each vendor's own login flow; the harness does not read the stored login.
 
 ### Testing the Rust spine
 
@@ -63,7 +63,7 @@ cargo test --workspace
 cargo build --workspace && ENG_BIN=target/debug/eng npm run conformance
 ```
 
-The conformance cases drive only the `eng` binary, with fake agents from `conformance/fixtures/`. Results for each commit are in CI (macOS `rust` job) and `specs/rust-spine/handoff.md`; an earlier green run does not validate a newer commit. The [adapter fixture notes](crates/adapters/fixtures/README.md) identify every transcript as hand-written and provisional, and [the fake-runtime notes](conformance/fixtures/README.md) explain why real Claude runs are refused. Fake-agent tests are not an end-to-end Claude Code demonstration.
+The conformance cases drive only the `eng` binary, with fake agents from `conformance/fixtures/`. Results for each commit are in CI (macOS `rust` job) and `specs/rust-spine/handoff.md`; an earlier green run does not validate a newer commit. The [adapter fixture notes](crates/adapters/fixtures/README.md) identify every transcript as hand-written and provisional, and [the fake-runtime notes](conformance/fixtures/README.md) explain why a real Claude run cannot succeed yet. Fake-agent tests are not an end-to-end Claude Code demonstration.
 
 ## A short code walkthrough
 
