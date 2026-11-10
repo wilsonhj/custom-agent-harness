@@ -3,7 +3,8 @@
 | Field | Value |
 |---|---|
 | Base SHA | b56ae9d (origin/main) |
-| Head SHA | tip of `feat/rust-spine` after the `feat(cli): eng commands, doctor, conformance flow; docs` commit (parent a7f4bf1; Tasks 1-10) |
+| Head SHA (after Codex fixes) | 3f8c20b |
+| Head SHA (Task 10) | tip of `feat/rust-spine` after the `feat(cli): eng commands, doctor, conformance flow; docs` commit (parent a7f4bf1; Tasks 1-10) |
 | Author (runtime / session ID) | Claude Code / lead architect session, 2026-11-09 |
 | Date | 2026-11-09 |
 
@@ -184,6 +185,29 @@ Later tasks build against these, not the plan text, where they differ.
     execs the official CLI with `CLAUDE_CONFIG_DIR` / `CODEX_HOME` set under `<state>/runtimes/`
     and `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` removed. It was not run.
   - `package.json` `conformance` script is now `node --test conformance/cases/*.test.mjs`.
+
+## Codex review of PR #13 (commit c37c3f4) — findings and resolutions
+
+Reviewer: `chatgpt-codex-connector` on wilsonhj/custom-agent-harness#13. All merged at 3f8c20b.
+
+| # | Finding (severity) | Resolution | Commit |
+|---|---|---|---|
+| 1 | Handoff stale: says start Task 1 (P1, on a7f4bf1) | Already fixed in a later commit; handoff kept current since | 79fa54f |
+| 2 | Reviewer schema not valid for Structured Outputs: Option fields not `required` (P1) | Strict schema: every property required, nullable Options, `additionalProperties: false`, unsupported keywords removed | ddb687e |
+| 3 | Claude implementer cannot edit or run commands: no pre-approved tools (P1) | Role-mapped `--allowedTools` plus `--permission-mode dontAsk --permission-prompts none`; never bypass | ddb687e |
+| 4 | Codex auto-loads worktree `AGENTS.md`/`AGENTS.override.md`, so an implementer can instruct its reviewer (P1) | `-c project_doc_max_bytes=0` for both roles; architect added `-c skills.include_instructions=false` (undocumented in `--help`; verified offline; recheck in Task 11) | ddb687e, 45a5b82 |
+| 5 | Detached process escapes the kill if its leader exits within one 5 ms scan; `TreeGone` issued anyway (P1) | Shim stays alive as the self-responsible anchor until the sweep ends; kills per pid; `KillFailed` if the anchor died early. Residual: a process spawned with the "disclaim responsibility" attribute whose parent exits within 5 ms is untraceable from user space — documented; the full fix is a separate OS user per run (design §14 Q7-style decision, open) | 6b8c4cd |
+| 6 | Host Git follows a repo's `core.worktree`/`extensions.worktreeConfig` to another directory (P1) | Every workspace Git call passes `--git-dir` and `--work-tree`; test proves `--work-tree` wins | 6b8c4cd |
+| 7 | Interrupted verification permanently counted as failed (P2) | Only a genuinely failed check sets `verify_failed`; property p5 | db33438 |
+| 8 | Proxy allow/deny log discarded (P2) | Stored as a `HarnessEvidence` JSONL artifact per agent run; `Engine::egress_log(&EffectId)` | db33438 |
+| 9 | Relative `--state-dir` breaks runs (P2) | `resolve_config` makes it absolute | db33438 |
+| 10 | Native or shell-wrapper `codex` launched through `node` (P2) | `node_bin` only for a JS entry point | db33438 |
+| 11 | Scripts break on paths with spaces (P2) | `fileURLToPath` | db33438 |
+
+Contract changes from these fixes: `shim::STATUS_FD = 4`, `shim::ANCHOR_ARGV0`; `spawn_gated` also uses fd 4;
+`Engine::egress_log(&EffectId) -> Result<Option<ArtifactId>, EngineError>`; `review_json_schema()` output is
+strict (inlined, no `$defs`). Additional finding during the fixes: Seatbelt can deny `setsid(2)` but not
+`posix_spawn` with `POSIX_SPAWN_SETSID`, so it is not containment.
 
 ## Known limitations
 
