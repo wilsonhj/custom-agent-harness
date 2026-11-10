@@ -94,6 +94,44 @@ executable. During `eng run`, status and cancellation use that run's private loc
 endpoint; the runner remains the only state-store writer. Cancellation is recorded before
 process cleanup finishes; the runner retains the worktree lock until cleanup is confirmed.
 
+### Authorizing hosted task content
+
+Hosted task runs default to `PolicyDenied`. Following
+[the data egress policy](docs/security/data-egress.md), the operator must review the
+entire repository and all task inputs, tool output and derived content, then place
+`egress-policy.json` in the private `--state-dir` directory:
+
+```json
+{
+  "version": 1,
+  "project_root": "/canonical/absolute/path/to/project",
+  "egress_class": "any-provider",
+  "allowed_runtimes": ["claude", "codex"],
+  "reviewed_by": "operator name"
+}
+```
+
+The state directory must be outside the source repository and task worktrees, mode
+0700. The policy must have the same owner as that directory, mode 0600 (0400 also
+works), and be a regular file with no symlink or hard-link aliases. Each state
+directory authorizes one canonical project. `claude` means the Claude Code
+subscription surface on Anthropic; `codex` means the Codex CLI subscription surface
+on OpenAI. These entries require the operator's general engineering provider approval.
+
+Only an explicit `any-provider` grant is supported. Missing, malformed, unknown,
+`local-only`, and `baa-covered-providers` policies deny hosted task execution.
+Subscription login does not establish BAA coverage. Mixed-class projects must use
+their most restrictive overall class; this slice has no per-path widening. A
+repository's pipeline cannot authorize itself. The local operator is trusted to
+classify content and protect the policy; this is not a managed enterprise BAA setup.
+
+Each agent effect records the exact policy snapshot and SHA-256 as harness evidence
+(`Engine::egress_authorization`). The grant is checked before task preparation and
+rechecked at the version and agent launch gates. A changed or deleted policy denies
+the pending launch. Revocation affects future launches; stop an active task to end
+an already authorized session. Previously disclosed content cannot be recalled.
+`doctor` uses synthetic empty directories for version probes and sends no task content.
+
 ### Testing the CLI
 
 ```bash

@@ -126,6 +126,18 @@ pub fn fixture() -> Fixture {
     tgit(&repo, &["commit", "-q", "-m", "base"]);
     let base = CommitSha::parse(&tgit(&repo, &["rev-parse", "HEAD"])).unwrap();
     let state = tmp.path().join("state");
+    std::fs::create_dir(&state).unwrap();
+    std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let policy = serde_json::json!({
+        "version": 1,
+        "project_root": repo,
+        "egress_class": "any-provider",
+        "allowed_runtimes": ["claude", "codex"],
+        "reviewed_by": "fake-agent test fixture",
+    });
+    let path = state.join("egress-policy.json");
+    std::fs::write(&path, serde_json::to_vec(&policy).unwrap()).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
     Fixture {
         tmp,
         repo,

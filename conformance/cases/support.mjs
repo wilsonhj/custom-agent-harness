@@ -24,6 +24,15 @@ export function setup(tag, { claudeScenario = 'clean' } = {}) {
   const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `eng-conf-${tag}-`)));
   const { repo, base } = makeRepo(tmp);
   const state = path.join(tmp, 'state');
+  fs.mkdirSync(state, { mode: 0o700 });
+  // Exercise the production operator-grant path, using only this synthetic repository.
+  fs.writeFileSync(path.join(state, 'egress-policy.json'), JSON.stringify({
+    version: 1,
+    project_root: repo,
+    egress_class: 'any-provider',
+    allowed_runtimes: ['claude', 'codex'],
+    reviewed_by: 'fake-agent conformance fixture',
+  }), { mode: 0o600 });
   const bin = path.join(tmp, 'bin');
   fs.mkdirSync(bin);
   const marker = path.join(tmp, 'agent-started');
