@@ -10,7 +10,7 @@ use std::path::{Component, Path, PathBuf};
 use harness_core::ids::{ArtifactId, CommitSha, TaskId, Timestamp};
 use harness_core::outcome::FailureCode;
 
-use crate::hostgit::{GitError, git, git_with_env};
+use crate::hostgit::{GitError, Pinned, git, git_in, git_in_with_env};
 use crate::plan::TreeGone;
 use crate::secretscan::scan_for_secrets;
 
@@ -158,14 +158,19 @@ pub fn encode_packet(files: &[(String, String)]) -> Vec<u8> {
 pub async fn scan(ws: &Workspace) -> Result<(), FailureCode> {
     let owned = ws.clone();
     let clean = tokio::task::spawn_blocking(move || {
-        dot_git_is_ours(&owned) && no_nested_git(&owned.path, true)
+        own_git_dir(&owned).filter(|_| no_nested_git(&owned.path, true))
     })
     .await
-    .unwrap_or(false);
-    if !clean || !protected_root_entries_unchanged(ws).await {
+    .ok()
+    .flatten();
+    let Some(git_dir) = clean else {
+        return Err(FailureCode::GitMetadataTouched);
+    };
+    let wt = pinned(ws, &git_dir);
+    if !protected_root_entries_unchanged(ws, wt).await {
         return Err(FailureCode::GitMetadataTouched);
     }
-    let index = git(&ws.path, &["ls-files", "--stage", "-z"])
+    let index = git_in(wt, &["ls-files", "--stage", "-z"])
         .await
         .map_err(|_| FailureCode::GitMetadataTouched)?;
     if index
@@ -199,11 +204,14 @@ pub async fn commit_candidate(
 ) -> Result<(CommitSha, String), FailureCode> {
     scan(ws).await?;
     validate_task_id(&ws.task).map_err(|_| FailureCode::SpawnError)?;
-    let dir = ws.path.as_path();
+    let git_dir = git_dir_of(ws)
+        .await
+        .ok_or(FailureCode::GitMetadataTouched)?;
+    let dir = pinned(ws, &git_dir);
     let infra = |_: GitError| FailureCode::SpawnError;
 
-    git(dir, &["add", "--all"]).await.map_err(infra)?;
-    let tree = trimmed(git(dir, &["write-tree"]).await.map_err(infra)?);
+    git_in(dir, &["add", "--all"]).await.map_err(infra)?;
+    let tree = trimmed(git_in(dir, &["write-tree"]).await.map_err(infra)?);
     scan(ws).await?;
     let date = format!("@{} +0000", author_time.0.div_euclid(1_000_000));
     let message = format!("eng checkpoint for task {}", ws.task);
@@ -224,7 +232,7 @@ pub async fn commit_candidate(
         &message,
         &tree,
     ];
-    let commit = trimmed(git_with_env(dir, &args, &env).await.map_err(infra)?);
+    let commit = trimmed(git_in_with_env(dir, &args, &env).await.map_err(infra)?);
     let commit = CommitSha::parse(&commit).map_err(|_| FailureCode::SpawnError)?;
 
     let patch = diff(dir, parent, &commit, "--binary")
@@ -237,11 +245,11 @@ pub async fn commit_candidate(
     }
 
     let name = format!("refs/harness/tasks/{}/cp/{n}", ws.task);
-    if git(dir, &["update-ref", &name, commit.as_str(), ZERO_OID])
+    if git_in(dir, &["update-ref", &name, commit.as_str(), ZERO_OID])
         .await
         .is_err()
     {
-        let current = git(dir, &["rev-parse", "--verify", "-q", &name])
+        let current = git_in(dir, &["rev-parse", "--verify", "-q", &name])
             .await
             .map(trimmed)
             .unwrap_or_default();
@@ -259,26 +267,23 @@ pub async fn reset_to(
     commit: &CommitSha,
     _proof: &TreeGone,
 ) -> Result<(), WorkspaceError> {
-    let owned = ws.clone();
-    let ours = tokio::task::spawn_blocking(move || dot_git_is_ours(&owned))
+    let git_dir = git_dir_of(ws)
         .await
-        .unwrap_or(false);
-    if !ours {
-        return Err(WorkspaceError::GitMetadataTouched);
-    }
-    git(&ws.path, &["clean", "-ffdxq"]).await?;
-    git(&ws.path, &["reset", "--hard", "--quiet", commit.as_str()]).await?;
-    git(&ws.path, &["clean", "-ffdxq"]).await?;
+        .ok_or(WorkspaceError::GitMetadataTouched)?;
+    let wt = pinned(ws, &git_dir);
+    git_in(wt, &["clean", "-ffdxq"]).await?;
+    git_in(wt, &["reset", "--hard", "--quiet", commit.as_str()]).await?;
+    git_in(wt, &["clean", "-ffdxq"]).await?;
     Ok(())
 }
 
 async fn diff(
-    dir: &Path,
+    dir: Pinned<'_>,
     parent: &CommitSha,
     commit: &CommitSha,
     mode: &str,
 ) -> Result<String, GitError> {
-    let out = git(
+    let out = git_in(
         dir,
         &[
             "-c",
@@ -375,39 +380,52 @@ fn trimmed(out: Vec<u8>) -> String {
     String::from_utf8_lossy(&out).trim().to_owned()
 }
 
-/// The worktree's `.git` is a regular file `gitdir: <common>/worktrees/<name>` whose entry
-/// points back at this worktree.
-fn dot_git_is_ours(ws: &Workspace) -> bool {
+/// Host Git bound to `ws` (see [`crate::hostgit`]): its own Git directory, its own path.
+fn pinned<'a>(ws: &'a Workspace, git_dir: &'a Path) -> Pinned<'a> {
+    Pinned {
+        git_dir,
+        work_tree: &ws.path,
+    }
+}
+
+/// [`own_git_dir`] off the async runtime.
+async fn git_dir_of(ws: &Workspace) -> Option<PathBuf> {
+    let owned = ws.clone();
+    tokio::task::spawn_blocking(move || own_git_dir(&owned))
+        .await
+        .ok()
+        .flatten()
+}
+
+/// The worktree's own Git directory, canonical, if its `.git` is a regular file
+/// `gitdir: <common>/worktrees/<name>` whose entry points back at this worktree; `None`
+/// otherwise.
+fn own_git_dir(ws: &Workspace) -> Option<PathBuf> {
     let dot_git = ws.path.join(".git");
     let is_file = std::fs::symlink_metadata(&dot_git).is_ok_and(|m| m.file_type().is_file());
     if !is_file {
-        return false;
+        return None;
     }
-    let Ok(text) = std::fs::read_to_string(&dot_git) else {
-        return false;
-    };
-    let Some(target) = text
+    let text = std::fs::read_to_string(&dot_git).ok()?;
+    let target = text
         .strip_prefix("gitdir: ")
         .and_then(|t| t.strip_suffix('\n'))
-        .filter(|t| !t.contains('\n'))
-    else {
-        return false;
-    };
+        .filter(|t| !t.contains('\n'))?;
     let entry = ws.path.join(target);
     let (Ok(entry), Ok(worktrees), Ok(dot_git)) = (
         std::fs::canonicalize(&entry),
         std::fs::canonicalize(ws.git_common_dir.join("worktrees")),
         std::fs::canonicalize(&dot_git),
     ) else {
-        return false;
+        return None;
     };
     if entry.parent() != Some(worktrees.as_path()) {
-        return false;
+        return None;
     }
-    std::fs::read_to_string(entry.join("gitdir")).is_ok_and(|back| {
-        let back = Path::new(back.trim_end_matches('\n'));
-        std::fs::canonicalize(entry.join(back)).is_ok_and(|b| b == dot_git)
-    })
+    let back = std::fs::read_to_string(entry.join("gitdir")).ok()?;
+    let back = Path::new(back.trim_end_matches('\n'));
+    let points_back = std::fs::canonicalize(entry.join(back)).is_ok_and(|b| b == dot_git);
+    points_back.then_some(entry)
 }
 
 /// Agent and Git configuration names the sandbox denies at the worktree root. The sandbox's
@@ -435,10 +453,10 @@ pub const PROTECTED_ROOT_NAMES: &[&str] = &[
 ///   included, empty directories skipped) must equal the base's, each with the same
 ///   executable bit and the same blob id (`git hash-object` through the hardened [`git`]).
 ///
-/// The worktree's own `.git` link (exactly `.git`, checked by [`dot_git_is_ours`]) is
+/// The worktree's own `.git` link (exactly `.git`, checked by [`own_git_dir`]) is
 /// skipped; any other name folding to `.git` fails. Unreadable entries, non-UTF-8 names and
 /// Git errors fail closed.
-async fn protected_root_entries_unchanged(ws: &Workspace) -> bool {
+async fn protected_root_entries_unchanged(ws: &Workspace, wt: Pinned<'_>) -> bool {
     let root = ws.path.clone();
     let aliases = tokio::task::spawn_blocking(move || protected_root_aliases(&root)).await;
     let Ok(Some(aliases)) = aliases else {
@@ -447,7 +465,7 @@ async fn protected_root_entries_unchanged(ws: &Workspace) -> bool {
     if aliases.is_empty() {
         return true;
     }
-    let Some(base_root) = ls_tree(&ws.path, &["ls-tree", "-z", ws.base.as_str()]).await else {
+    let Some(base_root) = ls_tree(wt, &["ls-tree", "-z", ws.base.as_str()]).await else {
         return false;
     };
     for name in aliases {
@@ -457,8 +475,7 @@ async fn protected_root_entries_unchanged(ws: &Workspace) -> bool {
         let mut expected = match entry.mode.as_str() {
             "100644" | "100755" => vec![entry.clone()],
             "040000" => {
-                let Some(inner) = ls_tree(&ws.path, &["ls-tree", "-r", "-z", &entry.oid]).await
-                else {
+                let Some(inner) = ls_tree(wt, &["ls-tree", "-r", "-z", &entry.oid]).await else {
                     return false;
                 };
                 inner
@@ -478,7 +495,7 @@ async fn protected_root_entries_unchanged(ws: &Workspace) -> bool {
             return false;
         }
         expected.sort_by(|a, b| a.path.cmp(&b.path));
-        if !disk_matches(ws, &name, &expected).await {
+        if !disk_matches(wt, &name, &expected).await {
             return false;
         }
     }
@@ -511,8 +528,8 @@ struct TreeEntry {
 }
 
 /// Runs an `ls-tree -z` and parses `<mode> <type> <oid>\t<path>` records.
-async fn ls_tree(dir: &Path, args: &[&str]) -> Option<Vec<TreeEntry>> {
-    let out = git(dir, args).await.ok()?;
+async fn ls_tree(dir: Pinned<'_>, args: &[&str]) -> Option<Vec<TreeEntry>> {
+    let out = git_in(dir, args).await.ok()?;
     let mut entries = Vec::new();
     for record in out.split(|&b| b == 0).filter(|r| !r.is_empty()) {
         let text = std::str::from_utf8(record).ok()?;
@@ -531,8 +548,8 @@ async fn ls_tree(dir: &Path, args: &[&str]) -> Option<Vec<TreeEntry>> {
 /// The regular files at `name` in the worktree (a file, or a directory walked without
 /// following symlinks) are exactly `expected` (sorted by path): same paths, executable bits
 /// and blob ids.
-async fn disk_matches(ws: &Workspace, name: &str, expected: &[TreeEntry]) -> bool {
-    let root = ws.path.clone();
+async fn disk_matches(wt: Pinned<'_>, name: &str, expected: &[TreeEntry]) -> bool {
+    let root = wt.work_tree.to_path_buf();
     let name = name.to_owned();
     let found = tokio::task::spawn_blocking(move || {
         let mut files = Vec::new();
@@ -553,7 +570,7 @@ async fn disk_matches(ws: &Workspace, name: &str, expected: &[TreeEntry]) -> boo
     }
     let mut args = vec!["hash-object", "--"];
     args.extend(expected.iter().map(|e| e.path.as_str()));
-    let Ok(out) = git(&ws.path, &args).await else {
+    let Ok(out) = git_in(wt, &args).await else {
         return false;
     };
     let oids = String::from_utf8_lossy(&out);

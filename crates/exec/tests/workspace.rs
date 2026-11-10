@@ -1379,3 +1379,70 @@ async fn bug9_a_store_reached_through_a_symlink_into_the_repository_is_rejected_
         1
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Host Git is bound to the workspace: a `core.worktree` in the source repository's config
+// (common `config` or a per-worktree `config.worktree`) cannot point it at another directory.
+// ---------------------------------------------------------------------------------------------
+
+#[tokio::test]
+async fn core_worktree_in_repo_config_cannot_redirect_host_git_outside_the_workspace() {
+    let f = fixture();
+    let outside = f.base_dir.join("outside");
+    write(&outside.join("marker.txt"), "marker\n");
+    let outside_str = outside.to_str().unwrap();
+    tgit(&f.repo, &["config", "extensions.worktreeConfig", "true"]);
+    tgit(&f.repo, &["config", "core.worktree", outside_str]);
+    tgit(
+        &f.repo,
+        &["config", "--worktree", "core.worktree", outside_str],
+    );
+    let ws = workspace(&f, "t-core-worktree").await;
+    let gitdir = PathBuf::from(tgit(
+        &ws.path,
+        &["rev-parse", "--path-format=absolute", "--git-dir"],
+    ));
+    write(
+        &gitdir.join("config.worktree"),
+        format!("[core]\n\tworktree = {outside_str}\n"),
+    );
+    // Control: plain Git in the workspace resolves its work tree to the other directory.
+    assert_eq!(
+        tgit(&ws.path, &["rev-parse", "--show-toplevel"]),
+        outside_str,
+        "control: core.worktree must redirect plain git"
+    );
+
+    write(&ws.path.join("answer.txt"), "after\n");
+    let (cp, patch) = commit_candidate(&ws, &f.base, 1, T0, &TreeGone::for_tests())
+        .await
+        .unwrap();
+    let tree = tree_entries(&f.repo, &cp);
+    assert!(!tree.contains("marker.txt"), "marker staged: {tree}");
+    assert!(patch.contains("+after"), "{patch}");
+    assert!(!patch.contains("marker"), "{patch}");
+
+    write(&ws.path.join("stray.txt"), "stray\n");
+    reset_to(&ws, &f.base, &TreeGone::for_tests())
+        .await
+        .unwrap();
+    assert!(
+        !ws.path.join("stray.txt").exists(),
+        "reset did not clean the workspace"
+    );
+    assert_eq!(
+        fs::read_to_string(ws.path.join("answer.txt")).unwrap(),
+        "before\n"
+    );
+    assert_eq!(
+        fs::read_to_string(outside.join("marker.txt")).unwrap(),
+        "marker\n",
+        "the marker outside the workspace was modified or deleted"
+    );
+    assert_eq!(
+        fs::read_dir(&outside).unwrap().count(),
+        1,
+        "files appeared outside"
+    );
+    assert_eq!(scan(&ws).await, Ok(()));
+}

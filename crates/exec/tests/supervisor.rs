@@ -136,32 +136,40 @@ async fn deadline_kills_group_and_reports_deadline_exceeded() {
     assert!(pid_is_dead(bg));
 }
 
-#[tokio::test]
-async fn detached_grandchild_is_killed_before_tree_gone() {
-    assert!(descendant_tracking_available());
-    let dir = tempfile::tempdir().unwrap();
-    // The child double-forks; the grandchild calls setsid (new session and group), is reparented
-    // to launchd when its parent exits, closes our pipes, and records its pid. The leader then
-    // lingers briefly and exits 0, leaving the grandchild running.
-    let script = r#"/usr/bin/perl -MPOSIX -e '
-        if (fork() == 0) {
+/// The child double-forks; the grandchild calls setsid (new session and group), is reparented
+/// to launchd when its parent exits, closes our pipes, and records its pid. `linger` is how long
+/// the plan stays alive after that; with none, the plan exits within microseconds of the escape.
+fn detached_grandchild_script(linger: &str) -> String {
+    format!(
+        r#"/usr/bin/perl -MPOSIX -e '
+        if (fork() == 0) {{
             setsid();
-            if (fork() == 0) {
+            if (fork() == 0) {{
                 open(STDIN, "<", "/dev/null"); open(STDOUT, ">", "/dev/null"); open(STDERR, ">", "/dev/null");
                 open(F, ">", "gc.tmp"); print F $$; close(F); rename("gc.tmp", "gc.pid");
                 exec("sleep", "60");
-            }
+            }}
             exit 0;
-        }
+        }}
         wait();
-        select(undef, undef, undef, 0.01) until -e "gc.pid";
-    '; sleep 0.2"#;
-    let (exit, _) = run(
-        sh(script, dir.path()),
-        limits(Duration::from_secs(20)),
-        CancellationToken::new(),
+        select(undef, undef, undef, 0.001) until -e "gc.pid";
+    '{linger}"#
     )
-    .await;
+}
+
+/// Runs the script and asserts that a `TreeGone` was returned only with the grandchild dead.
+async fn assert_grandchild_dead_at_tree_gone(linger: &str) {
+    let dir = tempfile::tempdir().unwrap();
+    let supervised = spawn_gated(
+        shim(),
+        sh(&detached_grandchild_script(linger), dir.path()),
+        limits(Duration::from_secs(20)),
+        |_| Ok(()),
+    )
+    .await
+    .expect("spawn");
+    let mut sink = Collect::default();
+    let (exit, gone) = supervised.run(&mut sink, CancellationToken::new()).await;
     assert_eq!(exit.code, Some(0), "{exit:?}");
     assert_eq!(exit.failure, None);
     let gc: i32 = std::fs::read_to_string(dir.path().join("gc.pid"))
@@ -169,10 +177,80 @@ async fn detached_grandchild_is_killed_before_tree_gone() {
         .trim()
         .parse()
         .unwrap();
-    assert!(
-        pid_is_dead(gc),
-        "detached grandchild {gc} survived TreeGone"
-    );
+    let dead = pid_is_dead(gc);
+    if !dead {
+        // SAFETY: kill on the pid this test's own plan recorded.
+        unsafe { libc::kill(gc, libc::SIGKILL) };
+    }
+    let _proof = gone.expect("tree gone");
+    assert!(dead, "detached grandchild {gc} survived TreeGone");
+}
+
+#[tokio::test]
+async fn detached_grandchild_is_killed_before_tree_gone() {
+    assert!(descendant_tracking_available());
+    assert_grandchild_dead_at_tree_gone("; sleep 0.2").await;
+}
+
+/// The escape and the plan's exit fall within one poll interval: no scan ever sees the
+/// grandchild while its parent chain is alive.
+#[tokio::test]
+async fn detached_grandchild_escaping_as_the_plan_exits_is_killed_before_tree_gone() {
+    assert!(descendant_tracking_available());
+    for _ in 0..5 {
+        assert_grandchild_dead_at_tree_gone("").await;
+    }
+}
+
+#[tokio::test]
+async fn plan_inherits_neither_the_gate_nor_the_status_fd() {
+    let dir = tempfile::tempdir().unwrap();
+    // A plan that could write fd 4 could fake its own exit status; one that held fd 3 could
+    // keep the anchor from being released.
+    let (exit, sink) = run(
+        sh(
+            "for fd in 3 4; do if (: >&$fd) 2>/dev/null; then echo open$fd; fi; done; exit 7",
+            dir.path(),
+        ),
+        limits(Duration::from_secs(20)),
+        CancellationToken::new(),
+    )
+    .await;
+    assert_eq!(sink.count(Stream::Stdout), 0, "{:?}", sink.0);
+    assert_eq!(exit.code, Some(7), "{exit:?}");
+    assert_eq!(exit.failure, Some(FailureCode::ExitNonzero));
+}
+
+#[tokio::test]
+async fn plan_that_cannot_start_reports_exec_failed_and_tree_gone() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut plan = sh("", dir.path());
+    plan.argv = vec!["/nonexistent/eng-no-such-binary".into()];
+    let (exit, _) = run(
+        plan,
+        limits(Duration::from_secs(20)),
+        CancellationToken::new(),
+    )
+    .await;
+    assert_eq!(exit.code, Some(harness_exec::shim::EXEC_FAILED), "{exit:?}");
+}
+
+/// Without the anchor the responsibility rule no longer holds, so the supervisor cannot
+/// establish that nothing escaped: it must fail closed even though the tree is in fact empty.
+#[tokio::test]
+async fn plan_that_kills_the_anchor_yields_kill_failed() {
+    let dir = tempfile::tempdir().unwrap();
+    let supervised = spawn_gated(
+        shim(),
+        sh("kill -9 $PPID; sleep 0.2", dir.path()),
+        limits(Duration::from_secs(20)),
+        |_| Ok(()),
+    )
+    .await
+    .expect("spawn");
+    let mut sink = Collect::default();
+    let (_, gone) = supervised.run(&mut sink, CancellationToken::new()).await;
+    assert!(gone.is_err(), "TreeGone without the anchor");
 }
 
 #[tokio::test]
