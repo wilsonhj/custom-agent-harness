@@ -31,7 +31,7 @@ describe('doctor', () => {
     const json = c.eng(['doctor'], { env: { ENG_CLAUDE_BIN: fake }, json: true });
     assert.equal(json.json.ok, false);
     assert.equal(json.json.error, 'version_mismatch');
-    assert.equal(json.json.checks.find((x) => x.name === 'claude_version').code, 'version_mismatch');
+    assert.match(json.json.checks.find((x) => x.name === 'claude_version').detail, /^version_mismatch: /);
   });
 
   it('fails when the state directory is not private', () => {
@@ -40,6 +40,6 @@ describe('doctor', () => {
     fs.chmodSync(dir, 0o755);
     const r = c.eng(['doctor'], { json: true, state: dir });
     assert.notEqual(r.status, 0);
-    assert.equal(r.json.checks.find((x) => x.name === 'state_dir').code, 'state_dir_permissions');
+    assert.match(r.json.checks.find((x) => x.name === 'state_dir').detail, /^state_dir_permissions: /);
   });
 });

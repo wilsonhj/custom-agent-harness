@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 const ALLOWED_EDGES = {
-  'harness-cli': ['harness-engine', 'harness-core', 'harness-exec', 'harness-adapters'],
+  'harness-cli': ['harness-engine', 'harness-core'],
   'harness-engine': ['harness-store', 'harness-exec', 'harness-adapters', 'harness-core'],
   'harness-store': ['harness-core'],
   'harness-exec': ['harness-core'],

@@ -4,13 +4,12 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
-mod doctor;
 mod login;
 mod output;
 mod runtimes;
 
 use std::io::{BufRead as _, IsTerminal as _, Write as _};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -21,9 +20,10 @@ use harness_core::lifecycle::{DecisionKind, Subject};
 use harness_core::policy::Pipeline;
 use harness_core::stage::StageRunState;
 use harness_core::types::{Actor, Envelope, RepoRef, WIRE_VERSION};
-use harness_engine::{Engine, EngineConfig, EngineError, new_id, now};
-use harness_exec::hostgit::git;
-use harness_exec::workspace::{encode_packet, packet_digest};
+use harness_engine::{
+    DoctorCheck, Engine, EngineConfig, EngineError, doctor, encode_packet, git, new_id, now,
+    packet_digest, require_runtimes, resolve_config,
+};
 use output::{Report, emit};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
@@ -140,7 +140,7 @@ fn force_sandbox_unavailable() {
         && std::env::var_os(INNER).is_none()
         && let Ok(exe) = std::env::current_exe()
     {
-        let err = std::process::Command::new(harness_exec::sandbox_macos::SANDBOX_EXEC)
+        let err = std::process::Command::new("/usr/bin/sandbox-exec")
             .args(["-p", "(version 1)(allow default)"])
             .arg(exe)
             .args(std::env::args_os().skip(1))
@@ -184,20 +184,20 @@ async fn dispatch(cli: Cli) -> i32 {
         Ok(d) => d,
         Err(e) => return emit(json, &Report::err(e), "", output::INTERNAL),
     };
-    let resolved = runtimes::Resolved::from_env();
+    let cfg = match resolve_config(state_dir.clone()) {
+        Ok(c) => c,
+        Err(e) => return engine_error(json, None, &e),
+    };
     match cli.cmd {
-        Cmd::Doctor => cmd_doctor(json, &state_dir, &resolved),
-        Cmd::Login { runtime } => cmd_login(json, runtime, &state_dir, &resolved),
+        Cmd::Doctor => cmd_doctor(json, &cfg).await,
+        Cmd::Login { runtime } => cmd_login(json, runtime, &cfg),
         Cmd::Decide { task, action } => {
             // The terminal check comes first: nothing is opened or read without one.
             if !std::io::stdin().is_terminal() {
                 let r = Report::err("decisions need a terminal on stdin").task(&task, None);
                 return emit(json, &r, "", output::REJECTED);
             }
-            with_engine(json, &state_dir, &resolved, |e| {
-                cmd_decide(e, json, task, action)
-            })
-            .await
+            with_engine(json, &cfg, |e| cmd_decide(e, json, task, action)).await
         }
         Cmd::Task {
             cmd:
@@ -208,13 +208,13 @@ async fn dispatch(cli: Cli) -> i32 {
                     base,
                 },
         } => {
-            with_engine(json, &state_dir, &resolved, |e| {
+            with_engine(json, &cfg, |e| {
                 cmd_task_new(e, json, repo, packet, pipeline, base)
             })
             .await
         }
         Cmd::Run { task } => {
-            if let Err(e) = resolved.require_for_run() {
+            if let Err(e) = require_runtimes(&cfg) {
                 return emit(
                     json,
                     &Report::err(format!("runtime_not_found: {e}")).task(&task, None),
@@ -222,18 +222,14 @@ async fn dispatch(cli: Cli) -> i32 {
                     output::FAILED,
                 );
             }
-            with_engine(json, &state_dir, &resolved, |e| cmd_run(e, json, task)).await
+            with_engine(json, &cfg, |e| cmd_run(e, json, task)).await
         }
-        Cmd::Status { task } => {
-            with_engine(json, &state_dir, &resolved, |e| cmd_status(e, json, task)).await
-        }
-        Cmd::Cancel { task } => {
-            with_engine(json, &state_dir, &resolved, |e| cmd_cancel(e, json, task)).await
-        }
+        Cmd::Status { task } => with_engine(json, &cfg, |e| cmd_status(e, json, task)).await,
+        Cmd::Cancel { task } => with_engine(json, &cfg, |e| cmd_cancel(e, json, task)).await,
         Cmd::Audit {
             cmd: AuditCmd::Verify,
         } => {
-            with_engine(json, &state_dir, &resolved, |e| async move {
+            with_engine(json, &cfg, |e| async move {
                 match e.verify_chain() {
                     Ok(head) => emit(
                         json,
@@ -250,21 +246,20 @@ async fn dispatch(cli: Cli) -> i32 {
 }
 
 /// Creates the state directory, opens the engine (which recovers anything in flight), runs `f`.
-async fn with_engine<F, Fut>(json: bool, state_dir: &Path, r: &runtimes::Resolved, f: F) -> i32
+async fn with_engine<F, Fut>(json: bool, cfg: &EngineConfig, f: F) -> i32
 where
     F: FnOnce(Engine) -> Fut,
     Fut: std::future::Future<Output = i32>,
 {
-    if let Err(e) = runtimes::ensure_state_dir(state_dir) {
+    if let Err(e) = runtimes::ensure_state_dir(&cfg.state_dir) {
         return emit(
             json,
-            &Report::err(format!("state dir {}: {e}", state_dir.display())),
+            &Report::err(format!("state dir {}: {e}", cfg.state_dir.display())),
             "",
             output::INTERNAL,
         );
     }
-    let cfg: EngineConfig = r.engine_config(state_dir.to_path_buf());
-    match Engine::open(cfg).await {
+    match Engine::open(cfg.clone()).await {
         Ok(engine) => f(engine).await,
         Err(e) => engine_error(json, None, &e),
     }
@@ -331,24 +326,23 @@ fn state_name(t: &Task) -> Option<String> {
 
 // ---- doctor, login ----
 
-fn cmd_doctor(json: bool, state_dir: &Path, r: &runtimes::Resolved) -> i32 {
-    let checks = doctor::run_checks(state_dir, r);
-    let ok = checks.iter().all(doctor::Check::ok);
-    let first = checks.iter().find_map(|c| c.code);
-    let mut report = if ok {
-        Report::ok()
-    } else {
-        Report::err(first.unwrap_or("failed"))
+async fn cmd_doctor(json: bool, cfg: &EngineConfig) -> i32 {
+    let checks = doctor(cfg).await;
+    let ok = checks.iter().all(|c| c.ok);
+    // A failing check's detail is `<code>: <explanation>`.
+    let first = checks
+        .iter()
+        .find(|c| !c.ok)
+        .map(|c| c.detail.split(':').next().unwrap_or("failed").to_owned());
+    let mut report = match first {
+        None => Report::ok(),
+        Some(code) => Report::err(code),
     };
     report = report.with(
         "checks",
-        Value::Array(checks.iter().map(doctor::Check::to_json).collect()),
+        Value::Array(checks.iter().map(check_json).collect()),
     );
-    let text = checks
-        .iter()
-        .map(doctor::Check::line)
-        .collect::<Vec<_>>()
-        .join("\n");
+    let text = checks.iter().map(check_line).collect::<Vec<_>>().join("\n");
     let code = if ok { output::OK } else { output::FAILED };
     // Failures are already in the lines; keep stderr quiet in text mode.
     if json {
@@ -359,12 +353,20 @@ fn cmd_doctor(json: bool, state_dir: &Path, r: &runtimes::Resolved) -> i32 {
     }
 }
 
-fn cmd_login(
-    json: bool,
-    runtime: login::LoginRuntime,
-    state_dir: &Path,
-    r: &runtimes::Resolved,
-) -> i32 {
+fn check_line(c: &DoctorCheck) -> String {
+    format!(
+        "{}  {:<20} {}",
+        if c.ok { "ok  " } else { "FAIL" },
+        c.name,
+        c.detail
+    )
+}
+
+fn check_json(c: &DoctorCheck) -> Value {
+    json!({"name": c.name, "ok": c.ok, "detail": c.detail})
+}
+
+fn cmd_login(json: bool, runtime: login::LoginRuntime, cfg: &EngineConfig) -> i32 {
     if json {
         return emit(
             json,
@@ -373,7 +375,7 @@ fn cmd_login(
             output::USAGE,
         );
     }
-    match login::plan(runtime, state_dir, r) {
+    match login::plan(runtime, cfg) {
         Ok(plan) => {
             let err = login::exec(&plan);
             emit(

@@ -211,6 +211,33 @@ Later tasks build against these, not the plan text, where they differ.
 - The six research reports are accurate where graded (P) or (D); UNVERIFIED items are listed
   in design §11.
 
+## Architecture fix after Task 10
+
+Only `harness-exec` spawns processes and the CLI holds no logic; `harness-cli` depends on
+`harness-engine` and `harness-core` only (`scripts/check-deps.mjs` is back to that).
+
+Contract changes (engine, additive):
+
+- `pub async fn doctor(cfg: &EngineConfig) -> Vec<DoctorCheck>` and
+  `pub struct DoctorCheck { pub name: &'static str, pub ok: bool, pub detail: String }`. Checks, in
+  order: `sandbox`, `descendant_tracking`, `claude_version`, `codex_version`, `shim`, `state_dir`.
+  A failing check's `detail` starts with a stable code (`<code>: <explanation>`), e.g.
+  `version_mismatch`, `sandbox_unavailable`, `runtime_not_found`, `spawn_error`, `shim_missing`,
+  `state_dir_permissions`. Each `--version` runs through the real launch path (resolved real path,
+  read-only sandbox profile on a throwaway empty directory, `Network::None`, shim, supervisor), so
+  a passing check also proves the runtime starts inside the sandbox. No model call.
+- `pub fn resolve_config(state_dir: PathBuf) -> Result<EngineConfig, EngineError>` (`ENG_CLAUDE_BIN`,
+  `ENG_CODEX_BIN`, `ENG_NODE_BIN`, `ENG_SHIM_BIN`, `ENG_EXTRA_READ_DIRS`, PATH lookup,
+  canonicalisation). A runtime not found stays a bare name (so `status`/`audit`/`doctor` work);
+  only an unusable `ENG_EXTRA_READ_DIRS` is an error, now for every command, not only `run`.
+- `pub fn require_runtimes(cfg: &EngineConfig) -> Result<(), String>` (CLI's pre-flight for `run`).
+- Re-exports for the CLI: `git`, `encode_packet`, `packet_digest`.
+- `eng doctor --json`: each check is `{name, ok, detail}` (the separate `code` field is gone; the
+  top-level `error` is the first failing check's code).
+- Sanctioned exceptions in the CLI: `eng login` execs the official CLI unsandboxed (documented on
+  `login::exec`); the debug-only `ENG_FORCE_SANDBOX_UNAVAILABLE` re-exec uses the literal
+  `/usr/bin/sandbox-exec`.
+
 ## Task 10 verification
 
 | Command | Result |

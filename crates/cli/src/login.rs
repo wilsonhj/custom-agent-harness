@@ -1,9 +1,9 @@
 //! `eng login claude|codex`: the official CLI's own interactive login, with the harness-owned
 //! config directory. `eng` reads nothing the login produces.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use crate::runtimes::Resolved;
+use harness_engine::EngineConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum LoginRuntime {
@@ -28,14 +28,23 @@ pub struct LoginPlan {
     pub hint: &'static str,
 }
 
+/// A runtime the engine's configuration resolved (an absolute, canonical path).
+fn resolved(bin: &std::path::Path, name: &str) -> Result<PathBuf, String> {
+    if bin.is_absolute() {
+        Ok(bin.to_path_buf())
+    } else {
+        Err(format!("{name}: not found"))
+    }
+}
+
 /// Pure: the argv and environment of the login. Claude runs the CLI itself (the user types
 /// `/login`); Codex runs `codex login`, as `node <codex.js> login` when `node` is known (the
 /// same launch shape the engine uses).
-pub fn plan(runtime: LoginRuntime, state_dir: &Path, r: &Resolved) -> Result<LoginPlan, String> {
-    let runtimes = state_dir.join("runtimes");
+pub fn plan(runtime: LoginRuntime, cfg: &EngineConfig) -> Result<LoginPlan, String> {
+    let runtimes = cfg.state_dir.join("runtimes");
     match runtime {
         LoginRuntime::Claude => {
-            let claude = r.claude.clone().map_err(|e| format!("claude: {e}"))?;
+            let claude = resolved(&cfg.claude_bin, "claude")?;
             let dir = runtimes.join("claude");
             Ok(LoginPlan {
                 program: claude,
@@ -47,14 +56,14 @@ pub fn plan(runtime: LoginRuntime, state_dir: &Path, r: &Resolved) -> Result<Log
             })
         }
         LoginRuntime::Codex => {
-            let codex = r.codex.clone().map_err(|e| format!("codex: {e}"))?;
+            let codex = resolved(&cfg.codex_bin, "codex")?;
             let dir = runtimes.join("codex");
-            let (program, args) = match &r.node {
-                Ok(node) => (
+            let (program, args) = match &cfg.node_bin {
+                Some(node) => (
                     node.clone(),
                     vec![codex.to_string_lossy().into_owned(), "login".into()],
                 ),
-                Err(_) => (codex, vec!["login".into()]),
+                None => (codex, vec!["login".into()]),
             };
             Ok(LoginPlan {
                 program,
@@ -69,6 +78,11 @@ pub fn plan(runtime: LoginRuntime, state_dir: &Path, r: &Resolved) -> Result<Log
 }
 
 /// Replaces this process with the login. Only returns on failure.
+///
+/// The one sanctioned exception to "only `harness-exec` spawns processes": `eng login` hands
+/// the terminal to the official CLI's own interactive login, which must run unsandboxed
+/// (it opens a browser and writes the credential store). It is an `exec`, so no child
+/// outlives it, and no agent run, supervisor or sandbox is involved.
 pub fn exec(p: &LoginPlan) -> std::io::Error {
     use std::os::unix::fs::DirBuilderExt as _;
     use std::os::unix::process::CommandExt as _;
@@ -96,23 +110,20 @@ mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
 
-    fn resolved(node: bool) -> Resolved {
-        Resolved {
-            claude: Ok("/real/claude".into()),
-            codex: Ok("/real/pkg/bin/codex.js".into()),
-            node: if node {
-                Ok("/real/node".into())
-            } else {
-                Err("none".into())
-            },
-            shim: "/x/eng-shim".into(),
-            extra_read_dirs: Ok(vec![]),
+    fn cfg(node: bool) -> EngineConfig {
+        EngineConfig {
+            state_dir: "/s".into(),
+            claude_bin: "/real/claude".into(),
+            codex_bin: "/real/pkg/bin/codex.js".into(),
+            node_bin: node.then(|| "/real/node".into()),
+            shim_bin: "/x/eng-shim".into(),
+            extra_read_dirs: vec![],
         }
     }
 
     #[test]
     fn claude_login_runs_the_cli_with_the_harness_config_dir() {
-        let p = plan(LoginRuntime::Claude, Path::new("/s"), &resolved(true)).unwrap();
+        let p = plan(LoginRuntime::Claude, &cfg(true)).unwrap();
         assert_eq!(p.program, PathBuf::from("/real/claude"));
         assert!(p.args.is_empty());
         assert_eq!(
@@ -128,7 +139,7 @@ mod tests {
 
     #[test]
     fn codex_login_runs_codex_login_with_codex_home() {
-        let p = plan(LoginRuntime::Codex, Path::new("/s"), &resolved(true)).unwrap();
+        let p = plan(LoginRuntime::Codex, &cfg(true)).unwrap();
         assert_eq!(p.program, PathBuf::from("/real/node"));
         assert_eq!(p.args, ["/real/pkg/bin/codex.js", "login"]);
         assert_eq!(
@@ -136,7 +147,7 @@ mod tests {
             [("CODEX_HOME".to_owned(), PathBuf::from("/s/runtimes/codex"))]
         );
         assert_eq!(p.env_remove, ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]);
-        let p = plan(LoginRuntime::Codex, Path::new("/s"), &resolved(false)).unwrap();
+        let p = plan(LoginRuntime::Codex, &cfg(false)).unwrap();
         assert_eq!(
             (p.program, p.args),
             (
@@ -148,8 +159,8 @@ mod tests {
 
     #[test]
     fn missing_runtime_is_an_error() {
-        let mut r = resolved(true);
-        r.claude = Err("not found".into());
-        assert!(plan(LoginRuntime::Claude, Path::new("/s"), &r).is_err());
+        let mut c = cfg(true);
+        c.claude_bin = "claude".into();
+        assert!(plan(LoginRuntime::Claude, &c).is_err());
     }
 }

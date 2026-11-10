@@ -12,6 +12,8 @@
 //! (`harness_exec::workspace::validate_task_id`) before a `CreateTask` is stored and before
 //! every path join.
 
+mod config;
+mod doctor;
 mod recovery;
 mod worker;
 
@@ -30,11 +32,14 @@ use harness_core::lifecycle::{DecisionKind, TaskState};
 use harness_core::policy::Pipeline;
 use harness_core::types::{Envelope, RuntimeKind};
 use harness_exec::TreeGone;
-use harness_exec::hostgit::git;
 use harness_exec::workspace::validate_task_id;
 use harness_store::{ChainBroken, EventRecord, Receipt, Store, StoreError};
 use tokio_util::sync::CancellationToken;
 
+pub use config::{require_runtimes, resolve_config};
+pub use doctor::{DoctorCheck, doctor};
+pub use harness_exec::hostgit::git;
+pub use harness_exec::workspace::{encode_packet, packet_digest};
 pub use harness_store::OutboxState;
 
 /// Where state lives and how to launch each runtime.

@@ -26,7 +26,7 @@ use harness_exec::{LaunchPlan, TreeGone};
 use harness_store::{OutboxRow, OutboxState, ProcessRecord};
 use tokio_util::sync::CancellationToken;
 
-use crate::{Engine, EngineError, failpoint, new_id, now};
+use crate::{Engine, EngineConfig, EngineError, failpoint, new_id, now};
 
 const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 const AGENT_LIMITS_OUTPUT: u64 = 64 * 1024 * 1024;
@@ -45,9 +45,9 @@ pub(crate) enum Finish {
 
 /// How to start one runtime: the argv prefix that replaces `AdapterPlan.argv[0]`, and the
 /// directories it must be able to read.
-struct Launch {
-    prefix: Vec<String>,
-    read_dirs: Vec<PathBuf>,
+pub(crate) struct Launch {
+    pub(crate) prefix: Vec<String>,
+    pub(crate) read_dirs: Vec<PathBuf>,
 }
 
 fn utf8(p: &Path) -> Result<String, FailureCode> {
@@ -56,6 +56,67 @@ fn utf8(p: &Path) -> Result<String, FailureCode> {
 
 fn canonical(p: &Path) -> Result<PathBuf, FailureCode> {
     fs::canonicalize(p).map_err(|_| FailureCode::SpawnError)
+}
+
+pub(crate) fn path_env(cfg: &EngineConfig) -> String {
+    match cfg
+        .node_bin
+        .as_deref()
+        .and_then(|n| fs::canonicalize(n).ok())
+        .and_then(|n| n.parent().map(Path::to_path_buf))
+    {
+        Some(dir) => format!("{}:{SYSTEM_PATH}", dir.display()),
+        None => SYSTEM_PATH.to_owned(),
+    }
+}
+
+/// Directories every sandboxed process may read: `extra_read_dirs` and node's directory.
+fn base_read_dirs(cfg: &EngineConfig) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = cfg
+        .extra_read_dirs
+        .iter()
+        .filter_map(|d| fs::canonicalize(d).ok())
+        .collect();
+    if let Some(node) = cfg
+        .node_bin
+        .as_deref()
+        .and_then(|n| fs::canonicalize(n).ok())
+        && let Some(dir) = node.parent()
+    {
+        dirs.push(dir.to_path_buf());
+    }
+    dirs
+}
+
+/// How to start `kind`: its resolved real path (and node for Codex) and what it may read.
+pub(crate) fn launch_for(cfg: &EngineConfig, kind: RuntimeKind) -> Result<Launch, FailureCode> {
+    let mut read_dirs = base_read_dirs(cfg);
+    let prefix = match kind {
+        RuntimeKind::Claude => {
+            let bin = canonical(&cfg.claude_bin)?;
+            if let Some(dir) = bin.parent() {
+                read_dirs.push(dir.to_path_buf());
+            }
+            vec![utf8(&bin)?]
+        }
+        RuntimeKind::Codex => {
+            let entry = canonical(&cfg.codex_bin)?;
+            let dir = entry.parent().ok_or(FailureCode::SpawnError)?;
+            // `<package>/bin/codex.js`: the whole package is needed (its native binary).
+            let package = if dir.file_name().is_some_and(|n| n == "bin") {
+                dir.parent().unwrap_or(dir)
+            } else {
+                dir
+            };
+            read_dirs.push(package.to_path_buf());
+            match &cfg.node_bin {
+                Some(node) => vec![utf8(&canonical(node)?)?, utf8(&entry)?],
+                None => vec![utf8(&entry)?],
+            }
+        }
+    };
+    read_dirs.push(cfg.state_dir.join("runtimes").join(runtime_name(kind)));
+    Ok(Launch { prefix, read_dirs })
 }
 
 pub(crate) fn to_record(id: &ProcessIdentity) -> ProcessRecord {
@@ -232,66 +293,11 @@ impl Engine {
     }
 
     fn path_env(&self) -> String {
-        match self
-            .cfg
-            .node_bin
-            .as_deref()
-            .and_then(|n| fs::canonicalize(n).ok())
-            .and_then(|n| n.parent().map(Path::to_path_buf))
-        {
-            Some(dir) => format!("{}:{SYSTEM_PATH}", dir.display()),
-            None => SYSTEM_PATH.to_owned(),
-        }
-    }
-
-    /// Directories every sandboxed process may read: `extra_read_dirs` and node's directory.
-    fn base_read_dirs(&self) -> Vec<PathBuf> {
-        let mut dirs: Vec<PathBuf> = self
-            .cfg
-            .extra_read_dirs
-            .iter()
-            .filter_map(|d| fs::canonicalize(d).ok())
-            .collect();
-        if let Some(node) = self
-            .cfg
-            .node_bin
-            .as_deref()
-            .and_then(|n| fs::canonicalize(n).ok())
-            && let Some(dir) = node.parent()
-        {
-            dirs.push(dir.to_path_buf());
-        }
-        dirs
+        path_env(&self.cfg)
     }
 
     fn launch_for(&self, kind: RuntimeKind) -> Result<Launch, FailureCode> {
-        let mut read_dirs = self.base_read_dirs();
-        let prefix = match kind {
-            RuntimeKind::Claude => {
-                let bin = canonical(&self.cfg.claude_bin)?;
-                if let Some(dir) = bin.parent() {
-                    read_dirs.push(dir.to_path_buf());
-                }
-                vec![utf8(&bin)?]
-            }
-            RuntimeKind::Codex => {
-                let entry = canonical(&self.cfg.codex_bin)?;
-                let dir = entry.parent().ok_or(FailureCode::SpawnError)?;
-                // `<package>/bin/codex.js`: the whole package is needed (its native binary).
-                let package = if dir.file_name().is_some_and(|n| n == "bin") {
-                    dir.parent().unwrap_or(dir)
-                } else {
-                    dir
-                };
-                read_dirs.push(package.to_path_buf());
-                match &self.cfg.node_bin {
-                    Some(node) => vec![utf8(&canonical(node)?)?, utf8(&entry)?],
-                    None => vec![utf8(&entry)?],
-                }
-            }
-        };
-        read_dirs.push(self.cfg.state_dir.join("runtimes").join(runtime_name(kind)));
-        Ok(Launch { prefix, read_dirs })
+        launch_for(&self.cfg, kind)
     }
 
     fn profile(
@@ -1008,7 +1014,7 @@ impl Engine {
                 &checkout,
                 &ws.git_common_dir,
             ),
-            read_allow_extra: self.base_read_dirs(),
+            read_allow_extra: base_read_dirs(&self.cfg),
             network: Network::None,
         };
         let plan = LaunchPlan {
