@@ -9,3 +9,14 @@ workspace = true
 
 [dependencies]
 harness-core = { path = "../core" }
+rusqlite = { version = "0.41.1", features = ["bundled"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+thiserror = "2.0.21"
+
+[features]
+# Test-only crash points: `ENG_FAILPOINT=<name>` makes the process SIGKILL itself there.
+failpoints = []
+
+[dev-dependencies]
+harness-store = { path = ".", features = ["failpoints"] }
