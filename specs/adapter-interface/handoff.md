@@ -164,3 +164,24 @@ Review the conflict-free follow-up branch and its supported-host CI, then reques
 T2 -> T3 transition through the external approval ledger for the decisions already
 recorded in requirements.md "T2 decisions". T3 starts by refactoring `harness/local`
 into shared modules (D2). This handoff grants no task-phase approval.
+
+## Review-branch integration, 2026-11-10
+
+- Branch `codex/review-fixes-pr9` starts at reviewed `6369aec` and merges current
+  main `dd5a200` in `a50344c`. The only manual conflict was this handoff's next action;
+  it now preserves the human decisions already recorded on main and requests the ledger
+  transition before T3. Key-read denials, Kiro ledger-read denial, A-17 and A-22 survive.
+- External-review context: `docs/reviews/pr9-integration-review.md`. The original PR
+  branch remains unchanged; no task status or approval record was written.
+- Validation on macOS / Node 24.20.0: `npm run check` and `git diff --check` pass.
+  Packet consistency: all 8 packets parse, all 42 task dependencies resolve without
+  cycles, and all 22 A / 21 K requirements have planned acceptance references.
+- `npm test`: 90 tests, 86 pass, 2 fail, 2 skipped. Failures are
+  `sandbox argv is offline, minimally mounted, and does not expose controller state`
+  (Linux Bubblewrap required) and
+  `default CLI execution fails closed when isolation is unavailable`
+  (expected `/worker failed/`, received the Linux-only error). These inherited Linux
+  execution tests are not represented as passing locally. Supported Linux CI is required
+  on the published integration; future adapter/Kiro suites remain unexecuted.
+- Exact next action: external agent reviews the integrated packet and conflict resolution,
+  then the owner checks current Linux CI and chooses how to update or replace PR 9.
