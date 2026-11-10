@@ -160,11 +160,13 @@ cargo build --workspace
 ENG_BIN=target/debug/eng npm run conformance
 ```
 
-The Rust suite has 29 newly ignored execution-dependent tests and the conformance
-suite has 3 explicit skips because the strong containment backend is unavailable.
+The Rust suite has 30 newly ignored R-11 execution-dependent tests plus 5 unchanged
+baseline ignores (35 total); the conformance suite has 5 explicit skips because the
+strong containment backend is unavailable.
 Passing remaining checks does not establish an end-to-end or live hosted-model workflow.
-The [containment review brief](specs/rust-spine/containment-review-brief.md) lists every
-new ignore/skip and the capabilities they no longer exercise. See [the feature packet](specs/rust-spine/)
+The [final combined evidence](specs/rust-spine/containment-review-brief.md#final-combined-verification)
+records 234 Rust passes and 9 CLI passes; that brief lists every ignore/skip and the
+capabilities they no longer exercise. See [the feature packet](specs/rust-spine/)
 and its handoff for exact results, pre-existing ignores and next actions.
 
 ## Trust boundaries and planned integration

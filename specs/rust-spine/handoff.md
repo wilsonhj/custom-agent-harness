@@ -358,7 +358,8 @@ containing the exact policy snapshot and SHA-256. No `EngineConfig` field or CLI
 changed. [External review brief](egress-review-brief.md) records the trust boundary and
 limitations. This fix does not claim to close the separately reviewed process-containment gap.
 
-Verification (2026-11-10):
+Historical pre-containment verification at `feceb481e647fb263a02248b5554226a73540f04`
+(2026-11-10):
 
 | Command | Result |
 |---|---|
@@ -438,14 +439,14 @@ Historical containment-branch verification (before final functional integration;
 | `PATH="/usr/local/bin:$PATH" ENG_BIN=target/debug/eng npm run conformance` | PASS: 12 cases, 9 passed, 0 failed, 3 explicitly skipped |
 | `PATH="/usr/local/bin:$PATH" npm test` | 90 tests: 86 passed, 2 failed, 2 skipped; Linux-only pilot limits below |
 
-Final Node/conformance commands used `/usr/local/bin/node v24.0.2` (confirmed with
+Those historical Node/conformance commands used `/usr/local/bin/node v24.0.2` (confirmed with
 `process.execPath` and `process.version`). An initial `npm test` used the shell's
 `/opt/homebrew/bin/node v26.12.1`; it had the same 86/2/2 result and was rerun on the
 supported Node major. Initial sandboxed Rust execution failed 7 local proxy tests
 with `Operation not permitted` when binding listeners; the documented full suite
 was rerun outside the inherited sandbox and passed, including sandbox-live tests.
 
-The two unchanged Node failures are `tests/local-workflow.test.mjs:239`
+At that historical head, the two Node failures were `tests/local-workflow.test.mjs:239`
 (`sandbox argv is offline, minimally mounted, and does not expose controller state`)
 and `:273` (`default CLI execution fails closed when isolation is unavailable`):
 Linux Bubblewrap is required, and the second test expects `worker failed` instead
@@ -502,6 +503,7 @@ untrusted agent or verifier was permitted through the closed production gate.
 | `cargo clippy --workspace --all-targets -- -D warnings` | passed |
 | `node scripts/check-deps.mjs` | passed |
 | `npm run check`, `node --check conformance/cases/flow.test.mjs` | passed |
+| Latest coordinating-session `npm test` on `/usr/local/bin/node v24.0.2` | 90 tests: 85 passed, 3 failed, 2 skipped; baseline reproduction and exact failures below |
 
 Full local evidence: `/private/tmp/harness-pr13-final-combined-rust.log`,
 `/private/tmp/harness-pr13-final-control-integration.log`,
@@ -512,3 +514,55 @@ Exact next action: the parent session reviews the final combined evidence and
 submits the combined change for external review. Keep production execution closed;
 Task 11 and successful end-to-end flows require a separately designed R-11 backend.
 No task approval, approval-ledger update, release, push or live runtime call occurred.
+
+
+## Documentation review corrections and latest Node evidence (2026-11-10)
+
+The independent combined review of `ebcb067` reported no code defects and identified
+stale evidence wording. The egress brief now binds its original 4/4 integration,
+five-ignore and 11/11 conformance results to pre-containment head
+`feceb481e647fb263a02248b5554226a73540f04`; current results are 234 Rust passes,
+35 ignores, 9 CLI passes and 5 skips. Launch-time revocation is explicitly ignored
+and unavailable behind the R-11 gate. README records 30 new R-11 ignores plus 5
+baseline ignores and 5 CLI skips, with a link to final evidence. Fixture READMEs
+now require future synthetic reconstruction from documented shapes/status-only
+observations, forbid raw authenticated captures/credential content, and distinguish
+the adapter-local synthetic sandbox flag from the current all-runtime
+`ContainmentUnavailable` refusal. Task 11 remains unavailable.
+
+The coordinating session's latest fresh Node 24.0.2 run is **85 passed, 3 failed,
+2 skipped** (90 tests). The exact failures are:
+
+- `excessive output retains failure evidence and blocks decision`
+  (`tests/local-workflow.test.mjs:136`): actual `worker failed: kill EPERM`, expected
+  `output limit exceeded`.
+- `sandbox argv is offline, minimally mounted, and does not expose controller state`
+  (`tests/local-workflow.test.mjs:239`): Linux Bubblewrap is required on this macOS host.
+- `default CLI execution fails closed when isolation is unavailable`
+  (`tests/local-workflow.test.mjs:273`): expected `worker failed`, received the Linux
+  Bubblewrap platform refusal.
+
+The excessive-output case was reproduced narrowly on both this branch and the
+unchanged Node pilot in the PR 12 docs branch. `git diff origin/main -- harness/local tests` is empty. Logs: `/private/tmp/harness-pr13-final-node24.log`,
+`/private/tmp/harness-pr13-node-output-recheck.log`, and
+`/private/tmp/harness-pr12-node-output-baseline.log`. Earlier **86/2/2** results remain
+historical evidence, not the latest suite result. Linux CI remains pending.
+
+Original PR 13 advanced externally to `6e79be2efbcb2249c2bafdcc6d48035d683b3d7d`:
+main merge `e657fbeafa1048e25f0b5645eef5a8938c878271`, followed by a docs-only README/handoff
+self-check against PR 17. It contains no additional Rust source change. This review-fix
+branch stays anchored to PR 13 `6ce3a56` plus main and its reviewed fixes; no upstream
+merge was needed or performed in this documentation round. The parent session owns
+any publication/metadata integration decision.
+
+Validation for this round: documentation-only diff inspected; `git diff --check`
+passed. Rust, production code, tests and the containment gate were unchanged; no
+Rust or Node suites were rerun for prose corrections.
+
+The parent session created [draft PR 18](https://github.com/wilsonhj/custom-agent-harness/pull/18)
+at `ebcb067` to start CI; this is not a completed external review of these docs.
+
+Exact next action: the parent session pushes the final documentation commit, requests
+scoped review of these five docs, and checks CI at that exact head. Keep R-11 execution closed and report the
+latest Node failures and lost workflow availability; no phase or release approval
+is implied.

@@ -1,9 +1,12 @@
 # Adapter fixtures (PROVISIONAL)
 
-Every transcript here is PROVISIONAL: hand-written from the formats documented in
-`docs/superpowers/specs/research-2026-11-09/1b-subscription-clis.md` (sections 1, 5, 7) and
-`specs/claude-adapter/requirements.md` (C-1). None was recorded from a real run. Plan Task 11
-replaces them with recorded transcripts.
+Every fixture here is PROVISIONAL: hand-written synthetic examples from the formats
+documented in `docs/superpowers/specs/research-2026-11-09/1b-subscription-clis.md`
+(sections 1, 5, 7) and `specs/claude-adapter/requirements.md` (C-1). None was recorded
+from a real run. A future authorized Task 11 may reconstruct minimal synthetic
+fixtures from documented event shapes and status-only observations, with provenance.
+Do not retain raw authenticated captures or credential content. Task 11 remains
+unavailable until a real R-11 containment backend permits runtime invocation.
 
 ## What is documented and what is guessed
 
@@ -28,8 +31,8 @@ Codex (`codex/*.jsonl`)
 - Codex: true iff argv contains `-s danger-full-access` (known from our own argv).
 - Claude: no `init` field for sandbox state is documented. The parser checks an optional
   `sandbox` key on `init` (`false`, or an object with `enabled: false`) and reports true only
-  if that is explicit. With real 2.1.318 output it is therefore expected to be false until
-  Task 11 shows what `init` contains.
+  if that is explicit. This synthetic adapter check does not establish real CLI
+  compatibility; Task 11 cannot validate it while the R-11 gate blocks invocation.
 
 ## Files
 
