@@ -147,6 +147,22 @@ fn set_executable(path: &Path) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
+/// SHA-1 of the empty tree.
+const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+/// An executable script that creates `<name>-RAN` and then runs `rest`. Returns the script
+/// path and the marker path.
+fn trap(f: &Fixture, name: &str, rest: &str) -> (String, PathBuf) {
+    let marker = f.base_dir.join(format!("{name}-RAN"));
+    let script = f.base_dir.join(format!("{name}.sh"));
+    write(
+        &script,
+        format!("#!/bin/sh\ntouch '{}'\n{rest}\n", marker.display()),
+    );
+    set_executable(&script);
+    (script.to_str().unwrap().to_owned(), marker)
+}
+
 // ---------------------------------------------------------------------------------------------
 // Plan tests
 // ---------------------------------------------------------------------------------------------
@@ -194,11 +210,17 @@ async fn commit_candidate_is_deterministic_for_same_inputs() {
     let ws = workspace(&f, "t-det").await;
     write(&ws.path.join("answer.txt"), "after\n");
 
-    let (first, diff) = commit_candidate(&ws, &f.base, 1, T0).await.unwrap();
+    let (first, diff) = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
     // A retry of the same checkpoint (e.g. after a crash) yields the same commit.
-    let (again, diff_again) = commit_candidate(&ws, &f.base, 1, T0).await.unwrap();
+    let (again, diff_again) = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
     // The same tree + parent + time under another checkpoint number is the same commit.
-    let (second, _) = commit_candidate(&ws, &f.base, 2, T0).await.unwrap();
+    let (second, _) = commit_candidate(&ws, &f.base, 2, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
     assert_eq!(first, again);
     assert_eq!(first, second);
     assert_eq!(diff, diff_again);
@@ -224,9 +246,15 @@ async fn commit_candidate_is_deterministic_for_same_inputs() {
     assert!(header.contains(&format!("parent {}\n", f.base)), "{header}");
 
     // A different time is a different commit.
-    let (later, _) = commit_candidate(&ws, &f.base, 3, Timestamp(T0.0 + 1_000_000))
-        .await
-        .unwrap();
+    let (later, _) = commit_candidate(
+        &ws,
+        &f.base,
+        3,
+        Timestamp(T0.0 + 1_000_000),
+        TreeGone::for_tests(),
+    )
+    .await
+    .unwrap();
     assert_ne!(first, later);
 
     // An independent clone of the same base with the same change produces the same SHA.
@@ -244,7 +272,9 @@ async fn commit_candidate_is_deterministic_for_same_inputs() {
         .await
         .unwrap();
     write(&ws2.path.join("answer.txt"), "after\n");
-    let (cloned, _) = commit_candidate(&ws2, &f.base, 1, T0).await.unwrap();
+    let (cloned, _) = commit_candidate(&ws2, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
     assert_eq!(first, cloned);
 }
 
@@ -257,12 +287,14 @@ async fn update_ref_is_compare_and_swap() {
     tgit(&f.repo, &["update-ref", &name, f.base.as_str()]);
     write(&ws.path.join("answer.txt"), "after\n");
 
-    let r = commit_candidate(&ws, &f.base, 1, T0).await;
+    let r = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests()).await;
     assert_eq!(r.map(|_| ()), Err(FailureCode::CandidateChanged));
     assert_eq!(ref_value(&f.repo, &name).as_deref(), Some(f.base.as_str()));
 
     // The low-level primitive: a wrong expected-old value fails and leaves the ref alone.
-    let (other, _) = commit_candidate(&ws, &f.base, 2, T0).await.unwrap();
+    let (other, _) = commit_candidate(&ws, &f.base, 2, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
     let wrong_old = other.as_str();
     let r = git(&f.repo, &["update-ref", &name, other.as_str(), wrong_old]).await;
     assert!(r.is_err());
@@ -318,7 +350,9 @@ async fn repo_hooks_do_not_run_on_host_commit() {
 
     let ws = workspace(&f, "t-hooks").await;
     write(&ws.path.join("answer.txt"), "after\n");
-    let (sha, _) = commit_candidate(&ws, &f.base, 1, T0).await.unwrap();
+    let (sha, _) = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
     reset_to(&ws, &f.base, TreeGone::for_tests()).await.unwrap();
     assert!(
         !marker.exists(),
@@ -389,7 +423,7 @@ async fn nested_repo_or_gitlink_is_git_metadata_touched() {
     // commit_candidate refuses as well and creates no ref.
     let ws = workspace(&f, "t-nested-commit").await;
     fs::create_dir_all(ws.path.join("sub/.git")).unwrap();
-    let r = commit_candidate(&ws, &f.base, 1, T0).await;
+    let r = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests()).await;
     assert_eq!(r.map(|_| ()), Err(FailureCode::GitMetadataTouched));
     assert_eq!(ref_value(&f.repo, &cp_ref("t-nested-commit", 1)), None);
 }
@@ -409,7 +443,9 @@ async fn hidden_ref_is_not_pushed_by_default_refspec() {
 
     let ws = workspace(&f, "t-push").await;
     write(&ws.path.join("answer.txt"), "after\n");
-    commit_candidate(&ws, &f.base, 1, T0).await.unwrap();
+    commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
     assert!(ref_value(&f.repo, &cp_ref("t-push", 1)).is_some());
 
     tgit(&f.repo, &["push", "-q", "-u", "origin", "main"]);
@@ -429,7 +465,7 @@ async fn token_shaped_string_in_added_line_fails_with_secret_in_diff() {
         &ws.path.join("src/config.js"),
         format!("// settings\nconst key = \"{ANT_KEY}\";\n"),
     );
-    let r = commit_candidate(&ws, &f.base, 1, T0).await;
+    let r = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests()).await;
     assert_eq!(r.map(|_| ()), Err(FailureCode::SecretInDiff));
     assert_eq!(
         ref_value(&f.repo, &cp_ref("t-secret", 1)),
@@ -443,7 +479,7 @@ async fn token_shaped_string_in_added_line_fails_with_secret_in_diff() {
     bytes.extend_from_slice(ANT_KEY.as_bytes());
     bytes.push(b'\n');
     write(&ws.path.join("blob.bin"), bytes);
-    let r = commit_candidate(&ws, &f.base, 1, T0).await;
+    let r = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests()).await;
     assert_eq!(r.map(|_| ()), Err(FailureCode::SecretInDiff));
     assert_eq!(ref_value(&f.repo, &cp_ref("t-secret-bin", 1)), None);
 }
@@ -460,7 +496,9 @@ async fn token_shaped_string_in_removed_line_is_ignored() {
         .await
         .unwrap();
     write(&ws.path.join("legacy.env"), "OTHER=1\n");
-    let (_, diff) = commit_candidate(&ws, &base, 1, T0).await.unwrap();
+    let (_, diff) = commit_candidate(&ws, &base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
     assert!(diff.contains(&format!("-KEY={ANT_KEY}")), "{diff}");
     assert!(scan_for_secrets(&diff).is_empty());
 }
@@ -594,7 +632,9 @@ async fn reset_to_restores_the_commit_exactly() {
     let f = fixture();
     let ws = workspace(&f, "t-reset").await;
     write(&ws.path.join("answer.txt"), "after\n");
-    let (cp, _) = commit_candidate(&ws, &f.base, 1, T0).await.unwrap();
+    let (cp, _) = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
     write(&ws.path.join("answer.txt"), "scribbled\n");
     write(&ws.path.join("stray/new.txt"), "stray\n");
     write(&ws.path.join(".gitignore"), "ignored/\n");
@@ -612,6 +652,183 @@ async fn reset_to_restores_the_commit_exactly() {
     }
     assert_eq!(tgit(&ws.path, &["status", "--porcelain", "--ignored"]), "");
     assert_eq!(scan(&ws).await, Ok(()));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Repository-controlled programs: attribute drivers and config hooks never run on the host.
+// Each trap is armed in the repository's own .git/config (untrusted) and selected by
+// attributes in the worktree (agent-writable) or in .git/info/attributes. Each test ends by
+// showing that plain Git, without the harness's hardening, does fire the trap.
+// ---------------------------------------------------------------------------------------------
+
+#[tokio::test]
+async fn clean_filter_from_worktree_attributes_does_not_run_on_commit() {
+    let f = fixture();
+    let (evil, marker) = trap(&f, "clean", "cat");
+    let ws = workspace(&f, "t-clean").await;
+    tgit(&f.repo, &["config", "filter.evil.clean", &evil]);
+    write(&ws.path.join(".gitattributes"), "* filter=evil\n");
+    write(&ws.path.join("answer.txt"), "after\n");
+    // The attribute source works although the empty tree is not stored in the repository.
+    let stored = f.repo.join(".git/objects/4b").join(&EMPTY_TREE[2..]);
+    assert!(!stored.exists());
+
+    let (cp, _) = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
+    assert!(!marker.exists(), "a clean filter ran on the host");
+    assert!(!stored.exists());
+    let blob = tgit(&f.repo, &["cat-file", "blob", &format!("{cp}:answer.txt")]);
+    assert_eq!(blob, "after");
+
+    write(&ws.path.join("answer.txt"), "again\n");
+    let _ = tgit_raw(&ws.path, &["add", "answer.txt"]);
+    assert!(
+        marker.exists(),
+        "fixture filter never fires; the test proves nothing"
+    );
+}
+
+#[tokio::test]
+async fn clean_filter_from_info_attributes_does_not_run_on_commit() {
+    let f = fixture();
+    let (evil, marker) = trap(&f, "info-clean", "cat");
+    let ws = workspace(&f, "t-info").await;
+    tgit(&f.repo, &["config", "filter.evil.clean", &evil]);
+    write(&f.repo.join(".git/info/attributes"), "* filter=evil\n");
+    write(&ws.path.join("answer.txt"), "after\n");
+
+    commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
+    assert!(!marker.exists(), "a clean filter ran on the host");
+
+    // Armed even with an empty attribute source: info/attributes is read regardless.
+    write(&ws.path.join("answer.txt"), "again\n");
+    let source = format!("--attr-source={EMPTY_TREE}");
+    let _ = tgit_raw(&ws.path, &[&source, "add", "answer.txt"]);
+    assert!(
+        marker.exists(),
+        "fixture filter never fires; the test proves nothing"
+    );
+}
+
+#[tokio::test]
+async fn process_filter_does_not_run_on_commit() {
+    let f = fixture();
+    let (evil, marker) = trap(&f, "process", "exit 1");
+    let ws = workspace(&f, "t-process").await;
+    tgit(&f.repo, &["config", "filter.evil.process", &evil]);
+    write(&ws.path.join(".gitattributes"), "* filter=evil\n");
+    write(&ws.path.join("answer.txt"), "after\n");
+
+    commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
+    assert!(!marker.exists(), "a process filter ran on the host");
+
+    write(&ws.path.join("answer.txt"), "again\n");
+    let _ = tgit_raw(&ws.path, &["add", "answer.txt"]);
+    assert!(
+        marker.exists(),
+        "fixture filter never fires; the test proves nothing"
+    );
+}
+
+#[tokio::test]
+async fn smudge_filter_does_not_run_on_create_or_reset() {
+    let f = fixture();
+    let (evil, marker) = trap(&f, "smudge", "cat");
+    write(&f.repo.join(".gitattributes"), "* filter=evil\n");
+    let base = recommit(&f.repo, "attributes");
+    tgit(&f.repo, &["config", "filter.evil.smudge", &evil]);
+
+    let ws = create(&f.repo, &task("t-smudge"), &base, &f.root)
+        .await
+        .unwrap();
+    assert!(
+        !marker.exists(),
+        "a smudge filter ran when the worktree was made"
+    );
+    write(&ws.path.join("answer.txt"), "after\n");
+    let (cp, _) = commit_candidate(&ws, &base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
+    reset_to(&ws, &base, TreeGone::for_tests()).await.unwrap();
+    reset_to(&ws, &cp, TreeGone::for_tests()).await.unwrap();
+    assert!(!marker.exists(), "a smudge filter ran on reset");
+    assert_eq!(
+        fs::read_to_string(ws.path.join("answer.txt")).unwrap(),
+        "after\n"
+    );
+
+    fs::remove_file(f.repo.join("answer.txt")).unwrap();
+    let _ = tgit_raw(&f.repo, &["checkout", "--", "answer.txt"]);
+    assert!(
+        marker.exists(),
+        "fixture filter never fires; the test proves nothing"
+    );
+}
+
+#[tokio::test]
+async fn textconv_and_external_diff_do_not_run_for_the_candidate_diff() {
+    let f = fixture();
+    let (textconv, textconv_marker) = trap(&f, "textconv", "echo CONVERTED");
+    let (external, external_marker) = trap(&f, "external", "echo EXTERNAL");
+    let ws = workspace(&f, "t-diff").await;
+    tgit(&f.repo, &["config", "diff.evil.textconv", &textconv]);
+    tgit(&f.repo, &["config", "diff.evil.command", &external]);
+    tgit(&f.repo, &["config", "diff.external", &external]);
+    write(&ws.path.join(".gitattributes"), "* diff=evil\n");
+    write(&ws.path.join("answer.txt"), "after\n");
+
+    let (cp, patch) = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
+    assert!(
+        !textconv_marker.exists(),
+        "a textconv program ran on the host"
+    );
+    assert!(
+        !external_marker.exists(),
+        "an external diff ran on the host"
+    );
+    assert!(patch.contains("\n+after\n"), "{patch}");
+    assert!(!patch.contains("CONVERTED") && !patch.contains("EXTERNAL"));
+
+    let range = [f.base.as_str(), cp.as_str()];
+    let _ = tgit_raw(&ws.path, &["diff", "--no-ext-diff", range[0], range[1]]);
+    assert!(textconv_marker.exists(), "fixture textconv never fires");
+    let _ = tgit_raw(&ws.path, &["diff", range[0], range[1]]);
+    assert!(
+        external_marker.exists(),
+        "fixture external diff never fires"
+    );
+}
+
+#[tokio::test]
+async fn commit_signing_program_does_not_run_on_commit() {
+    let f = fixture();
+    let (evil, marker) = trap(&f, "gpg", "exit 1");
+    let ws = workspace(&f, "t-gpg").await;
+    tgit(&f.repo, &["config", "commit.gpgSign", "true"]);
+    tgit(&f.repo, &["config", "gpg.program", &evil]);
+    write(&ws.path.join("answer.txt"), "after\n");
+
+    let (cp, _) = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
+    assert!(!marker.exists(), "a signing program ran on the host");
+    let header = tgit(&f.repo, &["cat-file", "commit", cp.as_str()]);
+    assert!(!header.contains("gpgsig"), "{header}");
+
+    // Git 2.50's `commit-tree` ignores commit.gpgSign (the harness also passes --no-gpg-sign);
+    // `commit` honours it, which shows the configured signer is live.
+    let _ = tgit_raw(&f.repo, &["commit", "-q", "--allow-empty", "-m", "armed"]);
+    assert!(
+        marker.exists(),
+        "fixture signer never fires; the test proves nothing"
+    );
 }
 
 #[test]
@@ -737,7 +954,7 @@ async fn bug1_nested_repo_clean_filter_cannot_write_to_a_host_path() {
         .unwrap();
     write(&ws.path.join("answer.txt"), "after\n");
 
-    let r = commit_candidate(&ws, &f.base, 1, T0).await;
+    let r = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests()).await;
     assert_eq!(r.map(|_| ()), Err(FailureCode::GitMetadataTouched));
     assert!(!marker.exists(), "nested repository filter ran on the host");
     reset_to(&ws, &f.base, TreeGone::for_tests()).await.unwrap();
@@ -767,7 +984,9 @@ async fn bug2a_an_ignored_file_inside_the_packet_directory_still_yields_a_succes
         .await
         .unwrap();
     write(&ws.path.join("answer.txt"), "after\n");
-    commit_candidate(&ws, &base, 1, T0).await.unwrap();
+    commit_candidate(&ws, &base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -789,7 +1008,9 @@ async fn bug2b_a_packet_file_with_mode_0600_in_the_source_still_yields_a_success
     assert!(files.iter().any(|(p, _)| p == "requirements.md"));
     let ws = workspace(&f, "t-bug2b").await;
     write(&ws.path.join("answer.txt"), "after\n");
-    commit_candidate(&ws, &f.base, 1, T0).await.unwrap();
+    commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -799,7 +1020,9 @@ async fn bug3_a_candidate_file_with_mode_0o654_passes_the_snapshot_check() {
     write(&ws.path.join("answer.txt"), "after\n");
     write(&ws.path.join("extra.bin"), "payload\n");
     fs::set_permissions(ws.path.join("extra.bin"), fs::Permissions::from_mode(0o654)).unwrap();
-    let (cp, _) = commit_candidate(&ws, &f.base, 1, T0).await.unwrap();
+    let (cp, _) = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
     let tree = tree_entries(&f.repo, &cp);
     assert!(
         tree.lines()
@@ -817,7 +1040,9 @@ async fn bug4_reviewer_patch_ends_with_a_newline_and_applies_with_git_apply_chec
     write(&ws.path.join("image.bin"), [0u8, 1, 2, 3, 255, 0, 10]);
     fs::remove_file(ws.path.join("specs/example/tasks.json")).unwrap();
     write(&ws.path.join("dir with space/file.md"), "spaced\n");
-    let (_, patch) = commit_candidate(&ws, &f.base, 1, T0).await.unwrap();
+    let (_, patch) = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
     assert!(patch.ends_with('\n'), "patch must terminate with a newline");
 
     let check = f.base_dir.join("applycheck");
@@ -872,7 +1097,9 @@ async fn ignored_worker_artifact_is_excluded_from_the_candidate_and_removed_by_r
     write(&ws.path.join("answer.txt"), "after\n");
     write(&ws.path.join(".gitignore"), "__pycache__/\n");
     write(&ws.path.join("__pycache__/a.pyc"), "bytecode\n");
-    let (cp, diff) = commit_candidate(&ws, &f.base, 1, T0).await.unwrap();
+    let (cp, diff) = commit_candidate(&ws, &f.base, 1, T0, TreeGone::for_tests())
+        .await
+        .unwrap();
     assert!(!tree_entries(&f.repo, &cp).contains("__pycache__"));
     assert!(!diff.contains("__pycache__/a.pyc"));
     reset_to(&ws, &cp, TreeGone::for_tests()).await.unwrap();

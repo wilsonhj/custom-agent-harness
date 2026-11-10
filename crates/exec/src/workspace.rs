@@ -176,14 +176,20 @@ pub async fn scan(ws: &Workspace) -> Result<(), FailureCode> {
 /// it only if that ref does not exist yet (or already names this commit, so a retry is
 /// idempotent). The same tree, parent and time always give the same SHA.
 ///
-/// Errors: `GitMetadataTouched` from [`scan`]; `SecretInDiff` if the diff adds a token-shaped
-/// string (no ref is created); `CandidateChanged` if the ref names another commit;
-/// `SpawnError` if Git cannot run or fails.
+/// Requires proof that no process still writes in the worktree, so nothing can change it
+/// between [`scan`] and `git add`. [`scan`] runs again after `write-tree`, over the index the
+/// tree was written from: any nested repository, gitlink or altered `.git` link that appeared
+/// in between fails the commit with `GitMetadataTouched` before a commit object is made.
+///
+/// Errors: `GitMetadataTouched` from either [`scan`]; `SecretInDiff` if the diff adds a
+/// token-shaped string (no ref is created); `CandidateChanged` if the ref names another
+/// commit; `SpawnError` if Git cannot run or fails.
 pub async fn commit_candidate(
     ws: &Workspace,
     parent: &CommitSha,
     n: u32,
     author_time: Timestamp,
+    _proof: TreeGone,
 ) -> Result<(CommitSha, String), FailureCode> {
     scan(ws).await?;
     check_task_id(&ws.task).map_err(|_| FailureCode::SpawnError)?;
@@ -192,6 +198,7 @@ pub async fn commit_candidate(
 
     git(dir, &["add", "--all"]).await.map_err(infra)?;
     let tree = trimmed(git(dir, &["write-tree"]).await.map_err(infra)?);
+    scan(ws).await?;
     let date = format!("@{} +0000", author_time.0.div_euclid(1_000_000));
     let message = format!("eng checkpoint for task {}", ws.task);
     let env = [
