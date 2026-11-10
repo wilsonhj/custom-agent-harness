@@ -1,8 +1,9 @@
 # Requirements: rust-spine — Rust core and first slice (implement, review, repair)
 
 > Status: design approved by the repository owner on 2026-11-09; no task phase is approved
-> by this file. Source of every row: `docs/superpowers/specs/2026-11-09-unified-harness-design.md`
-> (cited as "design §n"). Graded evidence: `docs/superpowers/specs/research-2026-11-09/`.
+> by this file. Sources: `docs/superpowers/specs/2026-11-09-unified-harness-design.md`
+> (cited as "design §n") and the binding `docs/security/data-egress.md` policy.
+> Graded evidence: `docs/superpowers/specs/research-2026-11-09/`.
 
 ## User-visible behavior
 
@@ -11,6 +12,8 @@
   automatic repair rounds, then stop for the human (R-1 to R-6).
 - `eng decide <task> accept|reject|send-back` is the only way a task becomes verified (R-7).
 - Nothing runs if the macOS sandbox is unavailable (R-8).
+- Hosted execution is refused unless the content class and explicit project/provider
+  authorization permit every readable input; missing or unknown class is `local-only` (R-17).
 
 ## Non-goals
 
@@ -47,6 +50,15 @@
 | R-14 | A run succeeds only with exit code 0, a non-error final event, and schema-valid output. | design §6.4 |
 | R-15 | Each agent's own sandbox is disabled, and each run confirms it is off. | design §4 row 7 |
 | R-16 | A subscription rate limit pauses the task for the human without consuming a repair round. | design §4 row 18 |
+| R-17 | Before hosted spawn, enforce the most restrictive input egress class and explicit project/provider authorization. Missing or unknown class is `local-only`; BAA-restricted inputs require a current verified exact runtime/account/settings entry. Missing policy or unverifiable enforcement returns `PolicyDenied` without starting the agent. | design §9; `docs/security/data-egress.md` — Egress classes, BAA configuration allowlist, Enforcement |
+
+R-9 includes absent deny targets: canonicalise their nearest existing ancestor and append
+normal missing components without dropping the deny. Required roots must exist; broken
+symlinks, permission errors and other resolution failures fail closed (design §6.1).
+
+R-11 requires containment that covers detachment and responsibility disclaim. A persistent
+supervisor alone is insufficient; if containment cannot be established before spawn, fail
+closed. Cleanup failure produces no `TreeGone` and retains the lock (design §6.2).
 
 ## Cited company decisions
 
@@ -59,5 +71,7 @@
 ## Unresolved questions
 
 - [ ] Open-source license (design §14 Q5). — owner: repository owner, blocks: copying any code from another project
-- [ ] Whether a sandboxed shell child can read the Keychain login (design §11.2). — owner: architect with owner present, blocks: none (measured in T11)
+- [ ] A descendant-containment backend satisfying R-11, including responsibility disclaim (design §6.2). — owner: architect, blocks: all task execution until established
+- [ ] Whether a sandboxed shell child can read the real Keychain login remains UNVERIFIED; T11 uses only synthetic non-secret canaries (design §11.2). — owner: architect with owner present, blocks: any claim of real credential isolation
+- [ ] Reviewed project/content/provider authorizations and enforced read isolation (design §9). — owner: repository owner, blocks: hosted execution for any input without them
 - [ ] Exact vendor host lists for the egress allowlist (design §11.3). — owner: architect with owner present, blocks: T11

@@ -138,7 +138,8 @@ data, so every rule is a plain function that can be tested with a table.
 An interface is added only where two real implementations exist.
 
 - `RuntimeAdapter` (claude, codex): `probe`, `plan`, `parse_line`, `finish`. Pure.
-- `Sandbox`: `probe`, `spawn` returning a child whose `terminate` yields a `TreeGone` proof.
+- `Sandbox`: `probe`, gated `spawn` and fallible cleanup; only confirmed descendant cleanup
+  yields `TreeGone` (section 6.2).
   The first slice ships one concrete macOS module with this shape. The trait is extracted
   when the Linux bubblewrap implementation is added, which is the first follow-up after the
   slice; the profile type already carries the fields both need
@@ -180,8 +181,8 @@ the task is created.
 
 | In flight at crash | On restart |
 |---|---|
-| Agent run | Fail with `LostOnRestart`, reset the worktree to the last checkpoint, stop for the human |
-| Verification command | Retry up to its attempt limit |
+| Agent run | Fail with `LostOnRestart`; obtain `TreeGone` under section 6.2 before resetting to the last checkpoint; stop for the human, retaining the lock if cleanup cannot be proved |
+| Verification command | Obtain `TreeGone` under section 6.2 before retrying up to its attempt limit; retain the lock and stop if cleanup cannot be proved |
 | External read (logs, search) | Retry up to its attempt limit |
 | Checkpoint commit | Safe to repeat: commit time is fixed in the intent and the ref update is compare-and-swap |
 
@@ -209,8 +210,12 @@ A profile is generated per run and applied with `/usr/bin/sandbox-exec`.
   `AGENTS.md` from the base commit in every prompt, labelled as repository content, so all
   runtimes get the same conventions the same way. Instructions cannot widen permissions,
   which are enforced outside the agent.
-- Every path is resolved to its real path before it enters the profile: a rule written with
-  `/tmp` did not stop a write through `/private/tmp` (P).
+- Existing required roots are resolved to their real paths before entering the profile:
+  a rule written with `/tmp` did not stop a write through `/private/tmp` (P). A deny target
+  that does not yet exist is resolved through its nearest existing ancestor, with its
+  remaining normal path components appended, so its later creation remains denied.
+  Broken symlinks, permission errors and other resolution failures fail closed; no deny
+  rule is skipped (research `1a-macos-sandbox.md` §1; packet R-9).
 - Network: one localhost port only. A harness proxy outside the sandbox passes listed hosts
   and logs every decision. Implementer and reviewer: the model vendor's hosts. Verifier: no
   network unless the project opts in to localhost.
@@ -219,19 +224,31 @@ A profile is generated per run and applied with `/usr/bin/sandbox-exec`.
 
 ### 6.2 Process cleanup
 
-Kill the process group, then repeatedly kill every process traced back to the supervisor
-until none remain; only then release the worktree lock, which requires the `TreeGone` value
-in code. A child that detaches itself survives a group kill (P); tracing descendants uses
-Apple-private calls and works only while the supervisor is alive (P).
+Release the worktree lock or reset the worktree only after every descendant is confirmed
+gone; the API requires a `TreeGone` proof (packet R-11). A separate unsandboxed supervisor
+must remain alive while the task group is terminated and descendants are swept, including
+after normal task exit. It must not `exec` the task or be reaped before cleanup completes
+(research `1a-macos-sandbox.md` §6).
+
+A live supervisor is necessary for the researched responsibility lookup, but is not proof
+of containment: detached children or children that disclaim responsibility may escape a
+group or responsibility-only sweep. Before opening the execution gate, the backend must
+establish descendant containment for both cases; otherwise fail closed and start no task.
+No such backend capability is established by this design. Tracking errors, loss of the
+supervisor or cleanup timeout return an error without `TreeGone`; retain the worktree lock
+and stop for human recovery. An ancestry poll or an empty responsibility snapshot alone
+cannot establish that every descendant is gone (R-11; research §6's lookup limitations).
 
 ### 6.3 Subscription logins: the accepted exposure
 
-**An agent's shell commands can read that agent's own login.** The agent must reach its
-login to work, and the sandbox cannot separate an agent from the commands it runs.
+**Treat an agent's own login as potentially readable by its shell commands.** The CLI
+needs its login; the outer sandbox does not establish credential isolation between the
+CLI and those commands (research `1a-macos-sandbox.md` §8).
 
 Mitigations, none of which removes the exposure:
 
-- The network allowlist: the token can only be sent to that vendor's own hosts.
+- The network allowlist limits reachable hosts; it does not prevent a readable token from
+  entering a prompt, runtime transcript or another request to an allowed vendor host.
 - A Claude reviewer gets no shell tool (`--tools Read,Grep,Glob`). Codex always has a shell,
   so a Codex reviewer has the same exposure as an implementer; what bounds it is the
   read-only filesystem profile and the network allowlist.
@@ -240,8 +257,10 @@ Mitigations, none of which removes the exposure:
   leave through the commit. [Architect]
 - Each CLI is logged in inside a harness-owned config directory, not the user's everyday one.
 
-Whether a sandboxed shell child can actually reach the Keychain item is UNVERIFIED and is
-the first live test (section 11).
+Whether a sandboxed shell child can actually reach a real Keychain login item remains
+UNVERIFIED. Section 11 uses only synthetic non-secret canaries and records readability
+without values; it must not ask an agent to extract a real login. Such a probe does not
+establish real credential isolation (decision 6; plan Task 11).
 
 ### 6.4 Launch plans
 
@@ -257,9 +276,10 @@ explicit.
   through `--settings`. `--restricted` removes the shell unless it is named in `--tools`, so
   the list is required. `--bare` is not used: it cannot run on a subscription (P, D).
 - **Claude (reviewer):** the same, with `--tools Read,Grep,Glob` and `--json-schema`.
-- **Login location:** a harness-owned config directory is the plan. If live test 5 shows the
-  Keychain lookup breaks there, the fallback is the CLI's default config directory with the
-  sandbox read rules of 6.1; the choice is made by that test, not by the builder.
+- **Login location:** a harness-owned config directory is the plan. Test ordinary CLI
+  authentication without inspecting credentials. If it fails there, stop for an explicit
+  owner decision about any broader config-directory access; do not silently fall back to
+  the CLI's everyday config directory (decision 6; section 9).
 - **Codex (reviewer):** `codex exec --json --output-schema <findings schema>` with its own
   sandbox off (`-s danger-full-access`); read-only is enforced by the harness profile.
   `exec resume` and `exec review` have no `--sandbox` flag (P).
@@ -342,12 +362,23 @@ Triggers: `eng triage <url|id|pr>` first, then polling GitHub checks; webhooks l
 
 ## 9. Privacy
 
-Each project declares what may leave the machine, separately for: agent runtimes (which
-vendors), research queries (`none`, `public-questions`, `project-context`), and third-party
-advisors (none, specs only, sanitized diffs, full diffs). The harness checks the declaration
-before any outgoing call and records a hash of what was sent. The default for a new project
-is: the owner's two subscription runtimes allowed, research `public-questions`, advisors
-none. [Architect]
+`docs/security/data-egress.md` is binding: missing or unknown repository/document class
+means `local-only`, and derived content inherits the most restrictive input class. A new
+project permits no hosted runtime, research or advisor disclosure until a reviewed class
+and explicit project/provider authorization permit it. A subscription login, spec approval
+or network host allowlist does not grant that authorization.
+
+The project declaration separately bounds agent runtimes (which providers), research
+queries (`none`, `public-questions`, `project-context`), and third-party advisors (none,
+specs only, sanitized diffs, full diffs), within the content's class. Before any hosted
+disclosure or runtime spawn, the harness checks both the class and authorization for
+the exact runtime/account/settings configuration. `baa-covered-providers` also requires a
+current verified matching BAA allowlist entry; missing, unverified or expired entries deny
+that content. When classification, provider identity or enforced read isolation cannot be
+established, return `PolicyDenied` before the call or spawn. The check covers every readable input,
+including repository instructions and tool results, not only the initial prompt (policy
+"Egress classes", "BAA configuration allowlist" and "Enforcement"). Record a hash of
+authorized content sent, never credential values.
 
 OpenRouter's no-retention and no-training filters rest on what each provider declares; they
 are not audited (D).
@@ -366,8 +397,8 @@ Each step names its proof. Steps marked ∥ can run in parallel worktrees once `
    command returns the same receipt.
 4. ∥ `harness-exec`, macOS only. Proof: process-kill, lock and regression cases ported from
    the pilot (whose originals run only on Linux, in CI); macOS denial probes.
-5. ∥ `harness-adapters`. Proof: parsers against transcripts recorded from real runs,
-   including truncated lines.
+5. ∥ `harness-adapters`. Proof: parsers against screened synthetic fixtures reconstructed
+   from reviewed event shapes, including truncated-line cases (section 11; plan Task 11).
 6. `harness-engine`. Proof: kill the engine at each effect state; outcomes match 5.4.
 7. `harness` CLI: `eng task new`, `run`, `status`, `cancel`, `decide`, `audit verify`,
    `doctor`. Proof: full flow with fake agents, then one supervised real run.
@@ -380,17 +411,22 @@ the Rust binary.
 
 ## 11. Live tests needed before or during the build
 
-These need real, authenticated runs on the owner's subscriptions and therefore the owner's
-go-ahead. In order:
+Authenticated runs need the owner's explicit go-ahead for the step and project/provider
+authorization under section 9. Synthetic probes use disposable non-secret data, never the
+owner's real credential files or login items. In order:
 
 1. Does Claude Code run correctly inside the outer sandbox with its own sandbox off? Codex?
-2. Can a sandboxed shell child read the Keychain item or the parent's token?
+2. Can a sandboxed shell child read synthetic credential-location canaries? Record only
+   `readable`, `denied` or `unavailable`, never canary contents. Real credential readability
+   remains UNVERIFIED; do not query or print a real login item.
 3. Do Codex and Cursor honour `HTTPS_PROXY`? What are the exact vendor host lists?
 4. Does the flag set in 6.4, with the read rules in 6.1, keep an untrusted repository's hooks
    and MCP servers from loading while the harness's own `--mcp-config` still works? Only if
    it does not is `--safe-mode` evaluated as a replacement.
 5. Session resume from a harness-owned config directory, for both runtimes.
-6. Transcripts to record as adapter fixtures.
+6. Reconstruct secret-free adapter fixtures from reviewed event shapes using synthetic
+   values. Raw authenticated transcripts and probe artifacts are not committed or used as
+   fixtures; screening must precede any retention or sharing (decision 6; section 9).
 
 The full list of unverified facts is in `research-2026-11-09/1b-subscription-clis.md` §9.
 
@@ -418,11 +454,11 @@ framework choices, and the exact Seatbelt profile text (a probed starting point 
 ## 14. Open questions for the owner
 
 Answers recorded 2026-11-09: questions 1 and 2 **accepted**. Question 3 is read as
-accepted; the architect confirms with the owner before the first authenticated run, because
-it uses the owner's subscription and needs the owner to log in. Questions 4 and 5 were not
-answered: until they are, the defaults in section 9 apply (no third-party advisors, research
-limited to public questions; neither is used by the first slice), and no code is copied
-from another project.
+accepted as design intent, not blanket authorization to inspect credentials or disclose
+project content. Each authenticated step still needs explicit go-ahead and section 9's
+project/provider check. Questions 4 and 5 were not answered: until they are, unclassified
+content remains `local-only`, no hosted disclosure is authorized by default, and no code
+is copied from another project.
 
 1. Accept the exposure in 6.3 (an implementer's shell can read its own subscription login,
    limited by the network allowlist and the diff scan)?
