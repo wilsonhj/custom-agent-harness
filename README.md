@@ -1,792 +1,110 @@
-# <Project Name>
+# Custom Agent Harness
 
-> A company-aware engineering harness for Claude Code, Codex CLI, and Cursor.
+A prototype engineering control plane for Claude Code and Codex: keep the specification, candidate commit, verification results, review findings, and human decision together as durable artifacts.
 
-<!-- Replace <placeholders>, remove unused sections, and update status before publishing. -->
-<!-- This README is a design scaffold, not a claim that the system is implemented. -->
+The repository has two distinct tracks: a working **offline Linux evidence-workflow pilot** (`harness/local/`) and the **macOS Rust spine** (`crates/`, the `eng` CLI). The Rust spine runs its full implement → verify → review → repair → human-decision flow with fake agents; live Claude/Codex runs are not yet established (plan Task 11).
 
-| Field | Value |
-|---|---|
-| Status | <Design / Prototype / Pilot / Production> |
-| Owner | <Team or maintainer> |
-| Primary repository | <Repository URL> |
-| Knowledge repository | <Company-brain repository URL> |
-| Support | <Issue tracker or support channel> |
-| Last verified | <YYYY-MM-DD> |
+## What works today
 
-## Table of contents
-
-- [Overview](#overview)
-- [Goals and non-goals](#goals-and-non-goals)
-- [Capabilities and implementation status](#capabilities-and-implementation-status)
-- [Architecture](#architecture)
-- [Repository layout](#repository-layout)
-- [Prerequisites](#prerequisites)
-- [Quick start](#quick-start)
-- [Configuration](#configuration)
-- [Agent integrations](#agent-integrations)
-- [Company brain](#company-brain)
-- [Feature-development workflow](#feature-development-workflow)
-- [Deployment and monitoring](#deployment-and-monitoring)
-- [Security and approvals](#security-and-approvals)
-- [Evaluation and observability](#evaluation-and-observability)
-- [Testing](#testing)
-- [Troubleshooting](#troubleshooting)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [Documentation and sources](#documentation-and-sources)
-- [License](#license)
-
-## Overview
-
-### Rust CLI (`eng`)
-
-`eng` takes a human-approved spec packet, has Claude Code implement it in a sandboxed
-worktree, verifies it, has Codex review it read-only, repairs for up to two rounds, and stops
-for a human decision. See [Quick start](#quick-start).
-
-- **macOS only.** The Rust CLI needs macOS 26 on Apple silicon (`/usr/bin/sandbox-exec`).
-  There is no Linux build and no unsandboxed fallback: if the sandbox probe fails, nothing runs.
-- **Real Claude runs are refused for now.** Claude Code documents no way to confirm that its own
-  sandbox is off inside the harness sandbox, so the engine reports `PolicyDenied` for a real
-  Claude run until the Task 11 live tests settle that check. Fake agents (the conformance
-  suite) run today; real runs wait for Task 11.
-- Pinned runtimes: Claude Code `2.1.318`, codex-cli `0.166.0`.
-
-### Legacy pilot
-
-The first local evidence workflow is implemented under `harness/local/` (Node 24,
-Linux bubblewrap). It prepares an isolated worktree, runs operator-configured worker,
-verifier and reviewer processes, verifies an out-of-band human review decision, and
-writes a durable handoff. Start with [the local workflow guide](docs/local-workflow.md)
-and `npm test`. The remaining sections describe the broader design; this pilot does
-not implement task-phase approval, hosted adapters or production release authority.
-
-<Project Name> connects coding agents to a shared engineering workflow and an evolving company knowledge base.
-
-The system keeps agent sessions replaceable while preserving specifications, architectural decisions, operational procedures, reusable skills, and verification evidence.
-
-### Intended users
-
-- <Primary user: e.g., a Claude Code power user developing a full-stack product.>
-- <Additional users or teams.>
-
-### Default operating model
-
-| Component | Responsibility |
-|---|---|
-| Claude Code | Primary interactive interface, planning, implementation, integration |
-| Codex | Independent plan challenge, scoped implementation, code review |
-| Cursor | Interactive editing and optional bounded agent jobs |
-| Control plane | Task state, job execution, isolation, budgets, approval gates |
-| Company brain | Curated knowledge, evidence retrieval, proposed updates |
-| CI and deployment tooling | Deterministic validation, releases, operational evidence |
-
-These are configurable workflow assignments, not model-performance rankings.
-
-## Goals and non-goals
-
-### Goals
-
-- [ ] Share engineering context across agent runtimes.
-- [ ] Make planning, implementation, and review reproducible.
-- [ ] Give each job bounded permissions and clear ownership.
-- [ ] Preserve evidence for completion and release decisions.
-- [ ] Grow company knowledge through reviewed updates.
-- [ ] Improve workflows through evaluations and real failure cases.
-
-### Non-goals
-
-- Replacing vendor-provided agent loops.
-- Sharing one conversation transcript across every agent.
-- Treating instruction files as security enforcement.
-- Granting unattended agents unrestricted production access.
-- Promoting every session summary into accepted company knowledge.
-- <Project-specific exclusions.>
-
-## Capabilities and implementation status
-
-<!-- Status values: Planned, In progress, Partially covered, Implemented, Implemented (external), Verified, Deferred. -->
-<!-- "Implemented (external)" means provided by an installed third-party component, not by this repository. -->
-
-| Capability | Status | Implementation / evidence |
+| Track | Implemented scope | Current limits |
 |---|---|---|
-| Local evidence workflow | Implemented (pilot) | `harness/local/`, `tests/local-workflow.test.mjs`, [operator guide](docs/local-workflow.md). Offline Linux process interface; task-phase/release approval remains unimplemented. |
-| Claude adapter | Planned | <Path or issue> |
-| Codex adapter | Implemented (external) | Installed `codex` Claude Code plugin v1.0.6 (`openai-codex` marketplace), which talks to Codex through its app-server broker. Commands: `/codex:review`, `/codex:adversarial-review`, `/codex:status`, `/codex:result`, `/codex:cancel`. |
-| Cursor adapter | Planned | Cursor CLI (`agent`) installed; no harness wrapper yet. |
-| Isolated worktree management | Partially covered | Claude Code native worktree isolation for subagents and sessions. Harness-level worktree ownership is not implemented. |
-| Structured review results | Implemented (external) | Plugin schema `review-output.schema.json`: `verdict`, `summary`, `findings` (`severity`, `file`, `line_start`, `line_end`, `confidence`, `recommendation`), `next_steps`. Reviews run with sandbox `read-only`. |
-| Company-brain search | Planned | <Service and evaluations> |
-| Knowledge-update review | Planned | <Workflow> |
-| Preview verification | Planned | <Pipeline> |
-| Vercel integration | Planned | <Integration tests> |
-| Cloudflare integration | Planned | <Integration tests> |
-| Production approval gate | Planned | Design: `docs/architecture/approval-ledger.md`. Policy stub: `harness/policy/transitions.ts`. |
-| Run ledger and budgets | Planned | Design: `docs/architecture/approval-ledger.md`. Policy stub: `harness/policy/transitions.ts`. |
+| Linux pilot on `main` | Isolated worktree; operator-configured worker, verifier, and reviewer processes; content-addressed evidence; signed human review attestation; durable handoff | Linux, Node 24, Git, SSH signing tools, and working Bubblewrap namespaces. No hosted-model adapter, task-phase approval, migration, or deployment execution. |
+| Rust spine (`eng`) | Task lifecycle and repair policy; Claude/Codex launch plans and stream parsers; gated spawn, macOS sandbox profile, egress proxy, process-tree kill and hardened host Git; SQLite command log, hash-chained events, artifact store; engine with restart recovery; `eng task new`, `decide`, `run`, `status`, `cancel`, `audit verify`, `doctor`, `login` | macOS 26 on Apple silicon only. Proven with fake agents (conformance suite); real Claude runs are refused (`PolicyDenied`) until the Task 11 live tests settle Claude's sandbox-off confirmation. Adapter fixtures are hand-written and provisional. |
+| Company Brain | Separate [companion repository](https://github.com/wilsonhj/company-brain-starter) for company context and reviewed knowledge | Harness retrieval and knowledge-update integration are planned. No operational connection is established by this repository. |
 
-External components must be version-pinned. The `codex` plugin depends on Codex's experimental app-server, so a Codex or plugin upgrade can break the adapter without any change in this repository.
+See the [Linux operator guide](docs/local-workflow.md) for the pilot's actual behavior and the [Rust design](docs/superpowers/specs/2026-11-09-unified-harness-design.md) for the Rust spine. Design documents and feature packets describe intent; their presence does not establish implementation or approval.
 
-## Architecture
+## Run the Linux pilot checks
 
-```text
-Developer: Claude Code / Cursor / terminal
-                       |
-                Skills and commands
-                       |
-              Engineering control plane
-              +-- Task state machine
-              +-- Agent adapters
-              |   +-- Claude
-              |   +-- Codex
-              |   +-- Cursor
-              +-- Worktree / runner management
-              +-- Permission and approval policy
-              +-- Validation and artifact storage
-              +-- Run ledger and evaluation
-                       |
-          +------------+-------------+
-          Git host   Company brain   Deployment platforms
+Use a reviewed checkout on Linux with Node 24 and Git. Install Bubblewrap and SSH signing tools through your operating system before running the checks. No npm dependencies or model credentials are required for this test suite.
+
+```bash
+git clone --branch main https://github.com/wilsonhj/custom-agent-harness.git
+cd custom-agent-harness
+node --version
+node harness/local/cli.mjs doctor
+npm run check
+HARNESS_REQUIRE_SANDBOX=1 npm test
 ```
 
-### Design boundaries
+`doctor` must report a usable sandbox. The CLI refuses to run without Linux Bubblewrap; there is no unsandboxed fallback. `HARNESS_REQUIRE_SANDBOX=1` makes an unavailable sandbox fail the test gate. This is not a macOS execution path.
 
-| Layer | Owns | Does not own |
-|---|---|---|
-| Instructions | Standing expectations | Permission enforcement |
-| Skills | Reusable procedures | Approval authority |
-| Agent adapters | Runtime invocation, events, sessions | Workflow approval |
-| Control plane | State, ownership, budgets, policy | Accepted knowledge authorship |
-| Company brain | Retrieval, provenance, proposed updates | Automatic promotion of guesses |
-| Release pipeline | Approved deployment and evidence | Unrestricted agent actions |
+To prepare an actual pilot run, follow [operator configuration, execution, and human signing](docs/local-workflow.md). The controller installation, tools, configuration, signer list, and run store have separate trust requirements; the guide supplies the complete procedure. A fixture reviewer demonstrates the transport contract, not AI review quality. A signed local review attestation does not approve a production release or change task-phase state.
 
-### Key decisions
+## Run the Rust spine (macOS)
 
-| Decision | Rationale | ADR |
-|---|---|---|
-| Shared artifacts instead of shared conversations | Durable, inspectable handoffs | <ADR link> |
-| One writer per task/worktree by default | Clear ownership | <ADR link> |
-| Knowledge updates require review | Prevent memory contamination | <ADR link> |
-| Separate execution and release credentials | Limit privilege exposure | <ADR link> |
-| <Decision> | <Rationale> | <ADR link> |
-
-## Repository layout
-
-<!-- Proposed layout. Update paths to match the implementation. -->
-
-```text
-.
-+-- README.md
-+-- AGENTS.md
-+-- CLAUDE.md
-+-- .agents/
-|   +-- skills/
-+-- harness/
-|   +-- adapters/
-|   +-- orchestration/
-|   +-- policy/
-|   |   +-- transitions.ts
-|   +-- schemas/
-|   +-- integrations/
-+-- config/
-|   +-- harness.example.yaml
-+-- specs/
-|   +-- _template/
-|   +-- <feature-id>/
-|       +-- requirements.md
-|       +-- design.md
-|       +-- tasks.json
-|       +-- acceptance-tests.md
-|       +-- handoff.md
-+-- docs/
-|   +-- architecture/
-|   |   +-- approval-ledger.md
-|   |   +-- release-gate.md
-|   +-- runbooks/
-|   +-- security/
-|   |   +-- data-egress.md
-|   |   +-- threat-model.md
-+-- evaluations/
-+-- tests/
-+-- scripts/
-+-- <local-artifacts-directory>/
-```
-
-Company knowledge may live in a separate private repository. Keep secrets, sensitive artifacts, and generated runtime state out of source control according to policy.
-
-## Prerequisites
-
-| Dependency | Supported / pinned version | Verification |
-|---|---|---|
-| Runtime and package manager | <Versions> | <Command> |
-| Git | <Version> | <Command> |
-| Claude Code | 2.1.310 (verified locally 2026-10-26) | `claude --version` |
-| Codex CLI | 0.163.0 (verified locally 2026-10-26) | `codex --version` |
-| Cursor CLI (`agent`) | 2026.06.02-8c11d9f (verified locally 2026-10-26) | `agent --version` |
-| Container or sandbox runtime | <Version or optional> | <Command> |
-| Cloud accounts | <Required platforms> | <Access check> |
-
-Versions marked "verified locally" are the versions observed on one development machine on 2026-10-26. They are not a support policy; define supported ranges once adapter compatibility tests exist.
-
-### Required access
-
-- <Repository read/write scope.>
-- <Knowledge-base access.>
-- <Model authentication method.>
-- <Preview deployment permissions.>
-- <Production access, if separately approved.>
-
-Document authentication and billing separately for each runtime. Do not assume one subscription or login covers every SDK or unattended execution mode.
-
-## Quick start
-
-Requires macOS 26 on Apple silicon, a Rust toolchain (`rust-toolchain.toml`), Node 24, and
-Claude Code and Codex at the pinned versions. Real Claude runs are refused until the Task 11
-live tests settle the sandbox confirmation (see [Overview](#rust-cli-eng)).
-
-### 1. Build
+Requires macOS 26 on Apple silicon (`/usr/bin/sandbox-exec`), the Rust toolchain pinned in `rust-toolchain.toml` (`1.99.1`), Node 24, and Claude Code `2.1.318` and codex-cli `0.166.0`. There is no Linux build and no unsandboxed fallback: if the sandbox probe fails, nothing runs.
 
 ```bash
 cargo build --workspace          # builds eng and eng-shim (they must sit side by side)
 export PATH="$PWD/target/debug:$PATH"
-```
-
-### 2. Sign in (once per runtime; the harness never reads the login)
-
-```bash
-eng login claude                 # starts Claude Code with a harness-owned config dir; type /login
-eng login codex                  # runs `codex login` with a harness-owned CODEX_HOME
-```
-
-### 3. Check the environment
-
-```bash
+eng login claude                 # Claude Code with a harness-owned config dir; type /login
+eng login codex                  # `codex login` with a harness-owned CODEX_HOME
 eng doctor                       # exit 0 only if every check passes
-```
-
-### 4. Run a task
-
-```bash
-eng task new --repo . --packet specs/my-feature     # prints the task id and packet digest
-eng decide <task> approve-spec                      # needs a terminal; type yes
-eng run <task>                                      # exit 4 = waiting for you
+eng task new --repo . --packet specs/my-feature
+eng decide <task> approve-spec   # needs a terminal; type yes
+eng run <task>                   # exit 4 = waiting for you
 eng status <task>
-eng decide <task> accept                            # or reject / send-back
-eng audit verify                                    # recomputes the hash chain
+eng decide <task> accept         # or reject / send-back
+eng audit verify                 # recomputes the hash chain
 ```
 
-Every command accepts `--json` (one object with `ok`, `task`, `state`, `error`) and
-`--state-dir <path>` (default `~/Library/Application Support/eng`). Exit codes: `0` ok, `2`
-usage, `3` rejected by policy, `4` awaiting a human, `5` failed, `70` internal. The pipeline
-(runtimes and verification commands) is read from `.eng/pipeline.toml` in the repository.
+Every command accepts `--json` and `--state-dir <path>` (default `~/Library/Application Support/eng`). Exit codes: `0` ok, `2` usage, `3` rejected by policy, `4` awaiting a human, `5` failed, `70` internal. The pipeline is read from `.eng/pipeline.toml` in the repository. `ENG_CLAUDE_BIN`, `ENG_CODEX_BIN`, `ENG_NODE_BIN` and `ENG_SHIM_BIN` override where runtimes and the shim are found; `ENG_EXTRA_READ_DIRS` lets the sandbox read more directories.
 
-`ENG_CLAUDE_BIN`, `ENG_CODEX_BIN`, `ENG_NODE_BIN` and `ENG_SHIM_BIN` override where the runtimes
-and the shim are found (default: `PATH`, and `eng-shim` beside `eng`); `ENG_EXTRA_READ_DIRS`
-(colon-separated) lets the sandbox read more directories. Debug builds also honour
-`ENG_FORCE_SANDBOX_UNAVAILABLE=1`, which makes the sandbox probe fail for real.
+Real Claude runs are refused until the Task 11 live tests settle whether Claude's own sandbox can be confirmed off; fake agents run today. `eng login` starts each vendor's own login flow; the harness does not read the stored login.
 
-### Testing the CLI
+### Testing the Rust spine
 
 ```bash
+node scripts/check-deps.mjs
+cargo fmt --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 cargo build --workspace && ENG_BIN=target/debug/eng npm run conformance
 ```
 
-The conformance cases drive only the `eng` binary, with fake agents from `conformance/fixtures/`.
+The conformance cases drive only the `eng` binary, with fake agents from `conformance/fixtures/`. Results for each commit are in CI (macOS `rust` job) and `specs/rust-spine/handoff.md`; an earlier green run does not validate a newer commit. The [adapter fixture notes](crates/adapters/fixtures/README.md) identify every transcript as hand-written and provisional, and [the fake-runtime notes](conformance/fixtures/README.md) explain why real Claude runs are refused. Fake-agent tests are not an end-to-end Claude Code demonstration.
 
-## Configuration
+## A short code walkthrough
 
-### Example configuration contract
+This project is suitable for an architecture walkthrough with live offline tests:
 
-This is a proposed project-owned schema, not configuration accepted directly by Claude, Codex, or Cursor. Implement and validate it before use.
+1. Start with the [six-crate implementation plan](docs/superpowers/plans/2026-11-09-rust-spine.md): pure decision logic, durable state, execution, adapters, engine, and CLI.
+2. Open the [Claude adapter](crates/adapters/src/claude.rs). It builds a headless `claude -p` launch plan with stream JSON, explicit tools, strict MCP configuration, and a pinned version.
+3. Run the two focused tests below. The first rejects a reported success when the process/event indicates failure. The second shows that a clean review still stops for a human decision.
+4. Finish with the fixture limitations and the remaining live-runtime work (plan Task 11).
 
-```yaml
-project:
-  id: "<project-id>"
-  repository: "<repository-url>"
-
-agents:
-  default_implementer: claude
-  default_reviewer: codex
-  enabled: [claude, codex, cursor]
-
-execution:
-  one_writer_per_worktree: true
-  deadline_seconds: 1800
-  max_repair_rounds: 2
-  max_delegation_depth: 1
-  max_parallel_jobs: 2
-
-knowledge:
-  repository: "<private-knowledge-repository>"
-  retrieval_endpoint: "<company-brain-endpoint>"
-  require_source_provenance: true
-  require_review_before_publish: true
-
-policy:
-  default_profile: analysis
-  production_changes_require_approval: true
-  allow_production_credentials_in_workers: false
-
-artifacts:
-  directory: "<local-artifacts-directory>"
-  retention_days: 30
-```
-
-All sample budgets are starting points, not validated sizing recommendations. Configuration expresses intent; implementation and tests must enforce it.
-
-### Permission profiles
-
-| Profile | Workspace | Network | Secrets | External writes |
-|---|---|---|---|---|
-| `analysis` | Read-only | <Allowlist> | None by default | Denied |
-| `workspace` | Assigned worktree | <Allowlist> | Task-scoped only | Denied unless approved |
-| `preview-ops` | <Scope> | Deployment allowlist | Preview-scoped | Approved preview actions |
-| Privileged release job | No arbitrary worker execution | Provider allowlist | Release-scoped | Exact approved release |
-
-## Agent integrations
-
-### Shared instructions
-
-Use `AGENTS.md` for common agreements. Keep runtime-specific additions small.
-
-Example `CLAUDE.md`:
-
-```markdown
-@AGENTS.md
-
-# Claude-specific guidance
-
-Use the feature-planning skill before substantial changes.
-Use company-brain tools for cross-repository decisions.
-```
-
-Confirm instruction discovery against pinned runtime versions.
-
-### Adapter contract
-
-Each adapter must support:
-
-- [ ] Bounded task execution.
-- [ ] Explicit workspace and base SHA.
-- [ ] Permission-profile mapping.
-- [ ] Structured result validation.
-- [ ] Explicit session identity.
-- [ ] Deadline and cancellation.
-- [ ] Process-tree cleanup.
-- [ ] Artifact and event capture.
-- [ ] Usage accounting where available.
-
-| Runtime | Integration approach | Configuration | Compatibility tests |
-|---|---|---|---|
-| Claude | <CLI / Agent SDK> | <Path> | <Path> |
-| Codex | <exec / SDK / app server> | <Path> | <Path> |
-| Cursor | <Headless CLI> | <Path> | <Path> |
-
-#### Verified CLI surface
-
-Observed locally on 2026-10-26 against the versions in [Prerequisites](#prerequisites). Recheck after any upgrade.
-
-- **Codex CLI 0.163.0**
-  - `codex exec` supports `--json`, `--output-schema`, `-s`/`--sandbox`, and `-o`/`--output-last-message`.
-  - A native `codex review` subcommand exists.
-  - `codex mcp` manages *external* MCP servers only; it does not expose Codex as a server.
-  - `codex app-server` is experimental.
-  - There is no `mcp-server` subcommand.
-- **Cursor CLI (`agent`) 2026.06.02-8c11d9f**
-  - `-p`/`--print` for non-interactive runs; `--output-format` applies with `--print`.
-  - `-f`/`--force` (alias `--yolo`) and `--approve-mcps` relax approval prompts.
-  - `--sandbox <mode>` selects the sandbox mode.
-
-### Skills
-
-| Skill | Inputs | Output | Approval boundary |
-|---|---|---|---|
-| Feature planning | Request, company constraints | Feature packet | Plan acceptance |
-| Implementation | Approved packet, worktree | Patch and test evidence | Scope changes |
-| Independent review | Requirements, diff, evidence | Structured findings | No write authority |
-| Deployment check | Deployment ID, release criteria | Evidence packet | Release approval |
-| Knowledge capture | Completed work and sources | Proposed update | Knowledge publication |
-
-### Cross-agent jobs
-
-Proposed MCP tools:
-
-```text
-engineering.submit_job(...)
-engineering.get_job(job_id)
-engineering.cancel_job(job_id)
-engineering.get_artifact(job_id, artifact_id)
-```
-
-Resolve registered task and workspace IDs server-side. Do not expose unrestricted shell execution through a generic agent-spawning endpoint.
-
-## Company brain
-
-### Knowledge layers
-
-| Layer | Contents | Authority / freshness |
-|---|---|---|
-| Engineering constitution | Stable standing agreements | Reviewed, concise |
-| Curated knowledge | ADRs, policies, ownership, runbooks | Accepted status and owner |
-| Searchable evidence | Documents, source records, investigations | Provenance and access control |
-| Operational state | Deployments, incidents, rollout status | Live or time-bounded |
-
-### Suggested knowledge layout
-
-```text
-company-brain/
-+-- index.md
-+-- product/
-+-- architecture/decisions/
-+-- engineering/
-+-- services/<service-name>/
-+-- runbooks/
-+-- incidents/
-+-- evaluations/
-```
-
-### Retrieval interface
-
-Proposed tools:
-
-```text
-brain.search(query, repo?, service?, knowledge_type?, as_of?)
-brain.read(document_id, revision?)
-brain.related(entity_id)
-brain.propose_update(document_id?, patch, evidence_refs)
-```
-
-### Required metadata
-
-- Document ID and revision.
-- Status: <draft / accepted / superseded / unverified>.
-- Owner and access scope.
-- Source references.
-- Last verified timestamp.
-- Superseded-document relationships.
-
-### Retrieval strategy
-
-Start with Git-backed documents and file search. Add full-text indexing, then evaluate hybrid lexical/semantic retrieval when corpus size and terminology variation justify it.
-
-| Stage | Implementation | Acceptance criteria |
-|---|---|---|
-| File search | <Implementation> | <Evaluation target> |
-| Full-text | <Implementation> | <Evaluation target> |
-| Hybrid retrieval | <Implementation or deferred> | <Evaluation target> |
-
-### Learning workflow
-
-```text
-Completed work -> Candidate lesson -> Evidence and contradiction checks
-              -> Reviewed proposal -> Published knowledge -> Evaluation
-```
-
-Provenance requirement for `brain.propose_update`:
-
-- Every proposal must cite source evidence in `evidence_refs`; proposals without it are rejected.
-- Lessons derived from logs, issues, or retrieved text are flagged `untrusted_origin` and require human review before publication.
-
-This prevents prompt-injected content from becoming accepted knowledge.
-
-Promote lessons to the right destination:
-
-- Repeated procedure -> skill or script.
-- Architectural constraint -> ADR or policy.
-- Missed defect -> regression test and evaluation.
-- Operational failure -> incident record and runbook.
-- Unconfirmed hypothesis -> unverified investigation note.
-- Personal preference -> personal memory.
-
-### Data governance
-
-- [ ] Enforce identity and access checks before retrieval.
-- [ ] Preserve repository and customer boundaries.
-- [ ] Propagate deletions and revocations.
-- [ ] Handle stale and superseded sources.
-- [ ] Define redaction and retention policy.
-- [ ] Document which excerpts may reach hosted model/embedding providers (see [Provider egress classes](#provider-egress-classes)).
-- [ ] Audit reads and proposed updates.
-
-#### Provider egress classes
-
-Each document carries an egress class that limits which providers may receive its content:
-
-| Class | May be sent to |
-|---|---|
-| `local-only` | No hosted provider |
-| `baa-covered-providers` | Only allowlisted configurations (runtime, account, required setting, BAA version) covered by a business associate agreement |
-| `any-provider` | Any configured provider |
-
-- Documents without an explicit class default to the most restrictive class (`local-only`).
-- Indexing and embedding count as disclosure; they are subject to the same class as prompting.
-- PHI-adjacent content is excluded from indexing by default.
-- Enforcement covers every read path, not only retrieval: `local-only` content is kept out of
-  agent-reachable directories, with read hooks as defense in depth.
-
-Details: `docs/security/data-egress.md`.
-
-## Feature-development workflow
-
-### State machine
-
-Proposed successful path:
-
-```text
-Draft -> Planned -> Approved -> Implementing -> Reviewing
-      -> Verified -> PreviewVerified -> MigrationGated -> Released
-      -> Observed -> Closed
-```
-
-Names above are the `TaskState` values. The `Blocked`, `Failed`, `Cancelled`, `Repair`, and `Superseded` transitions are defined in `harness/policy/transitions.ts`. Agents cannot approve their own transitions.
-
-The migration gate exists because some platforms (for example, Vercel auto-deploy) do not run migrations, and application rollback does not reverse schema changes. See `docs/architecture/release-gate.md`.
-
-### Required artifacts
-
-| Phase | Required evidence | Gate |
-|---|---|---|
-| Planning | Requirements, design, tasks, acceptance criteria | Human or policy approval |
-| Implementation | Patch, base/head SHAs, test results | Scope and validation checks |
-| Review | Actionable findings and resolutions | Independent verification |
-| Preview | Build, smoke/browser tests, bounded logs | Preview acceptance |
-| Migration | Reviewed migration plan, migration applied and verified in preview, old-code-on-new-schema compatibility check, recovery procedure | Release authorization |
-| Release | Approved target and recovery plan | Release authorization |
-| Observation | Deployment-specific health evidence | Close, or escalate (`Blocked`; `Failed` if the release is unhealthy) |
-| Learning | Candidate updates and source evidence | Knowledge review |
-
-### Handoff checklist
-
-- [ ] Base and head SHA recorded.
-- [ ] Changed files listed.
-- [ ] Implemented requirements identified.
-- [ ] Commands and test results captured.
-- [ ] Limitations and unresolved decisions documented.
-- [ ] Exact next action identified.
-
-### Review and repair policy
-
-- Reviewer receives requirements, constraints, diff, and relevant evidence.
-- Findings include severity, location, failure scenario, and reproducible evidence.
-- Implementer addresses findings; reviewer verifies resolutions.
-- Automated repair limit: <number>.
-- Escalation conditions: <repeated findings / scope change / budget / disagreement>.
-- Completion requires validated evidence, not a model's assertion.
-
-## Deployment and monitoring
-
-### Provider integration
-
-| Provider | Integration | Target identity | Permission scope |
-|---|---|---|---|
-| Vercel | <Official MCP / API / CLI> | <Team/project/environment> | <Scopes> |
-| Cloudflare | <Official MCP / API / CLI> | <Account/service/environment> | <Scopes> |
-
-Verify current endpoints and supported operations in official documentation. Do not assume a connected personal account is read-only.
-
-### Release evidence
-
-- Repository and commit SHA.
-- Provider, account, project, and environment.
-- Deployment/version ID and URL.
-- Build and smoke-test results.
-- Browser-test evidence where applicable.
-- Time-bounded logs and metrics, with sample counts.
-- Recovery procedure and known limitations.
-
-### Event-driven operations
-
-```text
-Deployment event / alert -> Deterministic filtering -> Bounded evidence
-                         -> Agent diagnosis -> Incident or proposed patch
-```
-
-| Action | Automatic? | Approval / conditions |
-|---|---|---|
-| Read status and bounded logs | <Yes/No> | <Conditions> |
-| Run safe smoke tests | <Yes/No> | <Conditions> |
-| Draft incident | <Yes/No> | <Conditions> |
-| Publish patch / PR | <Yes/No> | <Conditions> |
-| Change production configuration | No by default | Exact target and change |
-| Change DNS or secrets | No by default | Exact target and change |
-| Roll back production | No by default | Tested recovery policy or explicit approval |
-| Destructive database action | No by default | Separate operational procedure |
-
-Application rollback does not automatically reverse schema changes or external side effects.
-
-## Security and approvals
-
-### Trust boundaries
-
-Treat repository files, hooks, MCP configuration, retrieved documents, issue text, logs, and dependency scripts as potentially untrusted inputs.
-
-Worktrees are checkout isolation, not a complete execution sandbox.
-
-### Required controls
-
-- [ ] Keep production credentials outside coding workers.
-- [ ] Separate patch generation from privileged publication and release.
-- [ ] Use exact-target, exact-content approval records.
-- [ ] Enforce filesystem and network restrictions externally.
-- [ ] Apply deadlines, retry limits, concurrency limits, and delegation depth.
-- [ ] Use controlled configuration for untrusted repositories.
-- [ ] Set Cursor `--sandbox` explicitly for every job; never pass `--approve-mcps`, `--force`, or `--yolo` for untrusted repositories.
-- [ ] Redact secrets from logs and artifacts.
-- [ ] Pin runtime and extension versions.
-- [ ] Test denied actions, not only successful paths.
-
-Security policy: <Link to threat model, incident reporting, and credential procedures>.
-
-## Evaluation and observability
-
-### Evaluation set
-
-Use real historical failures and representative tasks.
-
-| Area | Metric | Target | Evaluation location |
-|---|---|---|---|
-| Retrieval | Correct source / stale-source rate | <Target> | <Path> |
-| Access control | Unauthorized content returned | Zero | <Path> |
-| Planning | Missing requirements caught early | <Target> | <Path> |
-| Implementation | Acceptance success / human rework | <Target> | <Path> |
-| Review | Verified findings / false positives | <Target> | <Path> |
-| Deployment | Correct attribution / unsafe actions | <Target> | <Path> |
-| Efficiency | Time, spend, retries, interventions | <Budget> | <Dashboard> |
-
-### Run ledger
-
-Record task/job IDs, runtime and skill versions, permission profile, knowledge revision, explicit session IDs, commit SHAs, evidence, approvals, timing, and available usage data.
-
-Retention: <Policy>. Access: <Roles>. Redaction: <Policy>.
-
-## Testing
-
-Replace placeholders with implemented commands:
+From a macOS checkout:
 
 ```bash
-node --experimental-strip-types --test tests/*.test.ts   # state machine (Node >= 22.6)
-<adapter-compatibility-test-command>
-<permission-policy-test-command>
-<retrieval-evaluation-command>
-<end-to-end-preview-test-command>
+cargo test --offline --locked -p harness-adapters --test claude \
+  claude_exit_1_with_subtype_success_is_failed -- --exact
+cargo test --offline --locked -p harness-core --test decide \
+  clean_review_stops_at_awaiting_human_review_clean -- --exact
 ```
 
-### Minimum acceptance tests
+Their [adapter test](crates/adapters/tests/claude.rs) and [decision test](crates/core/tests/decide.rs) are also useful reading without a local toolchain.
 
-- [ ] Analysis jobs cannot modify the workspace.
-- [ ] Writers cannot reach unrelated paths.
-- [ ] Required integration failures block the workflow.
-- [ ] Invalid output cannot advance task state.
-- [ ] Cancellation terminates job descendants.
-- [ ] Missing or mismatched approval blocks external writes.
-- [ ] Session continuation uses the recorded session ID.
-- [ ] Retrieval does not leak restricted documents.
-- [ ] Deployment evidence matches the intended commit and environment.
+## Trust boundaries and planned integration
 
-## Troubleshooting
+Instructions in `AGENTS.md`, skills, repository text, and model output do not grant execution or approval authority. The Linux pilot enforces isolation outside the worker and records independent verification/review evidence. Its production approval policy remains fail closed; see [transition policy](harness/policy/transitions.ts).
 
-| Symptom | Diagnostic evidence | Resolution / runbook |
-|---|---|---|
-| Runtime authentication fails | Adapter error and auth profile, without secrets | <Runbook> |
-| Model output fails schema validation | Raw artifact and validator errors | <Runbook> |
-| Required MCP service unavailable | Integration health and job events | <Runbook> |
-| Agent changes an unexpected file | Workspace diff and policy trace | <Runbook> |
-| Knowledge answer cites stale material | Source revision and verification date | <Runbook> |
-| Deployment check targets wrong release | Commit/deployment mapping | <Runbook> |
-| Job survives cancellation | Process tree and runner events | <Runbook> |
+The Rust design targets a human-approved packet → Claude implementation → harness verification → Codex review → bounded repair → human decision. A reviewer's pass ends the repair loop; accepting an exact candidate commit remains a human action. The signed, anchored approval ledger is deferred in that design. See [design sections 6 and 12](docs/superpowers/specs/2026-11-09-unified-harness-design.md#6-running-an-agent) for the distinction from the Linux pilot.
 
-## Roadmap
+Company Brain is intended to supply versioned context, provenance, and reviewed knowledge proposals while the harness owns execution and evidence. Retrieval, `brain.propose_update`, research providers, production operations, deployment integrations, and a daemon/UI are future work; the current pilot does not implement them.
 
-### Phase 1 — Reliable Claude-first workflow
+## Repository guide
 
-- [ ] Shared instructions.
-- [ ] Feature packets and handoffs.
-- [ ] One-writer worktrees.
-- [ ] Independent Codex review. The external `codex` Claude Code plugin v1.0.6 provides the review commands; nothing is implemented in this repository. Not done for `baa-covered-providers` content: the BAA configuration allowlist and the managed configuration are still placeholders (`docs/security/data-egress.md`, "BAA configuration allowlist" and "Open questions"), so until they exist a Codex session counts as `any-provider`.
-- [ ] Deterministic validation.
-- [ ] Git-backed company knowledge.
-- [ ] Migration-aware release gate with a fail-closed migration classifier.
-- [ ] Local approval ledger (agents cannot self-approve).
-  Done when: signed, serialized, anchored records on one machine; `canTransition` enforces
-  them; `MigrationGated -> Released` cannot succeed without a valid human record for the
-  exact commit and deployment target.
-
-From Phase 1 the harness's control plane records and checks the release *decision*
-(`canTransition` against the ledger; today `canTransition` denies every transition except
-entering `Blocked`, pending the actor policy). That does not stop a release made outside the
-harness: only Phase 3 ("Provider-enforced production releases") confines production deploy
-credentials to the privileged release job. Later phases change where the ledger lives and who
-can execute a release, not whether approval is required.
-
-### Phase 2 — Unified knowledge and orchestration
-
-- [ ] Company-brain MCP.
-- [ ] Provenance and reviewed updates.
-- [ ] Versioned skills/plugin distribution.
-- [ ] Shared ledger service and job state.
-  Done when: the Phase 1 record format and rules run as a service usable from more than one
-  machine, and jobs submitted through `engineering.submit_job` record and read their state there.
-- [ ] Adapter compatibility suite.
-
-### Phase 3 — Delivery and operations
-
-- [ ] Vercel / Cloudflare integrations.
-- [ ] Preview verification and evidence packets.
-- [ ] Event-driven incident triage.
-- [ ] Provider-enforced production releases.
-  Done when: production deploy credentials are held only by the privileged release job, and
-  that job refuses to deploy without a matching ledger record, so a release cannot happen
-  outside the harness.
-
-### Phase 4 — Evaluated autonomy
-
-- [ ] Durable scheduling and isolated runners.
-- [ ] Selective parallel implementation.
-- [ ] Bounded repair workflows.
-- [ ] Tested, narrow recovery policies.
-
-## Contributing
-
-1. Open an issue describing the workflow or failure case.
-2. Identify affected policies, skills, adapters, and knowledge sources.
-3. Add a regression case where possible.
-4. Implement the smallest scoped change.
-5. Run relevant tests and evaluations.
-6. Request review; do not self-approve privileged policy changes.
-7. Document compatibility, migration, and operational effects.
-
-Contribution guide: <Link>. Ownership: <Link>. Decision process: <Link>.
-
-## Documentation and sources
-
-Research baseline: October 26, 2026. Recheck official documentation against pinned versions; vendor interfaces and endpoint support may change.
-
-| Topic | Official documentation |
+| Path | Purpose |
 |---|---|
-| Claude Agent SDK | https://code.claude.com/docs/en/agent-sdk/overview |
-| Claude headless execution | https://code.claude.com/docs/en/headless |
-| Claude hooks | https://code.claude.com/docs/en/hooks |
-| Claude memory and instructions | https://code.claude.com/docs/en/memory |
-| Codex noninteractive execution | https://developers.openai.com/codex/noninteractive/ |
-| Codex SDK | https://developers.openai.com/codex/sdk/ |
-| Codex app server | https://developers.openai.com/codex/app-server/ |
-| Codex instructions | https://developers.openai.com/codex/guides/agents-md/ |
-| Cursor headless CLI | https://cursor.com/docs/cli/headless |
-| Cursor CLI MCP | https://cursor.com/docs/cli/mcp |
-| Cursor hooks | https://cursor.com/docs/hooks |
-| Cursor skills | https://cursor.com/docs/context/skills |
-| Vercel MCP | https://vercel.com/docs/mcp/vercel-mcp |
-| Cloudflare MCP | https://github.com/cloudflare/mcp-server-cloudflare |
-| Long-running harness design | https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents |
-| Contextual retrieval | https://www.anthropic.com/engineering/contextual-retrieval |
+| [AGENTS.md](AGENTS.md), [CLAUDE.md](CLAUDE.md) | Shared engineering agreements and Claude-specific guidance |
+| [harness/local/](harness/local/) | Linux pilot controller, sandbox, process capture, snapshots, and artifacts |
+| [tests/](tests/) | Policy, ledger-guard, workflow, and regression checks |
+| [specs/](specs/) | Requirements, designs, tasks, acceptance tests, and handoffs |
+| [docs/local-workflow.md](docs/local-workflow.md) | Complete pilot setup and operating procedure |
+| [docs/architecture/approval-ledger.md](docs/architecture/approval-ledger.md) | Approval-ledger design |
+| [docs/architecture/release-gate.md](docs/architecture/release-gate.md) | Release and migration gate design |
+| [docs/security/data-egress.md](docs/security/data-egress.md) | Data-egress policy and unresolved deployment choices |
+| [crates/](crates/), [conformance/](conformance/) | Rust spine: six crates (`cli -> engine -> {store, exec, adapters} -> core`) and the end-to-end conformance suite |
 
-### Compatibility notes to verify
-
-- Prefer Codex `exec`, SDK, or app-server integration over copying older `mcp-server` examples without checking current support. Verified for Codex 0.163.0: there is no `mcp-server` subcommand (see [Verified CLI surface](#verified-cli-surface)).
-- Confirm Cloudflare endpoint deprecations before adopting product-specific or older transport URLs.
-- Verify Claude instruction loading and repository-configuration behavior for the installed version.
-- Validate portable skills across runtimes instead of assuming identical behavior.
-
-## License
-
-<License name and link, or internal-use statement.>
+Before contributing, read `AGENTS.md` and the relevant feature packet. Work in the assigned worktree, make the smallest scoped change, and report exact validation evidence. Agents cannot approve their own task phases or releases.
