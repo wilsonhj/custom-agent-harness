@@ -8,6 +8,14 @@
 //! configuration file. User and system configuration are never read, and the environment is
 //! replaced, so `GIT_DIR`, `GIT_INDEX_FILE`, `GIT_SSH_COMMAND` and friends inherited from a
 //! caller cannot redirect or arm a command.
+//!
+//! A task workspace is a linked worktree whose configuration comes from the source repository,
+//! and that configuration (common `config`, or `config.worktree` under
+//! `extensions.worktreeConfig`) can set `core.worktree` to any directory. Every Git command on a
+//! workspace therefore goes through [`git_in`], which passes the worktree's own Git directory as
+//! `--git-dir` and the workspace path as `--work-tree`. The command-line `--work-tree` takes
+//! precedence over `core.worktree` from any configuration file, and an explicit `--git-dir`
+//! skips discovery through the worktree's `.git` link.
 
 use std::path::Path;
 use std::process::Stdio;
@@ -119,14 +127,59 @@ pub enum GitError {
     NonUtf8DriverName(String),
 }
 
-/// Runs `git -C <repo> <hardening> <args>` and returns its stdout.
-pub async fn git(repo: &Path, args: &[&str]) -> Result<Vec<u8>, GitError> {
-    git_with_env(repo, args, &[]).await
+/// Where a Git command runs: `-C <dir>`, plus `--git-dir`/`--work-tree` when pinned.
+#[derive(Clone, Copy)]
+struct Target<'a> {
+    dir: &'a Path,
+    /// `(git_dir, work_tree)`.
+    pin: Option<(&'a Path, &'a Path)>,
 }
 
-/// [`git`] with extra environment variables (identity and dates for `commit-tree`).
-pub(crate) async fn git_with_env(
-    repo: &Path,
+/// A linked worktree's own Git directory and its validated work tree.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Pinned<'a> {
+    pub(crate) git_dir: &'a Path,
+    pub(crate) work_tree: &'a Path,
+}
+
+impl<'a> Pinned<'a> {
+    fn target(self) -> Target<'a> {
+        Target {
+            dir: self.work_tree,
+            pin: Some((self.git_dir, self.work_tree)),
+        }
+    }
+}
+
+/// Runs `git -C <repo> <hardening> <args>` and returns its stdout.
+pub async fn git(repo: &Path, args: &[&str]) -> Result<Vec<u8>, GitError> {
+    git_target(
+        Target {
+            dir: repo,
+            pin: None,
+        },
+        args,
+        &[],
+    )
+    .await
+}
+
+/// [`git`] bound to a workspace: `-C <work_tree> --git-dir=<git_dir> --work-tree=<work_tree>`.
+pub(crate) async fn git_in(wt: Pinned<'_>, args: &[&str]) -> Result<Vec<u8>, GitError> {
+    git_target(wt.target(), args, &[]).await
+}
+
+/// [`git_in`] with extra environment variables (identity and dates for `commit-tree`).
+pub(crate) async fn git_in_with_env(
+    wt: Pinned<'_>,
+    args: &[&str],
+    extra_env: &[(&str, &str)],
+) -> Result<Vec<u8>, GitError> {
+    git_target(wt.target(), args, extra_env).await
+}
+
+async fn git_target(
+    repo: Target<'_>,
     args: &[&str],
     extra_env: &[(&str, &str)],
 ) -> Result<Vec<u8>, GitError> {
@@ -152,7 +205,7 @@ pub(crate) async fn git_with_env(
 /// before anything runs. The configuration is re-read on every
 /// call; it can only change between this read and the command if something writes the
 /// repository's configuration (or a file it includes) meanwhile.
-async fn driver_overrides(repo: &Path) -> Result<Vec<(String, String)>, GitError> {
+async fn driver_overrides(repo: Target<'_>) -> Result<Vec<(String, String)>, GitError> {
     let args = [
         "config",
         "-z",
@@ -205,9 +258,20 @@ async fn driver_overrides(repo: &Path) -> Result<Vec<(String, String)>, GitError
     Ok(out)
 }
 
-async fn run(repo: &Path, args: &[&str], env: &[(String, String)]) -> Result<Vec<u8>, GitError> {
+async fn run(
+    repo: Target<'_>,
+    args: &[&str],
+    env: &[(String, String)],
+) -> Result<Vec<u8>, GitError> {
     let mut cmd = Command::new(GIT);
-    cmd.arg("-C").arg(repo);
+    cmd.arg("-C").arg(repo.dir);
+    if let Some((git_dir, work_tree)) = repo.pin {
+        let mut d = std::ffi::OsString::from("--git-dir=");
+        d.push(git_dir);
+        let mut w = std::ffi::OsString::from("--work-tree=");
+        w.push(work_tree);
+        cmd.arg(d).arg(w);
+    }
     for guard in HARDENING {
         match guard {
             Guard::Arg(a) => {

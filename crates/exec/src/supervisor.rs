@@ -4,54 +4,69 @@
 //! # Launch
 //!
 //! [`spawn_gated`] starts the `eng-shim` binary (see [`crate::shim`]) with the plan's argv,
-//! complete environment and working directory, and the read end of a gate pipe on fd 3. The
-//! shim makes itself a session and process-group leader and waits. `on_identity` receives the
-//! leader's [`ProcessIdentity`] before anything runs; if it fails, the gate is dropped and the
-//! shim exits having run nothing. [`Supervised::run`] writes the go byte, after which the shim
-//! execs the plan; the plan's stdin is then written from its own task (`EPIPE` ignored), and
-//! stdout and stderr are drained concurrently through length-limited line framing.
+//! complete environment and working directory, the read end of a gate pipe on fd 3 and the
+//! write end of a status pipe on fd 4. The shim makes itself its own responsible process and a
+//! session and process-group leader, and waits. `on_identity` receives the shim's
+//! [`ProcessIdentity`] before anything runs; if it fails, the gate is dropped and the shim exits
+//! having run nothing. [`Supervised::run`] writes the go byte, after which the shim starts the
+//! plan as its child; the plan's stdin is then written from its own task (`EPIPE` ignored), and
+//! stdout and stderr are drained concurrently through length-limited line framing. When the
+//! plan exits, the shim reports its wait status on the status pipe and stays alive (the
+//! *anchor*) until the supervisor releases it by closing the gate.
 //!
 //! # Finding every descendant on macOS
 //!
-//! macOS has no PID namespaces or cgroups. A process that double-forks and calls `setsid`
-//! leaves the process group, and once its parent exits it is reparented to launchd, so neither
-//! `killpg` nor a parent-chain walk at teardown finds it (research 1a §6). The supervisor
-//! therefore matches a process as "ours" if any of the following holds, evaluated against a
-//! snapshot of every process taken with the public libproc calls `proc_listallpids` and
-//! `proc_pidinfo(PROC_PIDTBSDINFO)` (pid, ppid, pgid, uid, status, start time):
+//! macOS has no PID namespaces, cgroups or sub-reapers. A process that double-forks and calls
+//! `setsid` (or is spawned with `POSIX_SPAWN_SETSID`) leaves the session and process group, and
+//! once its parent exits it is reparented to launchd, so neither `killpg` nor a parent-chain walk
+//! finds it (research 1a §6). The supervisor therefore matches a process as "ours" if any of the
+//! following holds, evaluated against a snapshot of every process taken with the public libproc
+//! calls `proc_listallpids` and `proc_pidinfo(PROC_PIDTBSDINFO)` (pid, ppid, pgid, uid, status,
+//! start time):
 //!
 //! 1. **Recorded.** From before the go byte until teardown a background thread rescans every
 //!    [`POLL_INTERVAL`] and records `(pid, start time)` of each match. A recorded pid matches
 //!    for the rest of the run as long as its start time is unchanged (so a reused pid never
 //!    does), even after it has been reparented to launchd.
-//! 2. **Group or ancestry.** It is in the leader's process group, or its parent matches and it
+//! 2. **Group or ancestry.** It is in the shim's process group, or its parent matches and it
 //!    started no earlier than that parent.
-//! 3. **Responsibility** (private SPI, isolated in [`responsibility_spi`]). The shim execs the
-//!    plan with the "disclaim" spawn attribute, which makes the leader its own responsible
-//!    process. Every descendant inherits that responsible pid and keeps it across `setsid` and
-//!    reparenting, so an escaped grandchild still reports the leader. Probed on macOS 26: this
-//!    holds only while the leader is alive; once the leader has exited (even as an unreaped
-//!    zombie) the escapee reports itself.
+//! 3. **Responsibility** (private SPI, isolated in [`responsibility_spi`]). The shim re-executes
+//!    itself with the "disclaim" spawn attribute, which makes it its own responsible process.
+//!    Every descendant inherits that responsible pid and keeps it across `setsid`,
+//!    `POSIX_SPAWN_SETSID` and reparenting, so an escaped grandchild still reports the shim.
+//!    Probed on macOS 26.6: this holds only while the responsible process is alive; once it has
+//!    exited (even as an unreaped zombie) the escapee reports itself. That is why the shim does
+//!    not exec the plan but outlives it: the supervisor never signals the shim, and it exits only
+//!    after the supervisor's sweep and once no live process names it as responsible.
 //!
-//! Together these catch an escapee if any scan sees it while its leader is still alive or
-//! while its parent chain still reaches a match. The residual gap: a process that escapes and
-//! whose leader then exits within one poll interval is never seen. Denying `setsid`/`setpgid`
-//! in the sandbox profile (research 1a §6 option 1) closes it. [`kill_identity`], used after an
-//! engine restart, has no recorded set, so it can find escapees only by responsibility while the
-//! leader lives, and by group and ancestry.
+//! Because the anchor is alive for every scan up to and including the last one of the sweep,
+//! rule 3 finds every escapee no matter when it escaped or when its parents exited. If the shim
+//! is gone before the sweep ends (something killed it) that is no longer true, and the run ends
+//! in [`KillFailed`] (fail closed) unless the shim exited [`RAN_NOTHING`] or [`EXEC_FAILED`],
+//! i.e. no plan ever ran.
+//!
+//! Residual gap (probed, not closable from user space): any process can itself spawn a child
+//! with the disclaim attribute, making that child its own responsible process. A descendant that
+//! does this together with `POSIX_SPAWN_SETSID`, and whose parent then exits within one poll
+//! interval, is found by none of the rules. Seatbelt cannot deny it: `(deny syscall-unix
+//! (syscall-number SYS_setsid))` stops `setsid(2)` but not `POSIX_SPAWN_SETSID`, and neither
+//! the disclaim attribute nor spawn flags can be filtered.
+//!
+//! [`kill_identity`], used after an engine restart, has no recorded set. It finds descendants by
+//! responsibility while the shim lives (it lingers while any remain), and by group and ancestry.
 //!
 //! # Process group reuse
 //!
 //! POSIX does not reuse a pid while a process group with that id is non-empty, so the group
-//! number is ours exactly as long as the group never emptied. After an engine restart that is
-//! unknown, and the number may name an unrelated group of the same user. The rule, applied by
-//! every scan, by every `killpg` and by [`kill_identity`]:
+//! number is ours exactly as long as the group never emptied (always, while the shim lives).
+//! After an engine restart that is unknown, and the number may name an unrelated group of the
+//! same user. The rule, applied by every scan and by [`kill_identity`]:
 //!
 //! - If a process with pid == the recorded pgid exists and its start time is not the recorded
-//!   leader start time, the group is **foreign**: nothing is matched by group, no `killpg` is
-//!   sent, and [`kill_identity`] signals nothing at all. It returns [`TreeGone`] if no live
-//!   process has the recorded leader pid and start time (the only identity it knows), and
-//!   [`KillFailed`] naming that pid otherwise.
+//!   leader start time, the group is **foreign**: nothing is matched by group, and
+//!   [`kill_identity`] signals nothing at all. It returns [`TreeGone`] if no live process has
+//!   the recorded leader pid and start time (the only identity it knows), and [`KillFailed`]
+//!   naming that pid otherwise.
 //! - If no process with pid == pgid exists, the members of that group are taken to be orphans of
 //!   our group (whose leader exited while they kept the group alive) and may be killed. This
 //!   is ambiguous in one case: our group emptied, an unrelated process reused the number as its
@@ -63,16 +78,18 @@
 //!
 //! # Kill sequence
 //!
-//! `SIGTERM` to the group and to every match; up to [`KILL_GRACE`] for the tree to empty;
-//! `SIGKILL` to the group; then a sweep: `SIGSTOP` every match and rescan until no new match
-//! appears (a stopped process cannot fork, so this reaches a fixpoint), `SIGKILL` them all, and
-//! repeat until two scans [`SECOND_PASS_DELAY`] apart find nothing. The sweep is bounded by
-//! [`SWEEP_BOUND`]; past it the result is [`KillFailed`]. Finally the leader is reaped and the
-//! output pipes must reach end of file within [`SWEEP_BOUND`] (an open pipe means some process
-//! of the tree still holds it, which is also [`KillFailed`]). Only then is a [`TreeGone`] made.
+//! Every match except the shim is signalled individually (no `killpg`, which would reach the
+//! shim): `SIGTERM`; up to [`KILL_GRACE`] for the tree to empty; then a sweep: `SIGSTOP` every
+//! match and rescan until no new match appears (a stopped process cannot fork, so this reaches a
+//! fixpoint), `SIGKILL` them all, and repeat until two scans [`SECOND_PASS_DELAY`] apart find
+//! nothing. The sweep is bounded by [`SWEEP_BOUND`]; past it the result is [`KillFailed`]. Then
+//! the shim must still be alive (see above), it is released and must exit within
+//! [`SWEEP_BOUND`], and the output pipes must reach end of file within [`SWEEP_BOUND`] (an open
+//! pipe means some process of the tree still holds it, which is also [`KillFailed`]). Only then
+//! is a [`TreeGone`] made.
 
 use std::collections::{HashMap, HashSet};
-use std::io::Write as _;
+use std::io::{Read as _, Write as _};
 use std::os::fd::{AsRawFd as _, RawFd};
 use std::os::unix::process::ExitStatusExt as _;
 use std::path::Path;
@@ -89,7 +106,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::plan::{LaunchPlan, TreeGone};
-use crate::shim::GATE_FD;
+use crate::shim::{EXEC_FAILED, GATE_FD, RAN_NOTHING, STATUS_FD};
 
 /// Time between `SIGTERM` and `SIGKILL`.
 pub const KILL_GRACE: Duration = Duration::from_secs(5);
@@ -171,6 +188,7 @@ pub struct Supervised {
     identity: ProcessIdentity,
     limits: Limits,
     gate: Option<std::io::PipeWriter>,
+    status: Option<std::io::PipeReader>,
     stdin: Vec<u8>,
 }
 
@@ -186,7 +204,9 @@ pub async fn spawn_gated(
         return Err(FailureCode::SpawnError);
     }
     let (gate_r, gate_w) = std::io::pipe().map_err(|_| FailureCode::SpawnError)?;
+    let (status_r, status_w) = std::io::pipe().map_err(|_| FailureCode::SpawnError)?;
     let gate_fd = gate_r.as_raw_fd();
+    let status_fd = status_w.as_raw_fd();
     let mut cmd = Command::new(shim);
     cmd.args(&plan.argv)
         .env_clear()
@@ -196,13 +216,14 @@ pub async fn spawn_gated(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    // SAFETY: the closure runs between fork and exec and only calls dup2/fcntl, which are
+    // SAFETY: the closure runs between fork and exec and only calls dup2/fcntl/close, which are
     // async-signal-safe.
     unsafe {
-        cmd.pre_exec(move || gate_onto_fd3(gate_fd));
+        cmd.pre_exec(move || pipes_onto_fds(gate_fd, status_fd));
     }
     let mut child = cmd.spawn().map_err(|_| FailureCode::SpawnError)?;
     drop(gate_r);
+    drop(status_w);
 
     let info = child.id().and_then(|pid| proc_info(pid as i32));
     let Some(info) = info else {
@@ -227,24 +248,32 @@ pub async fn spawn_gated(
         identity,
         limits,
         gate: Some(gate_w),
+        status: Some(status_r),
         stdin: plan.stdin,
     })
 }
 
-fn gate_onto_fd3(fd: RawFd) -> std::io::Result<()> {
-    // SAFETY: plain fd syscalls on fds this process owns.
-    let rc = unsafe {
-        if fd == GATE_FD {
-            libc::fcntl(fd, libc::F_SETFD, 0)
+/// Puts the gate's read end on [`GATE_FD`] and the status pipe's write end on [`STATUS_FD`],
+/// both inheritable. Both are first moved above the target numbers so neither dup2 can clobber
+/// the other's source.
+fn pipes_onto_fds(gate: RawFd, status: RawFd) -> std::io::Result<()> {
+    let check = |rc: libc::c_int| {
+        if rc == -1 {
+            Err(std::io::Error::last_os_error())
         } else {
-            libc::dup2(fd, GATE_FD)
+            Ok(rc)
         }
     };
-    if rc == -1 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
+    // SAFETY: plain fd syscalls on fds this process owns.
+    unsafe {
+        let gate_hi = check(libc::fcntl(gate, libc::F_DUPFD, 10))?;
+        let status_hi = check(libc::fcntl(status, libc::F_DUPFD, 10))?;
+        check(libc::dup2(gate_hi, GATE_FD))?;
+        check(libc::dup2(status_hi, STATUS_FD))?;
+        libc::close(gate_hi);
+        libc::close(status_hi);
     }
+    Ok(())
 }
 
 enum Event {
@@ -282,9 +311,27 @@ impl Supervised {
                 .ok()
         };
 
+        let (status_tx, mut status_rx) = tokio::sync::oneshot::channel::<Option<i32>>();
+        if let Some(mut status) = self.status.take() {
+            let reader = std::thread::Builder::new()
+                .name("eng-plan-status".into())
+                .spawn(move || {
+                    let mut raw = [0u8; 4];
+                    let st = status
+                        .read_exact(&mut raw)
+                        .ok()
+                        .map(|()| i32::from_ne_bytes(raw));
+                    let _ = status_tx.send(st);
+                });
+            // Without the reader the receiver resolves at once and the run is torn down.
+            drop(reader);
+        }
+
         let started = Instant::now();
-        if let Some(mut gate) = self.gate.take() {
-            let _ = gate.write_all(&[1]);
+        // Held until the sweep is done: closing it releases the shim.
+        let mut gate = self.gate.take();
+        if let Some(g) = gate.as_mut() {
+            let _ = g.write_all(&[1]);
         }
         if let Some(mut stdin) = self.child.stdin.take() {
             let data = std::mem::take(&mut self.stdin);
@@ -318,6 +365,8 @@ impl Supervised {
         let mut failure = None;
         let mut cancelled = false;
         let mut streams_open = true;
+        // `Some(st)` once the status pipe resolved; `st` is the plan's wait status if reported.
+        let mut plan_status: Option<Option<i32>> = None;
         let deadline = tokio::time::sleep_until(started + self.limits.deadline);
         tokio::pin!(deadline);
         loop {
@@ -333,6 +382,10 @@ impl Supervised {
                     }
                     None => streams_open = false,
                 },
+                st = &mut status_rx => {
+                    plan_status = Some(st.ok().flatten());
+                    break;
+                }
                 _ = self.child.wait() => break,
             }
         }
@@ -348,7 +401,33 @@ impl Supervised {
             Some(Ok(tracker)) => tracker,
             _ => Tracker::new(&identity),
         };
-        let mut killed = terminate(&mut tracker, Some(&mut self.child)).await;
+        let mut killed = terminate(&mut tracker).await;
+
+        // The responsibility rule held for every scan only if the anchor outlived the sweep.
+        let early_exit = self.child.try_wait().ok().flatten();
+        if let Some(st) = early_exit
+            && !matches!(st.code(), Some(RAN_NOTHING | EXEC_FAILED))
+        {
+            killed = killed.and(Err(KillFailed {
+                survivors: Vec::new(),
+            }));
+        }
+        drop(gate);
+        let shim_status = match tokio::time::timeout(SWEEP_BOUND, self.child.wait()).await {
+            Ok(Ok(st)) => Some(st),
+            _ => {
+                killed = killed.and(Err(KillFailed {
+                    survivors: vec![tracker.leader_pid],
+                }));
+                None
+            }
+        };
+        if plan_status.is_none() {
+            plan_status = tokio::time::timeout(SWEEP_BOUND, &mut status_rx)
+                .await
+                .ok()
+                .map(|st| st.ok().flatten());
+        }
 
         // Everything that could write to the pipes is dead, so they reach end of file.
         let drain_end = Instant::now() + SWEEP_BOUND;
@@ -370,7 +449,10 @@ impl Supervised {
             }
         }
 
-        let status = self.child.try_wait().ok().flatten();
+        let status = match plan_status.flatten() {
+            Some(raw) => Some(std::process::ExitStatus::from_raw(raw)),
+            None => shim_status,
+        };
         let code = status.and_then(|s| s.code());
         let signal = status.and_then(|s| s.signal());
         if failure.is_none() && !cancelled && code != Some(0) {
@@ -437,16 +519,12 @@ async fn pump<R: AsyncRead + Unpin>(
     }
 }
 
-/// `SIGTERM`, grace, `SIGKILL`, sweep, reap. See the module docs.
-async fn terminate(tracker: &mut Tracker, mut child: Option<&mut Child>) -> Result<(), KillFailed> {
-    tracker.signal_group(libc::SIGTERM);
+/// `SIGTERM`, grace, sweep, never signalling the leader (the shim). See the module docs.
+async fn terminate(tracker: &mut Tracker) -> Result<(), KillFailed> {
     let mut termed: HashSet<i32> = HashSet::new();
     let grace_end = Instant::now() + KILL_GRACE;
     loop {
-        if let Some(c) = child.as_mut() {
-            let _ = c.try_wait();
-        }
-        match tracker.scan() {
+        match tracker.scan_descendants() {
             Some(live) if live.is_empty() => break,
             Some(live) => {
                 for pid in live {
@@ -462,19 +540,7 @@ async fn terminate(tracker: &mut Tracker, mut child: Option<&mut Child>) -> Resu
         }
         tokio::time::sleep(GRACE_POLL).await;
     }
-    tracker.signal_group(libc::SIGKILL);
-    sweep(tracker).await?;
-    if let Some(c) = child {
-        match tokio::time::timeout(SWEEP_BOUND, c.wait()).await {
-            Ok(Ok(_)) => {}
-            _ => {
-                return Err(KillFailed {
-                    survivors: vec![tracker.leader_pid],
-                });
-            }
-        }
-    }
-    Ok(())
+    sweep(tracker).await
 }
 
 /// Freeze-then-kill until two empty scans, bounded by [`SWEEP_BOUND`].
@@ -483,7 +549,7 @@ async fn sweep(tracker: &mut Tracker) -> Result<(), KillFailed> {
     let mut empty_scans = 0;
     loop {
         if Instant::now() >= end {
-            return match tracker.scan() {
+            return match tracker.scan_descendants() {
                 Some(live) if live.is_empty() => Ok(()),
                 Some(live) => Err(KillFailed { survivors: live }),
                 None => Err(KillFailed {
@@ -493,7 +559,7 @@ async fn sweep(tracker: &mut Tracker) -> Result<(), KillFailed> {
         }
         let mut frozen: HashSet<i32> = HashSet::new();
         loop {
-            let Some(live) = tracker.scan() else {
+            let Some(live) = tracker.scan_descendants() else {
                 return Err(KillFailed {
                     survivors: frozen.into_iter().collect(),
                 });
@@ -560,12 +626,13 @@ impl Tracker {
         proc_info(self.pgid).is_some_and(|p| p.start_us != self.leader_start)
     }
 
-    /// `killpg` the run's group, unless the group is foreign.
-    fn signal_group(&self, sig: i32) {
-        if !self.group_foreign() && self.pgid > 1 {
-            // SAFETY: killpg has no memory-safety preconditions.
-            unsafe { libc::killpg(self.pgid, sig) };
-        }
+    /// [`Tracker::scan`] without the leader (the shim, which is never signalled).
+    fn scan_descendants(&mut self) -> Option<Vec<i32>> {
+        let leader = self.leader_pid;
+        self.scan().map(|mut live| {
+            live.retain(|&pid| pid != leader);
+            live
+        })
     }
 
     /// Returns the live (non-zombie) processes of the run and records them. `None` if the
@@ -730,6 +797,24 @@ pub(crate) fn responsibility_spi() -> Option<&'static ResponsibilitySpi> {
     .as_ref()
 }
 
+/// True if a live process other than `anchor` names `anchor` as its responsible process (or the
+/// process table cannot be read, failing closed). Used by the shim before it exits.
+pub(crate) fn responsible_descendant_alive(anchor: i32) -> bool {
+    let Some(spi) = responsibility_spi() else {
+        return false;
+    };
+    let Some(pids) = all_pids() else {
+        return true;
+    };
+    pids.into_iter().any(|pid| {
+        pid > 1
+            && pid != anchor
+            && proc_info(pid).is_some_and(|p| !p.zombie)
+            // SAFETY: the SPI takes a pid by value and returns a pid.
+            && unsafe { (spi.responsible_pid)(pid) } == anchor
+    })
+}
+
 /// Whether every mechanism the kill sequence relies on is present: the process table can be
 /// enumerated and read, and the responsibility SPI resolves. `eng doctor` fails closed on false.
 pub fn descendant_tracking_available() -> bool {
@@ -796,6 +881,17 @@ pub async fn kill_identity(id: &ProcessIdentity) -> Result<TreeGone, KillFailed>
             Ok(TreeGone::confirmed())
         };
     }
-    terminate(&mut tracker, None).await?;
+    terminate(&mut tracker).await?;
+    // The shim's gate writer died with the engine that started it, so the shim exits by itself
+    // now that no descendant is left; its parent is gone, so launchd reaps it.
+    let end = Instant::now() + SWEEP_BOUND;
+    while proc_info(id.pid).is_some_and(|p| p.start_us == id.start_us && !p.zombie) {
+        if Instant::now() >= end {
+            return Err(KillFailed {
+                survivors: vec![id.pid],
+            });
+        }
+        tokio::time::sleep(GRACE_POLL).await;
+    }
     Ok(TreeGone::confirmed())
 }
