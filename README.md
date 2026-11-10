@@ -1,4 +1,4 @@
-# <Project Name>
+# Custom Agent Harness
 
 > A company-aware engineering harness for Claude Code, Codex CLI, and Cursor.
 
@@ -7,7 +7,7 @@
 
 | Field | Value |
 |---|---|
-| Status | <Design / Prototype / Pilot / Production> |
+| Status | Design stage. Node pilot on `main` (Linux sandbox); Rust core in review in [PR #13](https://github.com/wilsonhj/custom-agent-harness/pull/13) |
 | Owner | <Team or maintainer> |
 | Primary repository | <Repository URL> |
 | Knowledge repository | <Company-brain repository URL> |
