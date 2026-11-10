@@ -59,7 +59,16 @@ when a run is prepared; changing any of them requires a new run.
 
 All command arrays are argv, not shell strings. Executables must be absolute paths within
 runtime mounts. Worker arguments may contain `{workspace}`, replaced with `/work`; verifier
-and reviewer arguments may not reference the workspace. `/opt` itself cannot be mounted. Absolute
+and reviewer arguments may not reference the workspace: `{workspace}` and absolute `/work`
+paths (also as `--name=/work/...`) are rejected when the configuration is loaded. All their
+absolute arguments and `--name=value` paths must be under a configured runtime directory,
+`toolsDirectory`, or its sandbox path `/tools`; aliases such as `/proc/self/cwd/review.js`
+and `/dev/fd/...` are rejected. Relative traversal is resolved from `/work` under the same
+rule, so `../proc/self/cwd/...` is rejected too. A relative argument (or `--name=value` value) that names an
+existing candidate path, such as `review.mjs` or `.`, fails the run before that process
+starts. This also checks Node's implicit `.js`, `.json`, and `.node` suffixes: `node review`
+is rejected if the candidate contains `review.js`. Give their entrypoints as absolute paths
+under `toolsDirectory`. `/opt` itself cannot be mounted. Absolute
 references under `toolsDirectory` are translated to `/tools`. Each process starts in
 `/work` and receives JSON on stdin:
 
@@ -125,7 +134,9 @@ the worktree fails the run, because the controller binds every byte on disk to t
 Limits are checked before host Git reads any worker output. The feature packet is identified
 by its Git tree in the base commit, so ignored files and permission bits in the source
 checkout do not affect it. Pilot limits: 10,000 files, 16 MiB per file, 64 MiB total candidate bytes;
-deadlines and output limits are configured per process. Use external filesystem quotas
+deadlines and output limits are configured per process. A process's output pipes may stay
+open for at most one second after it exits; a descendant that left the process group and
+still holds them fails the job ("descendant kept output open after exit"). Use external filesystem quotas
 and resource limits for hostile workloads; disk/CPU/memory quotas are not implemented.
 
 The store holds run.json, handoff.md, a controller lease and content-addressed objects.
@@ -195,6 +206,11 @@ repo; do not remove their evidence before the review/retention period ends.
   text in the diff; treat its verdict as one input, not as the human decision.
 - Empty directories and permission bits other than the owner executable bit are not bound
   to the commit.
+- A verifier or reviewer can still run candidate code it reaches by its own means (a shell
+  `-c` string, a trusted script that imports from `/work`); the argument check only covers
+  paths passed as arguments.
+- A descendant that leaves the process group (`setsid`) outside bubblewrap is not killed;
+  inside the sandbox the PID namespace ends with the job.
 - Evidence lives in `<store>/<run-id>/objects/<sha256>`, not the
   `<local-artifacts-directory>/evidence/sha256/<digest>` layout in
   `docs/architecture/approval-ledger.md`; a ledger verifier must be pointed at the run store.
