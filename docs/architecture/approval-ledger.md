@@ -148,15 +148,23 @@ Enforcement is filesystem permissions and hooks, **not instructions**:
 ## Reading the ledger
 
 The current state of a task is the `to_state` of its latest record whose chain
-verifies. A task with no records is in `Draft`. If verification fails, the task is
-treated as `Blocked` until a human resolves it.
+verifies. A task with no records is in `Draft`. If verification fails (broken chain, bad
+signature, anchor mismatch), the control plane treats the task as `Blocked` and denies
+further transitions until a human resolves it. That treatment is **not** itself a ledger line:
+there is no `BlockedRecord` until someone appends one.
+
+To resume work after an ordinary stop, a human appends a signed record
+`<last_verified_to_state> -> Blocked` at that record's `target.commit_sha` (or moves the
+task to `Cancelled`/`Superseded` instead). Only that entering line is the `BlockedRecord`
+the policy layer accepts for resume.
 
 A `Blocked` task resumes only to the state it was blocked from, and only at the commit it
 was blocked at: the control plane passes the whole record that entered `Blocked` (a
-`BlockedRecord`) plus the current commit to `canTransition` in its `context`. Resume is
-allowed only if the target equals that record's `from_state` and the current commit equals its
-`target.commit_sha`; otherwise it is denied. Both values come from the verified ledger and
-the worktree, never from the agent's request. A commit pushed while the task was `Blocked`
+`BlockedRecord`) plus the worktree commit to `canTransition` in its `context`. Resume is
+allowed only if the target equals that record's `from_state`, the current commit equals its
+`target.commit_sha`, and any resume approval names the same `target.commit_sha` and
+`deployment_target` (when present). Values come from the verified ledger and the
+worktree, never from the agent's request. A commit pushed while the task was `Blocked`
 therefore cannot inherit the earlier approvals. `canTransition` also rejects an approval
 whose `from_state`/`to_state` differ from the requested transition.
 

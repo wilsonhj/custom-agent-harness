@@ -3,9 +3,9 @@
 | Field | Value |
 |---|---|
 | Base SHA | 0b9d58f |
-| Head SHA | uncommitted working tree on top of 0b9d58f (not committed, per instruction) |
-| Author (runtime / session ID) | Claude Code (Claude Sonnet 5.5) / session_01AaDiMLB7jVNUA9MfagD1Te (sub-agent) |
-| Date | 2026-10-28 |
+| Head SHA | see branch `claude/audit-fixes` at push time (PR #2 review fixes) |
+| Author (runtime / session ID) | Claude Code (Claude Sonnet 5.5) / session_01AaDiMLB7jVNUA9MfagD1Te (sub-agent); PR #2 review fixes by Cursor Cloud Agent |
+| Date | 2026-10-28 (original); 2026-11-15 (review fixes) |
 
 ## Changed files
 
@@ -37,7 +37,8 @@
 - No independent review has been run (T6 is Planned). `/codex:review` was not invoked from this session.
 - `canTransition` is still a fail-closed stub for everything except entering `Blocked`; nothing can be approved until the actor table exists.
 - The ledger reader and signature/chain verification do not exist; `BlockedRecord` shape checks do not prove the record came from a verified ledger. The control plane must supply it only from the verified ledger.
-- `currentCommitSha` is trusted as supplied by the control plane; the approval's own `target.commit_sha` is not compared with it (part of the `TODO(human)` actor/target policy).
+- `currentCommitSha` is trusted as supplied by the control plane (worktree HEAD); the function does not read git itself.
+- On resume, approval `target.commit_sha` and `deployment_target` (when either side sets one) must match the blocked record; signature and actor policy remain in the `TODO(human)` block.
 - The test command takes a file glob (`tests/*.test.ts`); Node 22 does not accept a bare directory.
 
 ## Unresolved decisions
