@@ -8,6 +8,7 @@ import { prepare, run, status, requestDecision, recordDecision, git } from '../h
 import { object, json, leased } from '../harness/local/artifacts.mjs';
 import { capture } from '../harness/local/process.mjs';
 import { doctor, execute, sandboxCommand } from '../harness/local/sandbox.mjs';
+import { resolveTestNode } from './local-workflow-runtime.mjs';
 
 // Fixture-only executor. The public CLI cannot select this unsandboxed implementation.
 async function fixtureExecutor(config, workspace, argv, writable, context, signal) {
@@ -40,11 +41,11 @@ function fixture(t, options = {}) {
   execFileSync('/usr/bin/ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', key]);
   const allowedSigners = path.join(trust, 'allowed_signers');
   fs.writeFileSync(allowedSigners, 'fixture namespaces="local-review-v1" ' + fs.readFileSync(key + '.pub', 'utf8'));
-  const config = { schemaVersion: 1, toolsDirectory: tools, allowedSigners,
-    runtimePaths: [...new Set(['/usr', '/bin', '/lib', '/lib64', path.dirname(process.execPath)])].filter(p => fs.existsSync(p)),
-    worker: [process.execPath, path.join(tools, 'worker.mjs')],
-    verifier: [process.execPath, path.join(tools, 'verifier.mjs')],
-    reviewer: [process.execPath, path.join(tools, 'reviewer.mjs')],
+  const { node, runtimePaths } = resolveTestNode();
+  const config = { schemaVersion: 1, toolsDirectory: tools, allowedSigners, runtimePaths,
+    worker: [node, path.join(tools, 'worker.mjs')],
+    verifier: [node, path.join(tools, 'verifier.mjs')],
+    reviewer: [node, path.join(tools, 'reviewer.mjs')],
     deadlineMs: options.deadlineMs ?? 5000, maxOutputBytes: options.maxOutputBytes ?? 32768 };
   const configFile = path.join(base, 'config.json'); fs.writeFileSync(configFile, json(config), { mode: 0o600 });
   return { base, repo, tools, trust, key, config, configFile,

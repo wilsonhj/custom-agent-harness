@@ -8,6 +8,7 @@ import { prepare, run, requestDecision, recordDecision, git } from '../harness/l
 import { object, json } from '../harness/local/artifacts.mjs';
 import { capture } from '../harness/local/process.mjs';
 import { doctor } from '../harness/local/sandbox.mjs';
+import { resolveTestNode } from './local-workflow-runtime.mjs';
 
 // ---- Helpers copied from local-workflow.test.mjs (they are not exported) ----
 
@@ -36,10 +37,6 @@ function makeTrust(trust) {
   return { key, allowedSigners };
 }
 
-function runtimePaths() {
-  return [...new Set(['/usr', '/bin', '/lib', '/lib64', path.dirname(process.execPath)])].filter(p => fs.existsSync(p));
-}
-
 function fixture(t, options = {}) {
   const base = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'harness-rt-'));
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
@@ -55,11 +52,11 @@ function fixture(t, options = {}) {
   git(repo, 'add', '--all'); git(repo, 'commit', '-qm', 'synthetic base');
   makeTools(tools, options);
   const { key, allowedSigners } = makeTrust(trust);
-  const config = { schemaVersion: 1, toolsDirectory: tools, allowedSigners,
-    runtimePaths: runtimePaths(),
-    worker: [process.execPath, path.join(tools, 'worker.mjs')],
-    verifier: [process.execPath, path.join(tools, 'verifier.mjs')],
-    reviewer: [process.execPath, path.join(tools, 'reviewer.mjs')],
+  const { node, runtimePaths } = resolveTestNode();
+  const config = { schemaVersion: 1, toolsDirectory: tools, allowedSigners, runtimePaths,
+    worker: [node, path.join(tools, 'worker.mjs')],
+    verifier: [node, path.join(tools, 'verifier.mjs')],
+    reviewer: [node, path.join(tools, 'reviewer.mjs')],
     deadlineMs: options.deadlineMs ?? 8000, maxOutputBytes: options.maxOutputBytes ?? 32768 };
   const configFile = path.join(base, 'config.json'); fs.writeFileSync(configFile, json(config), { mode: 0o600 });
   return { base, repo, tools, trust, key, config, configFile,
@@ -181,10 +178,11 @@ test('bug5: prepare rejects a toolsDirectory that contains the repository', asyn
   git(repo, 'add', '--all'); git(repo, 'commit', '-qm', 'synthetic base');
   makeTools(tools);
   const { allowedSigners } = makeTrust(trust);
-  const config = { schemaVersion: 1, toolsDirectory: tools, allowedSigners, runtimePaths: runtimePaths(),
-    worker: [process.execPath, path.join(tools, 'worker.mjs')],
-    verifier: [process.execPath, path.join(tools, 'verifier.mjs')],
-    reviewer: [process.execPath, path.join(tools, 'reviewer.mjs')],
+  const { node, runtimePaths } = resolveTestNode();
+  const config = { schemaVersion: 1, toolsDirectory: tools, allowedSigners, runtimePaths,
+    worker: [node, path.join(tools, 'worker.mjs')],
+    verifier: [node, path.join(tools, 'verifier.mjs')],
+    reviewer: [node, path.join(tools, 'reviewer.mjs')],
     deadlineMs: 8000, maxOutputBytes: 32768 };
   const configFile = path.join(base, 'config.json'); fs.writeFileSync(configFile, json(config), { mode: 0o600 });
   await assert.rejects(prepare({ repo, packet: 'specs/example', store: path.join(base, 'state'), configFile }),
