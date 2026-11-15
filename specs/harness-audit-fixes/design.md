@@ -46,8 +46,9 @@ no callers in this repository; the control plane that will call it does not exis
 
 ## Rollout and rollback
 
-- **Rollout:** working-tree change only, not committed. Review with `/codex:review` (or
-  `/codex:adversarial-review`) per CLAUDE.md, record findings in `handoff.md`, then a human
-  approves the phase transition through the external ledger (agents may only request it).
-- **Rollback:** discard the working-tree changes (or revert the eventual commit). The prior
-  behaviour is the fail-closed stub, so reverting loses only the stricter checks and edges.
+- **Rollout:** committed on branch `claude/audit-fixes` (PR #2). Further review with
+  `/codex:review` (or `/codex:adversarial-review`) per CLAUDE.md, record findings in
+  `handoff.md`, then a human approves the phase transition through the external ledger
+  (agents may only request it).
+- **Rollback:** revert the merge commit on `main` or reset the branch. The prior behaviour
+  is the fail-closed stub without the stricter resume pins and edges.

@@ -6,10 +6,12 @@
 
 - `canTransition` resumes a `Blocked` task only when given the ledger record that entered
   `Blocked` (typed `BlockedRecord`, carrying `from_state` and `target.commit_sha`) **and**
-  the current commit, and only when `to === record.from_state` and
-  `currentCommitSha === record.target.commit_sha`. Any other resume attempt (no record,
-  empty or malformed record, wrong state, different commit, no current commit) is denied.
-  Covers audit item 1; replaces the bare `blockedFrom` argument (`transitions.ts` L88-97).
+  the current commit, and only when `to === record.from_state`,
+  `currentCommitSha === record.target.commit_sha`, and any supplied resume approval names the
+  same `target.commit_sha` and `deployment_target` (when either side sets one). Any other
+  resume attempt (no record, empty or malformed record, wrong state, different commit, mismatched
+  approval target, no current commit) is denied. Covers audit item 1; replaces the bare
+  `blockedFrom` argument (`transitions.ts` L88-97).
 - `canTransition` rejects an approval whose `from_state` or `to_state` differs from the
   arguments, and rejects a missing or malformed approval where one is needed.
 - `canTransition` stays fail-closed: every transition except entering `Blocked` is still
@@ -32,8 +34,9 @@
 
 ## Non-goals
 
-- Deciding which transitions need a `human` vs `policy` actor, or checking `actor`/`target`
-  of an approval (the `TODO(human)` at `transitions.ts` L107-108 stays).
+- Deciding which transitions need a `human` vs `policy` actor (the `TODO(human)` actor table
+  stays). Resume already checks approval `target.commit_sha` and `deployment_target` against
+  the blocked record; release-gate-specific target rules stay in the TODO.
 - Resolving any design question listed under "Unresolved questions".
 - Implementing the ledger reader, signature verification, or the anchor check.
 - Changing the ledger or release-gate design beyond keeping text consistent with the code.

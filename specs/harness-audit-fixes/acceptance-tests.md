@@ -3,11 +3,10 @@
 Each item names the command or procedure that proves it and the requirement it covers.
 Check an item only when the result is recorded in `handoff.md`.
 
-There is no `package.json`; the README "Testing" section still holds placeholders
-(`<unit-test-command>`). Until the project defines one, the command for this packet is:
+There is no `package.json`. The README "Testing" section documents the unit test command.
+For this packet, run from the repository root:
 
 ```bash
-cd /home/user/custom-agent-harness
 node --experimental-strip-types --test tests/*.test.ts
 ```
 
@@ -25,7 +24,7 @@ node --experimental-strip-types --test tests/*.test.ts
 
 ## Invariants
 
-- [x] A `Blocked` task cannot reach any state other than the one it entered from, `Cancelled` or `Superseded` — same command (`graph` and `resume from Blocked` suites)
+- [x] A `Blocked` task may resume only to the state named on the entering `BlockedRecord` (`from_state`), at the same commit and matching approval target; `Cancelled` and `Superseded` need no record — same command (`resume from Blocked` suite). Forward progress after resume uses that state's own edges.
 - [x] Nothing under an approval-ledger directory was written — `git status --short` lists only `README.md`, `docs/`, `harness/`, `specs/harness-audit-fixes/`, `tests/`
 
 ## Migration

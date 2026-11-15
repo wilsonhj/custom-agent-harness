@@ -41,7 +41,13 @@ const EXPECTED_EDGES: Record<TaskState, readonly TaskState[]> = {
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
 
-function record(from: TaskState, to: TaskState, sha = SHA_A, task = "t1"): ApprovalRecord {
+function record(
+  from: TaskState,
+  to: TaskState,
+  sha = SHA_A,
+  task = "t1",
+  deploymentTarget?: string,
+): ApprovalRecord {
   return {
     id: "01TEST",
     task_id: task,
@@ -49,7 +55,10 @@ function record(from: TaskState, to: TaskState, sha = SHA_A, task = "t1"): Appro
     to_state: to,
     actor: "human",
     approver: "someone",
-    target: { commit_sha: sha },
+    target:
+      deploymentTarget === undefined
+        ? { commit_sha: sha }
+        : { commit_sha: sha, deployment_target: deploymentTarget },
     evidence_refs: [],
     policy_digest: "0".repeat(64),
     timestamp: "2026-10-28T00:00:00Z",
@@ -58,8 +67,17 @@ function record(from: TaskState, to: TaskState, sha = SHA_A, task = "t1"): Appro
   };
 }
 
-function blockedAt(from: ResumableState, sha = SHA_A, task = "t1"): BlockedRecord {
-  return { ...record(from, "Blocked", sha, task), from_state: from, to_state: "Blocked" };
+function blockedAt(
+  from: ResumableState,
+  sha = SHA_A,
+  task = "t1",
+  deploymentTarget?: string,
+): BlockedRecord {
+  return {
+    ...record(from, "Blocked", sha, task, deploymentTarget),
+    from_state: from,
+    to_state: "Blocked",
+  };
 }
 
 describe("edges", () => {
@@ -332,6 +350,61 @@ describe("approval shape", () => {
     const r = canTransition("Blocked", "Implementing", approval, ctx);
     assert.equal(r.ok, false);
     assert.match(r.reason ?? "", /approval commit differs/);
+    assert.notEqual(r.reason, "approval policy not implemented");
+  });
+
+  it("a resume approval commit must match the blocked record commit", () => {
+    const blocked = blockedAt("Verified", SHA_A);
+    const aligned = canTransition("Blocked", "Verified", record("Blocked", "Verified", SHA_A), {
+      blockedRecord: blocked,
+      currentCommitSha: SHA_A,
+    });
+    assert.equal(aligned.reason, "approval policy not implemented");
+
+    const mismatchedApproval = canTransition(
+      "Blocked",
+      "Verified",
+      record("Blocked", "Verified", SHA_B),
+      { blockedRecord: blocked, currentCommitSha: SHA_A },
+    );
+    assert.equal(mismatchedApproval.ok, false);
+    assert.match(mismatchedApproval.reason ?? "", /approval commit differs/);
+    assert.notEqual(mismatchedApproval.reason, "approval policy not implemented");
+  });
+
+  it("resume deployment_target must match the blocked record when either side sets one", () => {
+    const prod = "vercel/app/production";
+    const staging = "vercel/app/staging";
+    const mismatch: Array<[string, string | undefined, string | undefined]> = [
+      ["different targets", staging, prod],
+      ["approval only", staging, undefined],
+      ["blocked record only", undefined, prod],
+    ];
+    for (const [name, approvalTarget, blockedTarget] of mismatch) {
+      const r = canTransition(
+        "Blocked",
+        "Implementing",
+        record("Blocked", "Implementing", SHA_A, "t1", approvalTarget),
+        {
+          blockedRecord: blockedAt("Implementing", SHA_A, "t1", blockedTarget),
+          currentCommitSha: SHA_A,
+        },
+      );
+      assert.equal(r.ok, false, name);
+      assert.match(r.reason ?? "", /deployment_target/, name);
+      assert.notEqual(r.reason, "approval policy not implemented", name);
+    }
+
+    const same = canTransition(
+      "Blocked",
+      "Implementing",
+      record("Blocked", "Implementing", SHA_A, "t1", prod),
+      {
+        blockedRecord: blockedAt("Implementing", SHA_A, "t1", prod),
+        currentCommitSha: SHA_A,
+      },
+    );
+    assert.deepEqual(same, { ok: false, reason: "approval policy not implemented" });
   });
 
   it("denies unknown states", () => {
