@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Base SHA | 0b9d58f (main at packet creation) |
-| Head SHA | 10347d3 (commit 10347d3e27fb04e761003839c1258a9e6dbd25e2; PR #5 review fix) |
+| Head SHA | 06e7828 (commit 06e78289a4d09ecb108fd887ed9ff8909b23fabb; PR #5 review fix packet head) |
 | Author (runtime / session ID) | Cursor Cloud Agent bc-d2671507 / PR #5 review fix pass |
 | Date | 2026-11-15 |
 
