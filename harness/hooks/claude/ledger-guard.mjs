@@ -58,6 +58,47 @@ function isInside(root, candidate) {
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Bash can glue path segments with "" or backslash; collapse those before matching.
+function normalizeBashCommand(command) {
+  return command.replaceAll('""', "").replace(/\\(.)/g, "$1");
+}
+
+// Match the root as a path segment, not as a prefix of a sibling such as ledger-old.
+function commandNamesRoot(command, root) {
+  const normalized = normalizeBashCommand(command);
+  const pattern = new RegExp(
+    `${escapeRegExp(root)}(?=[/\\s"'\\];|&<>]|$)`,
+    "i",
+  );
+  return pattern.test(normalized);
+}
+
+function extractRedirectionTargets(command) {
+  const normalized = normalizeBashCommand(command);
+  const targets = [];
+  for (const match of normalized.matchAll(/>>?\s*(?:"([^"]+)"|'([^']+)'|([^\s;|&]+))/g)) {
+    targets.push(match[1] ?? match[2] ?? match[3]);
+  }
+  return targets;
+}
+
+function resolveAgainstCwd(cwd, target) {
+  const resolved = path.resolve(cwd, target);
+  return [resolved, realpathLoose(resolved)];
+}
+
+function pathReachesLedger(targets, cwd, roots) {
+  return targets.some((target) =>
+    resolveAgainstCwd(cwd, target).some((candidate) =>
+      roots.some((root) => isInside(root, candidate)),
+    ),
+  );
+}
+
 // The root comes from a file beside this script, never from the environment: anything in
 // the hook's environment can be set by the session (docs/security/data-egress.md).
 function loadRoots() {
@@ -84,6 +125,10 @@ try {
   deny("hook input is not valid JSON; failing closed");
 }
 
+if (input === null || typeof input !== "object" || Array.isArray(input)) {
+  deny("hook input is not a hook envelope object; failing closed");
+}
+
 const roots = loadRoots();
 
 if (input.hook_event_name !== undefined && input.hook_event_name !== "PreToolUse") {
@@ -103,8 +148,12 @@ if (FILE_TOOLS.has(tool)) {
   }
 } else if (tool === "Bash") {
   if (typeof args.command !== "string") deny("Bash call has no command; failing closed");
-  if (roots.some((root) => args.command.includes(root))) {
+  const cwd = typeof input.cwd === "string" ? input.cwd : process.cwd();
+  if (roots.some((root) => commandNamesRoot(args.command, root))) {
     deny("shell commands may not reference the approval ledger; request a transition instead");
+  }
+  if (pathReachesLedger(extractRedirectionTargets(args.command), cwd, roots)) {
+    deny("shell commands may not write to the approval ledger; request a transition instead");
   }
 }
 

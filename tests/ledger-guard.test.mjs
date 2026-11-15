@@ -77,6 +77,34 @@ test("denies Bash commands that name the root, and allows other commands", () =>
   allowed(run({ tool_name: "Bash", tool_input: { command: "ls -la && git status" } }));
 });
 
+test("allows Bash commands that mention a sibling sharing the root name prefix", () => {
+  allowed(run({
+    tool_name: "Bash",
+    tool_input: { command: `cat ${path.join(base, "ledger-old", "a.txt")}` },
+  }));
+});
+
+test("denies Bash paths split with empty quotes or a backslash", () => {
+  const parent = path.dirname(ledger);
+  const baseName = path.basename(ledger);
+  const viaQuotes = path.join(parent, `${baseName.slice(0, 3)}""${baseName.slice(3)}`, "via-quotes.jsonl");
+  denied(run({ tool_name: "Bash", tool_input: { command: `echo hi >> ${viaQuotes}` } }));
+  const viaSlash = path.join(parent, `${baseName.slice(0, 3)}\\${baseName.slice(3)}`, "via-slash.jsonl");
+  denied(run({ tool_name: "Bash", tool_input: { command: `echo hi >> ${viaSlash}` } }));
+});
+
+test("denies Bash that references the ledger root with different letter case", () => {
+  const parent = path.dirname(ledger);
+  const altCase = path.join(parent, path.basename(ledger).toUpperCase(), "project.jsonl");
+  denied(run({ tool_name: "Bash", tool_input: { command: `echo hi >> ${altCase}` } }));
+});
+
+test("denies Bash redirection through a dangling symlink into the ledger", () => {
+  const link = path.join(work, "dangling");
+  symlinkSync(path.join(ledger, "bash-created.jsonl"), link);
+  denied(run({ tool_name: "Bash", tool_input: { command: `echo hi > ${link}` } }));
+});
+
 test("allows writes outside the root, including a sibling that shares its name prefix", () => {
   allowed(run({ tool_name: "Write", tool_input: { file_path: path.join(work, "a.txt") } }));
   allowed(run({ tool_name: "Write", tool_input: { file_path: path.join(base, "ledger-old", "a.txt") } }));
@@ -89,6 +117,9 @@ test("ignores other tools and other hook events", () => {
 
 test("fails closed on malformed input, missing paths, and missing commands", () => {
   denied(run({}, { raw: "not json" }));
+  denied(run({}, { raw: "null" }));
+  denied(run({}, { raw: "[]" }));
+  denied(run({}, { raw: "5" }));
   denied(run({ tool_name: "Write", tool_input: {} }));
   denied(run({ tool_name: "Write", tool_input: { file_path: "" } }));
   denied(run({ tool_name: "Bash", tool_input: {} }));
