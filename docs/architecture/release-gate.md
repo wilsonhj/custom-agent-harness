@@ -72,8 +72,9 @@ regression case under `evaluations/`.
 
 ## Failure handling
 
-- Gate evidence missing or failing: transition to `Repair` (fix and re-run preview) or
-  `Blocked` (waiting on a human decision).
+- Gate evidence missing or failing before release: transition to `Repair` (fix and re-run
+  preview) or `Blocked` (waiting on a human decision). Do **not** record `Failed` for these;
+  `Failed` is for irrecoverable outcomes after work was already on the release path (below).
 - Production migration applied but release fails: do not roll back the schema
   reflexively; follow the recovery procedure from item 4. Record the outcome as a
   transition to `Failed` with the evidence, then `Failed -> Repair`. `Released -> Repair`

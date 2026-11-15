@@ -48,8 +48,7 @@ export const ALLOWED_TRANSITIONS: Readonly<Record<TaskState, readonly TaskState[
   Implementing: ["Reviewing", "Blocked", "Failed", "Cancelled", "Superseded"],
   Reviewing: ["Verified", "Repair", "Blocked", "Failed", "Cancelled"],
   Repair: ["Reviewing", "Blocked", "Failed", "Cancelled", "Superseded"],
-  // Failed is reachable from every state that can precede a release failure
-  // (docs/architecture/release-gate.md "Failure handling").
+  // Failed edges match release-gate.md "Failure handling" (not Draft/Planned/Approved).
   Verified: ["PreviewVerified", "Repair", "Blocked", "Failed", "Cancelled"],
   PreviewVerified: ["MigrationGated", "Repair", "Blocked", "Failed", "Cancelled"],
   MigrationGated: ["Released", "Repair", "Blocked", "Failed", "Cancelled"],
@@ -145,6 +144,17 @@ function deny(reason: string): TransitionResult {
   return { ok: false, reason };
 }
 
+function deploymentTargetsMatch(
+  left: ApprovalRecord["target"],
+  right: ApprovalRecord["target"],
+): boolean {
+  const leftSet = left.deployment_target !== undefined;
+  const rightSet = right.deployment_target !== undefined;
+  if (!leftSet && !rightSet) return true;
+  if (leftSet !== rightSet) return false;
+  return left.deployment_target === right.deployment_target;
+}
+
 // Fail closed: any check that cannot be positively satisfied denies.
 export function canTransition(
   from: TaskState,
@@ -194,11 +204,19 @@ export function canTransition(
         `approval is for ${approval.from_state} -> ${approval.to_state}, not ${from} -> ${to}`,
       );
     }
-    if (resuming && blocked !== undefined && approval.task_id !== blocked.task_id) {
-      return deny("approval and blocked record belong to different tasks");
-    }
-    if (resuming && approval.target.commit_sha !== context.currentCommitSha) {
-      return deny("approval commit differs from the current commit");
+    if (resuming && blocked !== undefined) {
+      if (approval.task_id !== blocked.task_id) {
+        return deny("approval and blocked record belong to different tasks");
+      }
+      if (approval.target.commit_sha !== blocked.target.commit_sha) {
+        return deny("approval commit differs from the commit the task was blocked at");
+      }
+      if (approval.target.commit_sha !== context.currentCommitSha) {
+        return deny("approval commit differs from the current commit");
+      }
+      if (!deploymentTargetsMatch(approval.target, blocked.target)) {
+        return deny("approval deployment_target differs from the blocked record");
+      }
     }
   }
 
