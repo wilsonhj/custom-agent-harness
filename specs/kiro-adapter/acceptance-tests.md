@@ -15,7 +15,7 @@ not exist and nothing here has been run. Do not report any item as passing befor
 - [ ] Output is stored by the adapter with a verifiable sha256 and labelled as a runtime claim, never cited as evidence unless it is schema-valid review findings; the Kiro process cannot write the evidence store — `tests/kiro/evidence-store` — covers: K-11, K-16
 - [ ] Deadline and cancel kill the whole process tree, including MCP/subagent children — `tests/kiro/cancel` — covers: K-13. Also: the session ID from the first run is recorded and the continuation passes it via `--resume-id`
 - [ ] Compatibility test fails on a `kiro-cli` version other than the pinned one — `tests/kiro/version-pin` — covers: K-12
-- [ ] Forbidden flags are never passed; the permission profile maps to explicit tool permissions — `tests/kiro/flags` — covers: K-18
+- [ ] Forbidden flags are never passed; the permission profile maps to explicit tool permissions; `--trust-tools` lists only profile-allowed tool IDs and never includes `@builtin` or `*` — `tests/kiro/flags` — covers: K-18
 - [ ] Kiro sees `AGENTS.md`, and a planted steering file cannot weaken it — `tests/kiro/instructions` — covers: K-20
 
 ## Invariants
@@ -27,8 +27,8 @@ not exist and nothing here has been run. Do not report any item as passing befor
 - [ ] Canary content placed in steering or agent `resources` is not loaded into the session — `tests/kiro/canary-context` — covers: K-19
 - [ ] On V3, a subagent whose own rules allow a tool the parent denies is still blocked; on a 2.x engine the adapter refuses to run — `tests/kiro/subagent-limits` — covers: K-7
 - [ ] A worktree-planted `.kiro/` file cannot override managed config or the harness-supplied agent — `tests/kiro/config-precedence` — covers: K-4, K-8
-- [ ] An unpinned login/account is refused — `tests/kiro/unpinned-account` — covers: K-4
-- [ ] Launch against a `baa-covered-providers` or `local-only` fixture is refused; the class is assigned by the adapter, not the session — `tests/kiro/egress-gate` — covers: K-10, K-14, Launch procedure step 3
+- [ ] An unpinned login/account is refused at launch (Launch procedure step 4), including jobs that would otherwise be `any-provider` after the K-17 decision — `tests/kiro/unpinned-account` — covers: K-4
+- [ ] Launch against a `baa-covered-providers` or `local-only` fixture is refused; unclassified paths are treated as `local-only`; the class is assigned by the adapter, not the session — `tests/kiro/egress-gate` — covers: K-10, K-14, Launch procedure step 3
 - [ ] With no recorded provider approval, a non-fixture Kiro job is refused — `tests/kiro/provider-approval` — covers: K-17, Launch procedure step 2
 - [ ] A canary secret in the parent environment (including `SSH_AUTH_SOCK`) is absent from the Kiro process and from stored artifacts and logs — `tests/kiro/env-scrub` — covers: K-15
 - [ ] A crashing, timing-out or non-0/2-exiting PreToolUse hook still results in the tool call being blocked (wrapper exits 2 on any error); a read is denied by admin `deny` rules even with all hooks disabled — `tests/kiro/hook-failure` — covers: K-5

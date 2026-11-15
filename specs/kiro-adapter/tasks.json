@@ -29,7 +29,7 @@
   },
   {
     "id": "T4",
-    "title": "Add Kiro row to data-egress runtime-capabilities table; implement adapter on the adapter interface and worktree manager",
+    "title": "Add Kiro row to data-egress runtime-capabilities table; add README Prerequisites `kiro-cli` pin (K-12); implement adapter on the adapter interface (stream-json schema blocks stable K-11 output until resolved in T1)",
     "owner_role": "implementer",
     "worktree": "kiro-adapter",
     "status": "Planned",

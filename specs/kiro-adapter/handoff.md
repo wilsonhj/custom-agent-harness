@@ -3,9 +3,9 @@
 | Field | Value |
 |---|---|
 | Base SHA | 0b9d58f (main at packet creation) |
-| Head SHA | 9bb0630 (PR #6 head these edits were made on; they land in the next commit) |
-| Author (runtime / session ID) | Claude Code / session_01AaDiMJVSVxQVfoGPARPgBn; follow-up pass session_01AaDiMLni7kwVNftEwaHm1a |
-| Date | 2026-11-01 |
+| Head SHA | 10347d3 (commit 10347d3e27fb04e761003839c1258a9e6dbd25e2; PR #5 review fix) |
+| Author (runtime / session ID) | Cursor Cloud Agent bc-d2671507 / PR #5 review fix pass |
+| Date | 2026-11-15 |
 
 ## Changed files
 
@@ -129,6 +129,22 @@ Already fixed at `9d339f8` and left alone: T1 no longer needs the T5 test, T6 is
 tasks.json, the migration-gate acceptance line exists, the superseded MCP text is gone.
 No suite exists to run (`tests/kiro/*` are T5 placeholders); `tasks.json` was not changed.
 
+## PR #5 adversarial review fixes (2026-10-31 review at `91f5baf`, addressed 2026-11-15)
+
+See the Project review `pr-5-review.md` (adversarial review of head `91f5baf`). Earlier
+commits on this branch and on `main` already closed findings 3, 4, 5 and 6 in part (via
+`1e8adda`, PR #6 adapter-interface alignment, and follow-on merges). This pass:
+
+| # | Finding | Resolution |
+|---|---|---|
+| 1 | Evidence store / same OS user | Fixed earlier: K-3/K-16 use adapter-interface A-12 runtime user and A-15 (no evidence writes by Kiro). No change this pass. |
+| 2 | Unpinned refused vs any-provider | K-4 and Launch step 4 require pinned account; unpinned refused; K-21 pending text is BAA-only, not an unpinned bypass; `unpinned-account` aligned. |
+| 7 | Missing class / placement | K-14 defaults unclassified paths to `local-only`; K-5 cites placement; `egress-gate` covers unclassified paths. |
+| 8 | `--trust-tools` unbounded | K-18 and `flags` test forbid `@builtin` and `*` in `--trust-tools`. |
+| 9 | K-17 record integrity | design.md "Rollout" ties K-17 to K-22 root-owned config, not packet markdown. |
+| 10 | GitHub draft flag | Left open: PR #5 merged before draft could be set (`state: MERGED`, `isDraft: false`). Packet remains "proposed, not approved"; T2/T3 still owed. |
+| 3–6 | Subagents, workspace trust, migration gate, handoff/tasks | Already addressed in packet history and adapter-interface merges; T4 title now includes README Prerequisites (K-12). |
+
 ## Changes made in PR #6 (adapter-interface), 2026-11-01
 
 Normative changes to this packet, aligning it with `specs/adapter-interface/`:
@@ -141,12 +157,11 @@ are in `specs/adapter-interface/handoff.md`.
 
 ## Assumptions made
 
-- K-21 (proposed, needs human confirmation): data-egress.md says both "a session on an
-  unpinned account is refused" ("Enforcement" item 5) and "A session whose runtime, account
-  and settings do not match an entry is treated as `any-provider`" ("BAA configuration
-  allowlist"). The packet resolves it as:
-  refuse Kiro jobs on `baa-covered-providers` and `local-only` content; allow
-  `any-provider` content only after the K-17 decision.
+- K-21 (proposed, needs human confirmation): unpinned sessions are refused by K-4 (step 4).
+  The remaining conflict is data-egress.md "BAA configuration allowlist" ("treated as
+  `any-provider`") when a BAA entry exists versus how pinned Kiro sessions should be
+  classed. Provisional rule: refuse `baa-covered-providers` and `local-only` content; allow
+  `any-provider` only after the K-17 decision.
 
 - Packet ID `kiro-adapter` given by the user; scope is the Kiro CLI surface only.
 - `owner_role: human` for T3 and worktree name `kiro-adapter` in tasks.json are placeholders.

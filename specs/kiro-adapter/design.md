@@ -28,11 +28,13 @@ evidence only if the deterministic classifier reports the diff as `clean`.
 
 - **Rollout:** adapter ships disabled. Whether a given task may launch Kiro is decided only
   by the "Launch procedure" in requirements.md. A human sets the enable flag (its step 1)
-  only after the `tests/kiro/*` suite passes. Enabling is a configuration change recorded
-  by a human in root-owned configuration the agent user cannot write (K-22); it is not a
-  task-state transition, so the approval ledger (per-`task_id` transitions)
-  is not used for it. The task that delivers the adapter still moves through the ledger
-  as usual.
+  only after the `tests/kiro/*` suite passes. The K-17 provider decision and egress-profile
+  entry live in the same root-owned configuration as the enable flag (K-22), not in
+  agent-writable packet markdown; `tests/kiro/provider-approval` and
+  `tests/kiro/enable-flag-root-owned` prove agents cannot substitute their own approval.
+  Enabling is a configuration change recorded by a human in that root-owned store; it is
+  not a task-state transition, so the approval ledger (per-`task_id` transitions) is not
+  used for it. The task that delivers the adapter still moves through the ledger as usual.
 - **Rollback:** disable the runtime in config and remove the managed-config and hook
   entries. Already-written artifacts, evidence and usage records stay (append-only) and
   are not undone; secrets that were exposed to a session must be rotated.
