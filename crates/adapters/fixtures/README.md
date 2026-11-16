@@ -60,3 +60,16 @@ Codex (`codex/*.jsonl`)
   `codex/retry_then_ok.jsonl` (retried `error` lines, one of them a rate-limit 429, then a
   completed turn), and `codex/limit_retry_then_unrelated_failure.jsonl` (a rate-limit retry,
   then a 401 failure).
+
+Per-line origin of the Codex fixtures (JSONL has no comments, so it is listed here; R =
+recorded from the unauthenticated 0.169.0 run with cf-ray and request ids removed, S =
+synthetic, built from the `exec_events.rs` serde shapes):
+
+| Fixture | Lines | Origin |
+|---|---|---|
+| `limit_retry_then_unrelated_failure.jsonl` | 1-2 (`thread.started`, `turn.started`) | S (event shapes as recorded; the UUID is synthetic) |
+| | 3 (429 rate-limit `Reconnecting...`) | S |
+| | 4-6 (401 `Reconnecting...`, final 401 `error`, `turn.failed`) | R |
+| `retry_then_ok.jsonl` | 1-12 | S (lines 3-4 copy the recorded `Reconnecting... n/5 (...)` format) |
+| `review_ok.jsonl`, `review_not_schema.jsonl` | all | S |
+| `limit_message.jsonl` | all | S (message text from `codex-rs/protocol/src/error.rs`) |
