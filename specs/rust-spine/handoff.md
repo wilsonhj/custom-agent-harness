@@ -832,7 +832,15 @@ refresh endpoint).
   holding only a 0600 copy of the shared `auth.json`; a stale home or planted symlink at that
   path is removed first without following it; a drop guard deletes the home when the run
   function returns. The home is writable, so Codex can also write `sessions/` there.
-  Tests: `worker::tests::codex_home::*` (4), mutation-checked.
+  `copy_login` refuses a symlinked or non-regular `auth.json` source (`O_NOFOLLOW |
+  O_NONBLOCK`, then `is_file`; a FIFO cannot block the open) and an existing destination
+  (`O_CREAT | O_EXCL`, which already refuses a symlink, dangling included; `O_NOFOLLOW` there
+  is a second layer, so dropping it alone fails no test). Any error after the home exists
+  drops the guard and removes it; in the agent-run function the guard is a local, so every
+  early return after it (plan, proxy, wrap, spawn failures) removes the home too.
+  Tests: `worker::tests::codex_home::*` (8). Mutation-checked: no-op drop, 0644 copy, reused
+  stale home, following a source symlink, no `is_file` check, and leaking the guard on a copy
+  error each fail a test. No copy-back of refreshed tokens (parent session decision).
 
 Trade-offs and limits (decisions for the parent session):
 
@@ -841,14 +849,19 @@ Trade-offs and limits (decisions for the parent session):
   this run's token from this run. What changed: one run no longer reads the login directory
   shared by every task and both roles, and the copy is gone after the run. Removing the token
   from the sandbox needs a credential broker in the egress proxy (not built here).
+  **Follow-up:** credential broker in `egress.rs`: the proxy holds the login and attaches it
+  to requests to the allowed hosts, so no token enters the sandbox. Until then, a run can
+  read and misuse its own copy for the length of the run.
   `CODEX_ACCESS_TOKEN` exists in Codex but is used for agent-identity auth (exec-server,
   app-server); it is not verified for `codex exec` with a ChatGPT login, and an environment
   variable would be just as readable.
 - **In-run token refresh is discarded.** Today refresh cannot happen anyway:
   `auth.openai.com` is not in the Codex egress allowlist (`adapters/src/codex.rs`). If it is
   added, a refresh rotates the refresh token inside the per-run copy and the shared
-  `auth.json` goes stale. Copying back from an agent-writable home is itself a risk
-  (the agent could plant a different login); that needs a decision before enabling refresh.
+  `auth.json` goes stale (OpenAI may invalidate the old refresh token on rotation), so later
+  runs fail to authenticate until `eng login codex` is rerun. Copy-back is deliberately not
+  implemented: copying from an agent-writable home would let a run plant a different login.
+  The broker above removes the problem (the proxy refreshes, outside the sandbox).
 - **Crash leftovers:** a killed `eng` leaves `codex-home` behind in the role's task home until
   the next run of that effect path or task cleanup. Only the same role of the same task can
   read it.
@@ -859,11 +872,11 @@ Trade-offs and limits (decisions for the parent session):
 
 Verification (Rust 1.99.1, macOS): `cargo fmt --check` pass;
 `cargo clippy --workspace --all-targets -- -D warnings` pass;
-`cargo test -p harness-exec -p harness-engine`: 113 passed, 0 failed, 35 ignored
-(harness-engine 33 = baseline 29 + 4; harness-exec `--test workspace` 41 = baseline 38 + 3).
+`cargo test -p harness-exec -p harness-engine`: 117 passed, 0 failed, 35 ignored
+(harness-engine 37 = baseline 29 + 8; harness-exec `--test workspace` 41 = baseline 38 + 3).
 Node suites not rerun.
 
-Exact next action: parent session reviews branch `fix/23-codex-auth` (two commits on
-`737301b`), decides on the refresh/copy-back question and the Claude follow-up, then
+Exact next action: parent session reviews branch `fix/23-codex-auth` (three commits on
+`737301b`), files the credential-broker and Claude follow-ups, then
 merges alongside #24 (which edits `worker.rs` around the run tail; this diff stays clear of
 it).

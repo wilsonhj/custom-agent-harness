@@ -183,10 +183,10 @@ impl Drop for RunCodexHome {
 /// `CODEX_HOME/auth.json` (openai/codex `AuthCredentialsStoreMode::File`, the default), so the
 /// run still sees its own copy; what it no longer sees is the shared directory every task and
 /// role uses. Whatever is at the path already (a stale home, a planted symlink) is removed
-/// first, without following a symlink, and the copy never overwrites an existing file.
+/// first, without following a symlink, and [`copy_login`] refuses a symlinked source or
+/// destination. Any error after the home exists removes it again.
 pub(crate) fn run_codex_home(shared: &Path, request: &Path) -> Result<RunCodexHome, EngineError> {
-    use std::io::Write as _;
-    use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _};
+    use std::os::unix::fs::DirBuilderExt as _;
     let home = request.join("codex-home");
     match fs::symlink_metadata(&home) {
         Ok(meta) if meta.is_dir() => fs::remove_dir_all(&home)?,
@@ -195,18 +195,40 @@ pub(crate) fn run_codex_home(shared: &Path, request: &Path) -> Result<RunCodexHo
         Err(e) => return Err(e.into()),
     }
     fs::DirBuilder::new().mode(0o700).create(&home)?;
+    // From here on, an error return drops the guard, which removes the home.
     let guard = RunCodexHome(home);
-    match fs::read(shared.join("auth.json")) {
-        Ok(login) => fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(guard.path().join("auth.json"))?
-            .write_all(&login)?,
+    match copy_login(&shared.join("auth.json"), &guard.path().join("auth.json")) {
+        Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.into()),
     }
     Ok(guard)
+}
+
+/// Copies the login file `src` to a new file `dst` (mode 0600). Neither may be a symlink:
+/// `src` is opened with `O_NOFOLLOW` and must be a regular file (`O_NONBLOCK` so a FIFO
+/// planted there cannot block the open), and `dst` is created with
+/// `O_CREAT | O_EXCL | O_NOFOLLOW`, which fails on any existing entry, dangling links
+/// included. A missing `src` is `NotFound`.
+fn copy_login(src: &Path, dst: &Path) -> std::io::Result<()> {
+    use std::io::{Read as _, Write as _};
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let mut from = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(src)?;
+    if !from.metadata()?.is_file() {
+        return Err(std::io::Error::other("login is not a regular file"));
+    }
+    let mut login = Vec::new();
+    from.read_to_end(&mut login)?;
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .mode(0o600)
+        .open(dst)?
+        .write_all(&login)
 }
 
 /// The effect id as one path component, or `Corrupt`.
@@ -1589,6 +1611,78 @@ mod tests {
                 fs::read(home.path().join("auth.json")).unwrap(),
                 b"{\"tokens\":{}}\n"
             );
+        }
+
+        #[test]
+        fn run_home_refuses_a_symlinked_login_and_is_removed() {
+            let t = Tmp::new();
+            let shared = t.0.join("state/runtimes/codex");
+            fs::create_dir_all(&shared).unwrap();
+            let secret = t.0.join("elsewhere.json");
+            fs::write(&secret, b"not the login").unwrap();
+            symlink(&secret, shared.join("auth.json")).unwrap();
+            let request = t.0.join("home/requests/e4");
+            fs::create_dir_all(&request).unwrap();
+            assert!(run_codex_home(&shared, &request).is_err());
+            assert!(
+                fs::symlink_metadata(request.join("codex-home")).is_err(),
+                "a failed copy must not leave the run home behind"
+            );
+        }
+
+        #[test]
+        fn run_home_refuses_a_login_that_is_not_a_regular_file() {
+            let t = Tmp::new();
+            let shared = t.0.join("state/runtimes/codex");
+            fs::create_dir_all(shared.join("auth.json")).unwrap();
+            let request = t.0.join("home/requests/e5");
+            fs::create_dir_all(&request).unwrap();
+            assert!(run_codex_home(&shared, &request).is_err());
+            assert!(fs::symlink_metadata(request.join("codex-home")).is_err());
+
+            // A FIFO with no writer: refused at once, neither blocking nor copied as empty.
+            let fifo_shared = t.0.join("state/runtimes/codex-fifo");
+            fs::create_dir_all(&fifo_shared).unwrap();
+            let fifo = std::ffi::CString::new(
+                fifo_shared.join("auth.json").as_os_str().as_encoded_bytes(),
+            )
+            .unwrap();
+            // SAFETY: `fifo` is a valid NUL-terminated path.
+            assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+            assert!(run_codex_home(&fifo_shared, &request).is_err());
+            assert!(fs::symlink_metadata(request.join("codex-home")).is_err());
+        }
+
+        #[test]
+        fn run_home_is_removed_when_the_copy_fails_partway() {
+            let t = Tmp::new();
+            let shared = shared_home(&t.0);
+            let login = shared.join("auth.json");
+            fs::set_permissions(&login, fs::Permissions::from_mode(0o000)).unwrap();
+            let request = t.0.join("home/requests/e6");
+            fs::create_dir_all(&request).unwrap();
+            let r = run_codex_home(&shared, &request);
+            fs::set_permissions(&login, fs::Permissions::from_mode(0o600)).unwrap();
+            assert!(r.is_err());
+            assert!(fs::symlink_metadata(request.join("codex-home")).is_err());
+        }
+
+        #[test]
+        fn login_copy_refuses_a_symlinked_destination() {
+            let t = Tmp::new();
+            let src = t.0.join("auth.json");
+            fs::write(&src, b"{\"tokens\":{}}\n").unwrap();
+            let target = t.0.join("target.json");
+            fs::write(&target, b"untouched").unwrap();
+            let dst = t.0.join("dst.json");
+            symlink(&target, &dst).unwrap();
+            assert!(copy_login(&src, &dst).is_err());
+            assert_eq!(fs::read(&target).unwrap(), b"untouched");
+            // A dangling symlink is refused too: it must not create its target.
+            let dangling = t.0.join("dangling.json");
+            symlink(t.0.join("missing.json"), &dangling).unwrap();
+            assert!(copy_login(&src, &dangling).is_err());
+            assert!(!t.0.join("missing.json").exists());
         }
 
         #[test]
