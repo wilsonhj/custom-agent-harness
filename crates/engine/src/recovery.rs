@@ -24,15 +24,20 @@ use crate::{Engine, EngineError, failpoint};
 
 /// The supervisor's proof that `process`'s tree is gone, as the store recorded it when the
 /// worktree lock was released (issue #24): only for a released worktree whose reap record is
-/// set and whose last recorded process is exactly `process`. Anything else is `None`, and the
-/// caller falls back to `kill_identity`.
+/// set and whose last recorded process is exactly `process` (every identity field, checked by
+/// `reaped_on_record`). Anything else is `None`, and the caller falls back to `kill_identity`.
 pub(crate) fn recorded_proof(
     ws: Option<&WorkspaceRow>,
     process: &ProcessRecord,
 ) -> Option<TreeGone> {
     let ws = ws?;
-    (ws.reaped && ws.holder.is_none() && ws.last_process.as_ref() == Some(process))
-        .then(|| reaped_on_record(&to_identity(process)))
+    if !ws.reaped || ws.holder.is_some() {
+        return None;
+    }
+    reaped_on_record(
+        &to_identity(ws.last_process.as_ref()?),
+        &to_identity(process),
+    )
 }
 
 impl Engine {

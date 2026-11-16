@@ -816,20 +816,65 @@ pub async fn kill_identity(id: &ProcessIdentity) -> Result<TreeGone, KillFailed>
     })
 }
 
-/// The proof this supervisor already issued for `id`'s tree, restored after an engine restart
-/// from the engine's durable record of it (issue #24). The store sets that record in the
-/// statement that released the worktree lock with the original [`TreeGone`], and clears it in
-/// the statement that records the next process, so the record names a tree that was proven
-/// gone with nothing recorded as running in the worktree since. Callers must hold that record
-/// for exactly this identity; this is never inferred from a scan, a missing leader or a lock
-/// that merely looks free, which remain quarantined (see [`kill_identity`]).
-pub fn reaped_on_record(_id: &ProcessIdentity) -> TreeGone {
-    TreeGone::confirmed()
+/// Restores, after an engine restart, the [`TreeGone`] this supervisor already issued for a
+/// run's tree (issue #24). `recorded` is the identity the engine's store marked reaped: the
+/// store sets that mark in the statement that released the worktree lock with the original
+/// proof, and clears it in the statement that records the next process. `run` is the identity
+/// of the run being settled. Refuses (`None`) unless the two match in every field (process
+/// group, leader pid, leader start time and boot id) and the boot id is known.
+///
+/// R-11 boundary: this is the only way besides the kill sequence to obtain a `TreeGone`, and it
+/// trusts the engine's store as the record of an earlier proof. It never infers one from a
+/// scan, a missing leader or a lock that merely looks free; those stay quarantined (see
+/// [`kill_identity`]).
+pub fn reaped_on_record(recorded: &ProcessIdentity, run: &ProcessIdentity) -> Option<TreeGone> {
+    (!recorded.boot_id.is_empty() && recorded == run).then(TreeGone::confirmed)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn identity() -> ProcessIdentity {
+        ProcessIdentity {
+            pgid: 10,
+            pid: 10,
+            start_us: 1_000,
+            boot_id: "boot-a".into(),
+        }
+    }
+
+    #[test]
+    fn reaped_record_restores_proof_only_for_the_exact_identity() {
+        assert!(reaped_on_record(&identity(), &identity()).is_some());
+        let differs = [
+            ProcessIdentity {
+                pgid: 11,
+                ..identity()
+            },
+            ProcessIdentity {
+                pid: 11,
+                ..identity()
+            },
+            ProcessIdentity {
+                start_us: 1_001,
+                ..identity()
+            },
+            ProcessIdentity {
+                boot_id: "boot-b".into(),
+                ..identity()
+            },
+        ];
+        for other in &differs {
+            assert!(reaped_on_record(&identity(), other).is_none(), "{other:?}");
+            assert!(reaped_on_record(other, &identity()).is_none(), "{other:?}");
+        }
+        let unknown_boot = ProcessIdentity {
+            boot_id: String::new(),
+            ..identity()
+        };
+        assert!(reaped_on_record(&unknown_boot, &unknown_boot).is_none());
+    }
 
     fn limits(max_output_bytes: u64, max_line_bytes: usize) -> Limits {
         Limits {

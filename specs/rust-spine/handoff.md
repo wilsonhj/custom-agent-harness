@@ -754,13 +754,18 @@ Source: issue #24; R-5 and R-11 (`requirements.md`); design §5.4 restart table.
   (`ALTER TABLE ... ADD COLUMN reaped ... DEFAULT 0`, version set to 3). Every existing row
   starts unreaped, so legacy same-boot runs stay quarantined. Any other version is still
   refused. `WorkspaceRow` gains `reaped`.
-- Exec: new `supervisor::reaped_on_record(&ProcessIdentity) -> TreeGone` restores the proof
-  the supervisor already issued, from the engine's durable record.
-  **Decision for review:** this widens who can obtain a `TreeGone`. The engine may call it
-  only through `recovery::recorded_proof`, which requires `reaped`, no holder, and
-  `last_process` equal to the row's process. The record exists only when a `TreeGone` was
-  presented at release time, and the next recorded process clears it. Empty scans, missing
-  leaders and a free-looking lock still issue nothing.
+- Exec: new `supervisor::reaped_on_record(recorded, run: &ProcessIdentity) -> Option<TreeGone>`
+  restores the proof the supervisor already issued, from the engine's durable record. It
+  refuses unless the recorded identity and the run's identity match in every field (pgid,
+  leader pid, leader start time, boot id) and the boot id is known. A different boot is
+  refused here; a real reboot is still handled by `kill_identity`.
+  **R-11 boundary change, needs review:** besides the kill sequence, this is now the only
+  way to obtain a `TreeGone`, and it trusts the engine's store as the record of an earlier
+  proof. The engine calls it only through `recovery::recorded_proof`, which also requires
+  `reaped` and no holder. The record exists only when a `TreeGone` was presented at release
+  time, and the next recorded process clears it. Empty scans, missing leaders and a
+  free-looking lock still issue nothing. The surface is this one function; `TreeGone`
+  itself gains no constructor.
 - Engine: `recover_started` and `quiesce` take the recorded proof before falling back to
   `kill_identity`. With a recorded proof, recovery then follows the existing design §5.4
   table unchanged: an agent run becomes `Failed{LostOnRestart}` with its worktree reset to
@@ -772,12 +777,26 @@ Source: issue #24; R-5 and R-11 (`requirements.md`); design §5.4 restart table.
   - `checkpoint_after_restart_quiesces_on_the_recorded_reap` covers `quiesce`. I wrote it
     after the fix, so it was never seen failing first; a mutant that removes the quiesce
     branch fails it.
+  - `crash_between_verify_release_and_outcome_retries_the_verification` covers the verify
+    path (`worker.rs` verify also releases before storing evidence): the reaped verify row
+    goes back to `intended` with its attempt counted, instead of being quarantined.
+  - Exec unit test `reaped_record_restores_proof_only_for_the_exact_identity`: one variant
+    per differing field (including boot id), and an unknown boot id.
   - `recorded_proof` unit tests in `recovery.rs`.
   - Store tests `releasing_the_workspace_records_the_last_tree_as_reaped`,
     `schema_2_database_is_migrated_with_nothing_reaped` and
     `unknown_schema_version_is_refused`.
-  - Mutation testing: removing the set, the clear, the migration, each of the three guard
-    conditions, the recovery branch or the quiesce branch each fails a test.
+  - Mutation testing: removing the set, the clear, the migration, each guard condition, the
+    identity comparison, the boot-id field of that comparison, the unknown-boot check, the
+    recovery branch or the quiesce branch each fails a test.
+  - Test flake (pre-existing race): with the new tests running in parallel, `recovery.rs`
+    intermittently failed `Store(Locked)` on a reopen, in new and old tests alike (for
+    example `fresh_starting_effect_without_a_process_is_recoverable`). A temporary `lsof`
+    probe showed no other process holding `engine.lock` at refusal time, which matches the
+    fork-to-exec window already documented on `common::reopen_store`. `recovery.rs` now opens
+    through `reopen_store` and a matching `reopen_engine` (2 s retry on `Locked`). Before the
+    change, 6 parallel runs gave 4 failures; with `--test-threads=1`, 6 of 6 passed; after the
+    change, 15 of 15 parallel runs passed.
 - Not done (follow-up): issue #24 item 2. The transcript is still held only in memory
   (`sink.stdout`) until the child exits. A crash mid-run, or in the window above, loses it,
   and recovery records a synthetic `lost_on_restart` note even when artifacts were already
@@ -788,8 +807,8 @@ Source: issue #24; R-5 and R-11 (`requirements.md`); design §5.4 restart table.
 Verification (Rust 1.99.1, macOS): `cargo fmt --check` pass;
 `cargo clippy --workspace --all-targets -- -D warnings` pass;
 `cargo test -p harness-store` 15 passed, 0 failed (baseline 12);
-`cargo test -p harness-engine` 33 passed, 0 failed, 18 ignored (baseline 29/18);
-`cargo test -p harness-exec --lib` 5 passed. The full workspace and Node suites were not
+`cargo test -p harness-engine` 34 passed, 0 failed, 18 ignored (baseline 29/18);
+`cargo test -p harness-exec --lib` 6 passed. The full workspace and Node suites were not
 rerun.
 
 Exact next action: external review of the `reaped_on_record` trust-boundary decision above,
