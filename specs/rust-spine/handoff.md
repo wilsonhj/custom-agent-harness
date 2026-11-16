@@ -813,3 +813,57 @@ rerun.
 
 Exact next action: external review of the `reaped_on_record` trust-boundary decision above,
 then issue #24 item 2 (transcript spool).
+## Issue 23: Codex login exposure and token scan (2026-11-15)
+
+Source for the Codex facts below: openai/codex at `b016cd1847` (`codex-rs/config/src/types.rs`
+`AuthCredentialsStoreMode`, default `File` = `CODEX_HOME/auth.json`;
+`codex-rs/login/src/token_data.rs` `TokenData`; `codex-rs/login/src/auth/manager.rs:241`
+refresh endpoint).
+
+- Exec (`secretscan.rs`): `JSON_TOKEN_KEYS` adds Codex's snake_case `access_token` and
+  `refresh_token`; a new `jwt` rule flags `eyJ<10+>.eyJ<10+>` (signature optional, not
+  anchored to a word start, so a glued prefix does not hide it). Tests in
+  `crates/exec/tests/workspace.rs`: a sanitized Codex `auth.json`, a bare and a prefixed
+  JWT, and a negative case for ordinary text containing `eyJ`. Each new condition was
+  mutation-checked (dropping it fails a test).
+- Engine (`worker.rs`): `launch_for` no longer puts `<state>/runtimes/codex` in the Codex
+  read set (Claude keeps `<state>/runtimes/claude`). Each Codex agent run gets
+  `CODEX_HOME=<role task home>/requests/<effect>/codex-home` (`run_codex_home`): mode 0700,
+  holding only a 0600 copy of the shared `auth.json`; a stale home or planted symlink at that
+  path is removed first without following it; a drop guard deletes the home when the run
+  function returns. The home is writable, so Codex can also write `sessions/` there.
+  Tests: `worker::tests::codex_home::*` (4), mutation-checked.
+
+Trade-offs and limits (decisions for the parent session):
+
+- **The run still sees its own token.** Codex reads its login in-process, and with
+  `-s danger-full-access` its shell is in the same sandbox, so no per-run layout can hide
+  this run's token from this run. What changed: one run no longer reads the login directory
+  shared by every task and both roles, and the copy is gone after the run. Removing the token
+  from the sandbox needs a credential broker in the egress proxy (not built here).
+  `CODEX_ACCESS_TOKEN` exists in Codex but is used for agent-identity auth (exec-server,
+  app-server); it is not verified for `codex exec` with a ChatGPT login, and an environment
+  variable would be just as readable.
+- **In-run token refresh is discarded.** Today refresh cannot happen anyway:
+  `auth.openai.com` is not in the Codex egress allowlist (`adapters/src/codex.rs`). If it is
+  added, a refresh rotates the refresh token inside the per-run copy and the shared
+  `auth.json` goes stale. Copying back from an agent-writable home is itself a risk
+  (the agent could plant a different login); that needs a decision before enabling refresh.
+- **Crash leftovers:** a killed `eng` leaves `codex-home` behind in the role's task home until
+  the next run of that effect path or task cleanup. Only the same role of the same task can
+  read it.
+- **Not exercised end to end:** `containment_available()` is still `false`, so no agent run
+  reaches the new wiring; the helper and `launch_for` are unit-tested only.
+- Claude's shared `CLAUDE_CONFIG_DIR` read is unchanged and has the same cross-task
+  exposure; out of scope for #23.
+
+Verification (Rust 1.99.1, macOS): `cargo fmt --check` pass;
+`cargo clippy --workspace --all-targets -- -D warnings` pass;
+`cargo test -p harness-exec -p harness-engine`: 113 passed, 0 failed, 35 ignored
+(harness-engine 33 = baseline 29 + 4; harness-exec `--test workspace` 41 = baseline 38 + 3).
+Node suites not rerun.
+
+Exact next action: parent session reviews branch `fix/23-codex-auth` (two commits on
+`737301b`), decides on the refresh/copy-back question and the Claude follow-up, then
+merges alongside #24 (which edits `worker.rs` around the run tail; this diff stays clear of
+it).
