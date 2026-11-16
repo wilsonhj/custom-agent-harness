@@ -880,3 +880,33 @@ Exact next action: parent session reviews branch `fix/23-codex-auth` (three comm
 `737301b`), files the credential-broker and Claude follow-ups, then
 merges alongside #24 (which edits `worker.rs` around the run tail; this diff stays clear of
 it).
+
+## Integration: issues #20-#24 on `fix/verified-issues-20-24` (2026-11-15)
+
+This branch stacks the fixes for #22 (core gate), #20/#21 (Codex adapter), #24 (reap record)
+and #23 (secretscan, per-run Codex home) on PR 18 head `737301b`.
+
+Validation (Rust 1.99.1, macOS):
+- `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass.
+- `cargo test --workspace` was run three times in a row: 275 passed, 0 failed, 35 ignored
+  each time. Baseline was 235/0/35.
+- `node scripts/check-deps.mjs` is ok.
+- `ENG_BIN=target/debug/eng node --test conformance/cases/*.test.mjs` gives 9 pass, 0 fail
+  and 5 skipped under R-11.
+- `npm test` gives 44 pass and 44 fail, identical to untouched `737301b` on this machine
+  (Node 22.23.2; `package.json` requires 24). This is not a regression from this branch.
+- `harness-engine --test recovery` flaked with `StoreError::Locked` under parallel load. It
+  reproduces on untouched `737301b` (2 of 8 runs under CPU load). The cause is a sibling
+  test's fork briefly holding `engine.lock`. #24's commits move that file onto
+  `common::reopen_store`/`reopen_engine` (retry).
+
+Decisions for review:
+1. R-11: `supervisor::reaped_on_record` restores a `TreeGone` from the store's reap record,
+   bound to the exact process identity (#24).
+2. Per-run Codex home: the run still sees its own token, and an in-run refresh is dropped
+   (#23). The credential broker is the follow-up.
+3. `design.md:24` and the plan still describe one exact Codex pin; the code now uses a
+   tested-version list (#20).
+
+Exact next action: a human reviews the three decisions above on the PR. Containment stays
+disabled, and no phase or release approval is implied.
