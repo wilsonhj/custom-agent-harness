@@ -679,3 +679,61 @@ regression test). Node suites not rerun.
 - Out of scope, unchanged: the Blocked-resume branch (`blocked_from: None`), the `Seq(0)`
   `HumanDecision` built for the lifecycle check, the engine's `ensure_branch` special case
   for `Accept`, and `eng cancel`.
+## Codex adapter: retried `error` lines and tested versions (issues #20, #21; 2026-11-15)
+
+Branch `fix/20-21-codex-adapter` (base 737301b). Scope: `crates/adapters/src/codex.rs`, its
+tests and fixtures only.
+
+- #21: an `error` line no longer fails a run. Codex prints one for errors it is about to
+  retry, and the JSONL line drops `will_retry` (openai/codex b016cd1847
+  `exec/src/event_processor_with_jsonl_output.rs:450-460`; the exit code ignores retried
+  errors, `exec/src/lib.rs:1422-1427`).
+  - What decides failure: `turn.failed`, a nonzero exit, or a missing `turn.completed`.
+  - What decides the class (limit or other): the `turn.failed` message, else the last
+    `error` line. Earlier retry lines are never consulted.
+  - New fixtures `retry_then_ok.jsonl` and `limit_retry_then_unrelated_failure.jsonl`, with
+    provenance in `crates/adapters/fixtures/README.md`. All Codex fixtures now use a
+    UUID-format `thread_id`.
+- #20: the exact pin is now `TESTED_VERSIONS = ["0.166.0", "0.169.0"]`.
+  `Capabilities::pinned_version` lists both, so the doctor's `version_mismatch` message
+  names the installed and the accepted versions. A unit test keeps the list and the display
+  string in step. The argv adds `-c check_for_update_on_startup=false`, which is defence in
+  depth only, because `codex exec` does not read it.
+- Flag re-verification on codex-cli 0.169.0, offline and without starting a session:
+  - The probe ran `codex exec --strict-config` with an empty `CODEX_HOME` and a missing
+    `--output-schema` file.
+  - Controls: the unknown keys `definitely_not_a_codex_key` and `skills.not_a_real_subkey`
+    were rejected with "unknown configuration field … in -c/--config override".
+  - `project_doc_max_bytes=0`, `skills.include_instructions=false` and
+    `check_for_update_on_startup=false` passed config loading and reached "Failed to read
+    output schema file" (exit 1, empty stdout).
+  - Not verified on 0.169.0: that these keys actually change the prompt.
+
+Red / green: 6 new tests failed before the fix; 2 more guard behaviour that was already
+correct. Mutants killed:
+- an `error` line fails the run;
+- the last `error` is preferred over the `turn.failed` message;
+- the old "any limit text ever seen" rule;
+- 0.169.0 dropped from the list;
+- the update-check argument dropped.
+
+Verification (Rust 1.99.1, macOS):
+- `cargo fmt --check`: pass.
+- `cargo clippy -p harness-adapters --all-targets -- -D warnings`: pass.
+- `cargo test -p harness-adapters`: 30 passed, 0 failed (unit 1, argv_safety 1, claude 12,
+  codex 16).
+- `cargo clippy --workspace --all-targets -- -D warnings`: pass.
+- `cargo test --workspace`: 244 passed, 0 failed, 35 ignored (baseline 235 plus 9 new).
+- Node suites not rerun.
+
+Unresolved, so not done here:
+- Auth failure (`turn.failed` "401 Unauthorized") is still `ExitNonzero`, because
+  `FailureCode` has no auth variant and adding one changes `crates/core`.
+- `specs/rust-spine/design.md:24` and `docs/superpowers/plans/2026-11-09-rust-spine.md:16`
+  still describe a single exact codex pin. Updating them to a tested-version list is a
+  contract change that needs review.
+- The worker path still records only `VersionMismatch`, with no versions in it, because
+  `RuntimeAdapter::check_version` returns a bare `FailureCode`.
+
+Exact next action: review the commit on `fix/20-21-codex-adapter`, then decide on the auth
+`FailureCode` and the design-doc wording for the version policy.

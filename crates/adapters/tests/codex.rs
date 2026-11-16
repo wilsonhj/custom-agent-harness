@@ -35,6 +35,19 @@ fn run(name: &str, role: Role, exit: Option<i32>) -> AgentRunResult {
     a.finish(st, exit)
 }
 
+/// Thread id used by every Codex fixture. Real ids are UUIDs (a live 0.169.0 run printed
+/// `01a1ddd6-3014-70e2-af57-4ff00c73d791`); this one is synthetic in the same format.
+const THREAD_ID: &str = "019a8f3c-5b2e-7d41-9c6a-2f0e8b4d1a77";
+
+fn run_lines(role: Role, lines: &[&str], exit: Option<i32>) -> AgentRunResult {
+    let a = adapter_for(RuntimeKind::Codex);
+    let mut st = ParseState::new(role, &plan(role).argv);
+    for line in lines {
+        a.parse_line(&mut st, line.as_bytes());
+    }
+    a.finish(st, exit)
+}
+
 fn value_after<'a>(argv: &'a [String], flag: &str) -> &'a str {
     let i = argv.iter().position(|a| a == flag).unwrap();
     &argv[i + 1]
@@ -89,7 +102,7 @@ fn codex_reviewer_output_parses_into_raw_review() {
     let r = run("review_ok.jsonl", Role::Reviewer, Some(0));
     assert_eq!(r.outcome, RunOutcome::Succeeded);
     assert_eq!(r.review.unwrap().findings.len(), 1);
-    assert_eq!(r.session.as_deref(), Some("thr_abc"));
+    assert_eq!(r.session.as_deref(), Some(THREAD_ID));
     let u = r.usage.unwrap();
     assert_eq!(
         (u.input_tokens, u.output_tokens, u.turns),
@@ -157,4 +170,160 @@ fn version_mismatch_is_detected() {
         a.check_version("2.1.318 (Claude Code)"),
         Err(FailureCode::VersionMismatch)
     );
+}
+
+// --- Issue #21: transient (retried) `error` lines are not failures ---
+
+#[test]
+fn codex_retry_errors_then_completed_turn_succeeds() {
+    // Codex prints `{"type":"error"}` for errors it is about to retry ("Reconnecting... n/5"),
+    // including a 429 that mentions a rate limit, and the turn still completes with exit 0.
+    let r = run("retry_then_ok.jsonl", Role::Reviewer, Some(0));
+    assert_eq!(r.outcome, RunOutcome::Succeeded);
+    assert_eq!(r.review.unwrap().findings.len(), 1);
+    assert_eq!(r.session.as_deref(), Some(THREAD_ID));
+    let u = r.usage.unwrap();
+    assert_eq!(
+        (u.input_tokens, u.output_tokens, u.turns),
+        (Some(4100), Some(310), Some(1))
+    );
+}
+
+#[test]
+fn codex_limit_retry_then_unrelated_failure_is_not_limit_exhausted() {
+    let r = run(
+        "limit_retry_then_unrelated_failure.jsonl",
+        Role::Implementer,
+        Some(1),
+    );
+    assert_eq!(
+        r.outcome,
+        RunOutcome::Failed {
+            code: FailureCode::ExitNonzero
+        }
+    );
+}
+
+#[test]
+fn codex_last_error_classifies_a_failed_run_without_turn_failed() {
+    // Nonzero exit and no `turn.failed`: the last buffered `error` decides the class.
+    let r = run_lines(
+        Role::Implementer,
+        &[
+            r#"{"type":"turn.started"}"#,
+            r#"{"type":"error","message":"Reconnecting... 2/5 (stream disconnected before completion)"}"#,
+            r#"{"type":"error","message":"You’ve hit your usage limit. Try again later."}"#,
+        ],
+        Some(1),
+    );
+    assert_eq!(r.outcome, RunOutcome::LimitExhausted { reset_at: None });
+
+    // ...and only the last one: an earlier limit-mentioning retry does not count.
+    let r = run_lines(
+        Role::Implementer,
+        &[
+            r#"{"type":"turn.started"}"#,
+            r#"{"type":"error","message":"Reconnecting... 2/5 (Rate limit reached for requests)"}"#,
+            r#"{"type":"error","message":"stream disconnected before completion"}"#,
+        ],
+        Some(1),
+    );
+    assert_eq!(
+        r.outcome,
+        RunOutcome::Failed {
+            code: FailureCode::ExitNonzero
+        }
+    );
+}
+
+#[test]
+fn codex_turn_failed_message_wins_over_buffered_errors() {
+    let r = run_lines(
+        Role::Implementer,
+        &[
+            r#"{"type":"turn.started"}"#,
+            r#"{"type":"error","message":"stream disconnected before completion"}"#,
+            r#"{"type":"turn.failed","error":{"message":"You’ve hit your usage limit. Try again later."}}"#,
+        ],
+        Some(1),
+    );
+    assert_eq!(r.outcome, RunOutcome::LimitExhausted { reset_at: None });
+}
+
+#[test]
+fn codex_errors_without_completed_turn_and_exit_zero_are_not_success() {
+    let r = run_lines(
+        Role::Implementer,
+        &[
+            r#"{"type":"turn.started"}"#,
+            r#"{"type":"error","message":"Reconnecting... 2/5 (stream disconnected before completion)"}"#,
+        ],
+        Some(0),
+    );
+    assert_eq!(
+        r.outcome,
+        RunOutcome::Failed {
+            code: FailureCode::InvalidAgentOutput
+        }
+    );
+}
+
+#[test]
+fn codex_turn_failed_with_exit_zero_still_fails() {
+    let r = run_lines(
+        Role::Implementer,
+        &[
+            r#"{"type":"turn.started"}"#,
+            r#"{"type":"turn.failed","error":{"message":"turn failed"}}"#,
+        ],
+        Some(0),
+    );
+    assert_eq!(
+        r.outcome,
+        RunOutcome::Failed {
+            code: FailureCode::ExitNonzero
+        }
+    );
+}
+
+// --- Issue #20: tested-version list and update-check key ---
+
+#[test]
+fn codex_accepts_every_tested_version_and_names_them() {
+    let a = adapter_for(RuntimeKind::Codex);
+    for v in ["0.166.0", "0.169.0"] {
+        assert_eq!(a.check_version(&format!("codex-cli {v}\n")), Ok(()), "{v}");
+        // The doctor's mismatch message prints this field next to the installed version.
+        assert!(
+            a.capabilities().pinned_version.contains(v),
+            "{v} missing from {:?}",
+            a.capabilities().pinned_version
+        );
+    }
+    for bad in [
+        "codex-cli 0.170.0",
+        "codex-cli 0.169",
+        "codex 0.169.0",
+        "codex-cli 0.169.0 x",
+    ] {
+        assert_eq!(
+            a.check_version(bad),
+            Err(FailureCode::VersionMismatch),
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn codex_argv_disables_update_check() {
+    for role in [Role::Implementer, Role::Reviewer] {
+        let p = plan(role);
+        let n = p
+            .argv
+            .windows(2)
+            .filter(|w| w[0] == "-c" && w[1] == "check_for_update_on_startup=false")
+            .count();
+        assert_eq!(n, 1, "{role:?}: {:?}", p.argv);
+        assert_eq!(p.argv.last().map(String::as_str), Some("-"));
+    }
 }
