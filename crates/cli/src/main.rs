@@ -15,6 +15,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand, ValueEnum};
 use harness_core::artifact::MediaType;
 use harness_core::decide::{Command, Event, Task};
+use harness_core::gate::{self, Answer, OpenQuestion};
 use harness_core::ids::{CommitSha, IdempotencyKey, Seq, TaskId};
 use harness_core::lifecycle::{DecisionKind, Subject};
 use harness_core::policy::Pipeline;
@@ -126,6 +127,16 @@ impl Action {
             Action::Reject => "reject",
             Action::SendBack => "send-back",
         }
+    }
+}
+
+fn answer_name(answer: Answer) -> &'static str {
+    match answer {
+        Answer::Decide(DecisionKind::ApproveSpec) => "approve-spec",
+        Answer::Decide(DecisionKind::Accept) => "accept",
+        Answer::Decide(DecisionKind::Reject) => "reject",
+        Answer::Decide(DecisionKind::SendBack) => "send-back",
+        Answer::Run => "run",
     }
 }
 
@@ -511,17 +522,53 @@ async fn cmd_decide(engine: Engine, json: bool, task: String, action: Action) ->
         Ok(None) => return rejected(json, &task, Some("no such task".into())),
         Err(e) => return engine_error(json, Some(&task), &e),
     };
-    // Approval binds the packet digest; the other decisions bind the last checkpoint (before
-    // any checkpoint, the packet digest, as `decide` requires).
-    let subject = match (action, t.checkpoints.last()) {
-        (Action::ApproveSpec, _) | (_, None) => Subject::PacketDigest(t.packet.clone()),
-        (_, Some(cp)) => Subject::Commit(cp.commit.clone()),
+    // The open question decides whether this answer is legal and what it is bound to. Refuse
+    // here, before prompting, so the human never confirms an answer `decide` would reject.
+    let answer = Answer::Decide(action.kind());
+    let question = match OpenQuestion::of(&t) {
+        Some(q) if q.allows(answer) => q,
+        Some(q) => {
+            let legal: Vec<&str> = q.answers().iter().map(|a| answer_name(*a)).collect();
+            let why = format!(
+                "{} is not a legal answer: {}; legal answers: {}",
+                action.name(),
+                q.describe(),
+                legal.join(", ")
+            );
+            return rejected(json, &task, Some(why));
+        }
+        None => {
+            return rejected(
+                json,
+                &task,
+                Some("no question is open for this task".into()),
+            );
+        }
     };
+    let subject = gate::subject(&t, question);
     let (what, value) = match &subject {
         Subject::PacketDigest(d) => ("packet digest", d.to_string()),
         Subject::Commit(c) => ("commit", c.to_string()),
     };
     eprintln!("Task {task}: {} the {what}\n  {value}", action.name());
+    eprintln!("  open question: {}", question.describe());
+    if let OpenQuestion::Gate(_) = question {
+        eprintln!("  blocking findings this round: {}", t.progress.blocking);
+        eprintln!(
+            "  verify this round: {}",
+            if t.progress.verify_failed {
+                "FAILED"
+            } else {
+                "no failure recorded"
+            }
+        );
+        if !t.progress.retry.is_empty() {
+            eprintln!(
+                "  unfinished effects (run retries them): {}",
+                t.progress.retry.len()
+            );
+        }
+    }
     eprint!("Type yes to record this decision: ");
     let _ = std::io::stderr().flush();
     let mut line = String::new();

@@ -650,3 +650,32 @@ Verification (Rust 1.99.1, Git 2.50.1, macOS): `cargo fmt --check` pass;
 `cargo test -p harness-engine` 29 passed, 0 failed, 18 ignored;
 `cargo test --workspace` 235 passed, 0 failed, 35 ignored (baseline 234 plus the new
 regression test). Node suites not rerun.
+
+## Issue #22: the open question owns which answers are legal (2026-11-15)
+
+- New pure module `crates/core/src/gate.rs` (`OpenQuestion`, `Answer`, `subject`, `check`).
+  `decide` calls `gate::check` before any human decision and before `Run` at a human gate.
+  `Accept` is legal only at `ReviewClean`. `RepairLimitReached` allows reject and send-back.
+  `LimitExhausted` and `LostOnRestart` allow run and reject. An illegal decision returns
+  `Denied::WrongKind`, and an illegal `Run` keeps `WrongState`. No question open returns
+  `WrongState`. The wire format is unchanged: no new event, command or `Denied` variant.
+  `lifecycle::can_transition` is untouched and stays the fail-closed backstop.
+- Behaviour changes beyond #22. `ApproveSpec` with no open question now returns
+  `WrongState` instead of the lifecycle's `NotInTable`. `Accept`, `Reject` and `SendBack`
+  while `Planned` now return `WrongKind` instead of `WrongState`. `SendBack` at
+  `LimitExhausted` or `LostOnRestart` is now denied; previously the lifecycle table allowed
+  it in `Reviewing`.
+- CLI `eng decide`: the subject now comes from `gate::subject`. An illegal answer is refused
+  before the `yes` prompt and names the legal answers. The prompt shows the open question,
+  blocking findings this round, verify status and unfinished effects. The CLI calls the core
+  module directly on the `Task` it already reads. This deviates from grilling Q7, which
+  planned a pass-through engine method that would add no behaviour.
+- Tests: `crates/core/tests/gate.rs` covers the exhaustive question × answer table and
+  subject binding. `crates/core/tests/decide.rs` adds #22 regressions: `Accept` at
+  `LimitExhausted` with a blocking finding open, at `LostOnRestart` in review and at
+  `RepairLimitReached`. These failed before the fix because `Accept` was honoured. It also
+  covers ordering (kind is checked before subject) and `Run` at `ReviewClean`.
+- `GLOSSARY.md` was created with: open question, human gate, subject, answer.
+- Out of scope, unchanged: the Blocked-resume branch (`blocked_from: None`), the `Seq(0)`
+  `HumanDecision` built for the lifecycle check, the engine's `ensure_branch` special case
+  for `Accept`, and `eng cancel`.

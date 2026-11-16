@@ -5,6 +5,7 @@ pub mod capabilities;
 pub mod decide;
 pub mod diff;
 pub mod finding;
+pub mod gate;
 pub mod ids;
 pub mod lifecycle;
 pub mod outcome;
