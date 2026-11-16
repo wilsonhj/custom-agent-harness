@@ -521,13 +521,20 @@ impl Engine {
     }
 
     /// Proof that no process runs in the task's worktree: the one kept from the last run, or,
-    /// after a restart, the kill sequence against the last recorded process tree. `None` if no
-    /// process ever ran there.
+    /// after a restart, the reap the store recorded for the last process tree, else the kill
+    /// sequence against it. `None` if no process ever ran there.
     pub(crate) async fn quiesce(&self, task: &TaskId) -> Result<Option<TreeGone>, EngineError> {
         if let Some(proof) = self.take_proof(task) {
             return Ok(Some(proof));
         }
-        let last = self.store.workspace(task)?.and_then(|w| w.last_process);
+        let ws = self.store.workspace(task)?;
+        let last = ws.as_ref().and_then(|w| w.last_process.clone());
+        if let Some(proof) = last
+            .as_ref()
+            .and_then(|p| crate::recovery::recorded_proof(ws.as_ref(), p))
+        {
+            return Ok(Some(proof));
+        }
         match last {
             Some(p) => match kill_identity(&to_identity(&p)).await {
                 Ok(proof) => Ok(Some(proof)),

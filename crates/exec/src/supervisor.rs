@@ -816,6 +816,17 @@ pub async fn kill_identity(id: &ProcessIdentity) -> Result<TreeGone, KillFailed>
     })
 }
 
+/// The proof this supervisor already issued for `id`'s tree, restored after an engine restart
+/// from the engine's durable record of it (issue #24). The store sets that record in the
+/// statement that released the worktree lock with the original [`TreeGone`], and clears it in
+/// the statement that records the next process, so the record names a tree that was proven
+/// gone with nothing recorded as running in the worktree since. Callers must hold that record
+/// for exactly this identity; this is never inferred from a scan, a missing leader or a lock
+/// that merely looks free, which remain quarantined (see [`kill_identity`]).
+pub fn reaped_on_record(_id: &ProcessIdentity) -> TreeGone {
+    TreeGone::confirmed()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

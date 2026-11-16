@@ -384,3 +384,153 @@ async fn fresh_starting_effect_without_a_process_is_recoverable() {
         assert!(s.workspace(&id).unwrap().is_none());
     });
 }
+
+/// Issue #24: the engine died after the run's tree was proven gone and the worktree released,
+/// but before its outcome was recorded. The store holds the reap, so recovery settles the run
+/// as `LostOnRestart` (resetting the worktree) instead of quarantining the task. Driven through
+/// the store, so it needs no containment backend.
+#[tokio::test]
+async fn crash_between_release_and_outcome_recovers_a_runnable_task() {
+    let f = fixture();
+    let cfg = config(&f, "clean", "clean");
+    let id = prepared(&cfg, &f, &default_pipeline()).await;
+    let ws = harness_exec::workspace::create(&f.repo, &id, &f.base, &f.state.join("worktrees"))
+        .await
+        .unwrap();
+    let marker = ws.path.join("feature.txt");
+    std::fs::write(&marker, b"written by the lost run").unwrap();
+    let process = harness_store::ProcessRecord {
+        pgid: i32::MAX,
+        pid: i32::MAX,
+        start_us: 1,
+        boot_id: harness_exec::supervisor::boot_id(),
+    };
+    let effect = with_store(&f, |s| {
+        let effect = s.pending_effects().unwrap()[0].effect.clone();
+        s.record_workspace(&id, &ws.path).unwrap();
+        s.mark_effect(&effect, OutboxState::Starting, None).unwrap();
+        s.mark_effect(&effect, OutboxState::Started, Some(&process))
+            .unwrap();
+        // The worker had its `TreeGone` and released the lock; then the engine died.
+        s.release_workspace(&id).unwrap();
+        effect
+    });
+
+    let engine = Engine::open(cfg.clone()).await.unwrap();
+    let t = engine
+        .run_until_idle(&id, CancellationToken::new())
+        .await
+        .expect("the task is not WorkspaceLocked");
+    assert_eq!(
+        t.run,
+        StageRunState::AwaitingHuman {
+            gate: HumanGate::LostOnRestart
+        }
+    );
+    assert!(events(&engine).iter().any(|e| matches!(
+        e,
+        Event::EffectFinished { effect: e2, .. } if *e2 == effect
+    )));
+    assert!(!marker.exists(), "the worktree was reset to the run's base");
+    assert_eq!(tgit(&ws.path, &["status", "--porcelain"]), "");
+    drop(engine);
+
+    with_store(&f, |s| {
+        assert_eq!(s.effect(&effect).unwrap().unwrap().state, OutboxState::Done);
+        let w = s.workspace(&id).unwrap().unwrap();
+        assert_eq!(w.holder, None);
+        assert!(w.reaped, "still provably quiet for the next run");
+    });
+    // A second restart finds nothing in flight.
+    let engine = Engine::open(cfg).await.unwrap();
+    assert!(
+        engine
+            .run_until_idle(&id, CancellationToken::new())
+            .await
+            .is_ok()
+    );
+}
+
+/// Issue #24, second half: a run finished, released its worktree and recorded its outcome, and
+/// the engine restarted before the checkpoint ran. The new engine has no in-memory proof, so
+/// the checkpoint's `quiesce` must take the store's reap record rather than fail `KillFailed`
+/// on a same-boot identity. Checkpoints spawn nothing, so this needs no containment backend.
+#[tokio::test]
+async fn checkpoint_after_restart_quiesces_on_the_recorded_reap() {
+    use harness_core::artifact::{MediaType, Provenance};
+    use harness_core::decide::{Command, EffectOutcome, Facts, decide};
+    use harness_core::outcome::RunOutcome;
+    use harness_core::policy::Pipeline;
+    use harness_core::types::Actor;
+
+    let f = fixture();
+    let cfg = config(&f, "clean", "clean");
+    let pipeline_toml = default_pipeline();
+    let id = prepared(&cfg, &f, &pipeline_toml).await;
+    let ws = harness_exec::workspace::create(&f.repo, &id, &f.base, &f.state.join("worktrees"))
+        .await
+        .unwrap();
+    std::fs::write(ws.path.join("feature.txt"), b"the run's work\n").unwrap();
+    let process = harness_store::ProcessRecord {
+        pgid: i32::MAX,
+        pid: i32::MAX,
+        start_us: 1,
+        boot_id: harness_exec::supervisor::boot_id(),
+    };
+    with_store(&f, |s| {
+        let effect = s.pending_effects().unwrap()[0].effect.clone();
+        s.record_workspace(&id, &ws.path).unwrap();
+        s.mark_effect(&effect, OutboxState::Starting, None).unwrap();
+        s.mark_effect(&effect, OutboxState::Started, Some(&process))
+            .unwrap();
+        s.release_workspace(&id).unwrap();
+        let transcript = s
+            .put_artifact(
+                b"{}\n",
+                MediaType::Jsonl,
+                Provenance::RuntimeClaim,
+                Some(&effect),
+            )
+            .unwrap();
+        let pipeline = Pipeline::parse_toml(&pipeline_toml).unwrap();
+        let ids: Vec<EffectId> = (0..8).map(|i| EffectId::new(format!("next-{i}"))).collect();
+        let cmd = envelope(
+            &id,
+            Actor::Effect {
+                effect: effect.clone(),
+            },
+            Command::RecordEffectOutcome {
+                effect: effect.clone(),
+                outcome: EffectOutcome::AgentRun {
+                    outcome: RunOutcome::Succeeded,
+                    transcript,
+                    review: None,
+                },
+            },
+        );
+        let receipt = s
+            .submit(cmd, &|t, c| {
+                decide(
+                    t,
+                    c,
+                    &Facts {
+                        pipeline: &pipeline,
+                        review: None,
+                        diff_chunks: None,
+                        new_effect_ids: &ids,
+                    },
+                )
+            })
+            .unwrap();
+        assert!(receipt.accepted, "{:?}", receipt.rejection);
+        let pending = s.pending_effects().unwrap();
+        assert!(matches!(pending[0].spec, EffectSpec::Checkpoint { .. }));
+    });
+
+    let engine = Engine::open(cfg).await.unwrap();
+    let t = engine
+        .run_until_idle(&id, CancellationToken::new())
+        .await
+        .expect("the checkpoint is not KillFailed");
+    assert_eq!(t.checkpoints.len(), 1, "the run's work was committed");
+}

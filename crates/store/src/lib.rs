@@ -162,6 +162,10 @@ pub struct WorkspaceRow {
     pub path: PathBuf,
     pub holder: Option<EffectId>,
     pub last_process: Option<ProcessRecord>,
+    /// The supervisor proved `last_process`'s tree gone: recorded when the lock was released
+    /// with that proof, voided when the next process is recorded. Survives a restart, unlike
+    /// the engine's in-memory proof.
+    pub reaped: bool,
 }
 
 type Job = Box<dyn FnOnce(&mut Connection) + Send>;
@@ -181,7 +185,19 @@ pub struct Store {
 }
 
 const SCHEMA: &str = include_str!("schema.sql");
-const SCHEMA_VERSION: &str = "2";
+const SCHEMA_VERSION: &str = "3";
+
+/// Brings a version-2 database to version 3 inside the open transaction: the workspace gains
+/// its reap record, unset for every existing row, so a run that was in flight under the older
+/// build is never taken for reaped.
+fn migrate_2_to_3(tx: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+    tx.execute_batch(
+        "ALTER TABLE workspaces ADD COLUMN reaped INTEGER NOT NULL DEFAULT 0
+           CHECK (reaped IN (0, 1));
+         UPDATE schema_meta SET value = '3' WHERE key = 'version';",
+    )?;
+    Ok(())
+}
 
 fn create_private_dir(dir: &Path) -> Result<(), StoreError> {
     match fs::create_dir(dir) {
@@ -240,10 +256,14 @@ impl Store {
                 [],
                 |r| r.get(0),
             )?;
-            if version != SCHEMA_VERSION {
-                return Err(StoreError::Corrupt(format!(
-                    "schema version {version}, this build reads {SCHEMA_VERSION}"
-                )));
+            match version.as_str() {
+                SCHEMA_VERSION => {}
+                "2" => migrate_2_to_3(&tx)?,
+                _ => {
+                    return Err(StoreError::Corrupt(format!(
+                        "schema version {version}, this build reads {SCHEMA_VERSION}"
+                    )));
+                }
             }
             tx.commit()?;
         }
@@ -425,8 +445,9 @@ impl Store {
     }
 
     /// Moves an outbox row. Allowed: `intended -> starting` (counts an attempt),
-    /// `starting -> started` (with the process, if one was spawned: it is recorded on the row
-    /// and the task's workspace is locked by this effect in the same transaction),
+    /// `starting -> started` (with the process, if one was spawned: it is recorded on the row,
+    /// and the task's workspace is locked by this effect and its reap record cleared, in the
+    /// same transaction),
     /// `starting -> intended` (nothing ran: the attempt is uncounted), `started -> intended`
     /// (retry), and any pending state to `abandoned`. `done` is set only by `submit`.
     pub fn mark_effect(
@@ -452,7 +473,8 @@ impl Store {
         self.call(move |conn| writer::workspace(conn, &task))
     }
 
-    /// Clears the workspace's holder. The engine calls this only with a `TreeGone` in hand.
+    /// Clears the workspace's holder and, in the same statement, records its last process tree
+    /// as reaped. The engine calls this only with a `TreeGone` in hand for that tree.
     pub fn release_workspace(&self, task: &TaskId) -> Result<(), StoreError> {
         let task = task.clone();
         self.call(move |conn| writer::release_workspace(conn, &task))

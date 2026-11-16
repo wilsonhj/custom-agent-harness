@@ -737,3 +737,60 @@ Unresolved, so not done here:
 
 Exact next action: review the commit on `fix/20-21-codex-adapter`, then decide on the auth
 `FailureCode` and the design-doc wording for the version policy.
+## Issue #24: persisted reap record (2026-11-15)
+
+Source: issue #24; R-5 and R-11 (`requirements.md`); design §5.4 restart table.
+
+- Root cause: `worker.rs` releases the worktree lock as soon as it holds `TreeGone`, then
+  stores the transcript or evidence and records the outcome. This applies to both the agent
+  run and verification. If the engine crashes in between, the row stays `started`, and on
+  the same boot `kill_identity` can never issue a proof, so `run_until_idle` returns
+  `WorkspaceLocked` permanently. The holder column plays no part. Even with recovery fixed,
+  the next `quiesce` (checkpoint, or a reset before a run) in a fresh engine called
+  `kill_identity` on the same-boot `last_process` and failed `KillFailed`.
+- Store, schema v3: adds `workspaces.reaped`. `release_workspace` sets it in the same UPDATE
+  that clears the holder. `mark_effect(.., Started, Some(process))` clears it in the same
+  UPDATE that records the new process. `Store::open` migrates a v2 database in place
+  (`ALTER TABLE ... ADD COLUMN reaped ... DEFAULT 0`, version set to 3). Every existing row
+  starts unreaped, so legacy same-boot runs stay quarantined. Any other version is still
+  refused. `WorkspaceRow` gains `reaped`.
+- Exec: new `supervisor::reaped_on_record(&ProcessIdentity) -> TreeGone` restores the proof
+  the supervisor already issued, from the engine's durable record.
+  **Decision for review:** this widens who can obtain a `TreeGone`. The engine may call it
+  only through `recovery::recorded_proof`, which requires `reaped`, no holder, and
+  `last_process` equal to the row's process. The record exists only when a `TreeGone` was
+  presented at release time, and the next recorded process clears it. Empty scans, missing
+  leaders and a free-looking lock still issue nothing.
+- Engine: `recover_started` and `quiesce` take the recorded proof before falling back to
+  `kill_identity`. With a recorded proof, recovery then follows the existing design §5.4
+  table unchanged: an agent run becomes `Failed{LostOnRestart}` with its worktree reset to
+  the base; verify re-runs if attempts remain; a checkpoint re-runs.
+- Tests:
+  - `crash_between_release_and_outcome_recovers_a_runnable_task` (engine `recovery.rs`)
+    simulates the crash window through the store. It failed before the fix with
+    `WorkspaceLocked` and passes after; it does not depend on `containment_available()`.
+  - `checkpoint_after_restart_quiesces_on_the_recorded_reap` covers `quiesce`. I wrote it
+    after the fix, so it was never seen failing first; a mutant that removes the quiesce
+    branch fails it.
+  - `recorded_proof` unit tests in `recovery.rs`.
+  - Store tests `releasing_the_workspace_records_the_last_tree_as_reaped`,
+    `schema_2_database_is_migrated_with_nothing_reaped` and
+    `unknown_schema_version_is_refused`.
+  - Mutation testing: removing the set, the clear, the migration, each of the three guard
+    conditions, the recovery branch or the quiesce branch each fails a test.
+- Not done (follow-up): issue #24 item 2. The transcript is still held only in memory
+  (`sink.stdout`) until the child exits. A crash mid-run, or in the window above, loses it,
+  and recovery records a synthetic `lost_on_restart` note even when artifacts were already
+  indexed for the effect. Next step: spool stdout per effect to `<task dir>/spool/<effect>`,
+  fsync on a cadence, and ingest the spool as a `RuntimeClaim` in `recover_started` before
+  writing the note.
+
+Verification (Rust 1.99.1, macOS): `cargo fmt --check` pass;
+`cargo clippy --workspace --all-targets -- -D warnings` pass;
+`cargo test -p harness-store` 15 passed, 0 failed (baseline 12);
+`cargo test -p harness-engine` 33 passed, 0 failed, 18 ignored (baseline 29/18);
+`cargo test -p harness-exec --lib` 5 passed. The full workspace and Node suites were not
+rerun.
+
+Exact next action: external review of the `reaped_on_record` trust-boundary decision above,
+then issue #24 item 2 (transcript spool).
