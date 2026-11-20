@@ -3,9 +3,9 @@
 | Field | Value |
 |---|---|
 | Base SHA | 7fce6c6 (main after PR #4 merged; the follow-up starts here) |
-| Head SHA | The follow-up commit on `claude/wizardly-allen-3ovt4w` that adds this line (direct child of 7fce6c6) |
+| Head SHA | PR #8 merged on 2026-11-10 (`dd5a200`); this handoff was last updated on `483f630` |
 | Author (runtime / session ID) | Claude Code (lead integration) / session_01AaDiMJVSVxQVfoGPARPgBn; post-merge follow-up session_01AaDiMLni7kwVNftEwaHm1a; original implementation by Codex |
-| Date | 2026-11-03 |
+| Date | 2026-11-03; next action updated 2026-11-20 |
 
 Branch: codex/local-evidence-workflow. Original base: upstream main 0b9d58f.
 
@@ -26,11 +26,13 @@ repository and PRs #2/#3 and packet-only branches were inspected before starting
 
 ## Exact next action
 
-PR #8 contains fixes for both verified candidate-entrypoint bypasses and is synced with
-main at 019870f. Wait for CI (`verify`) on the published fixes and review them before
-merging; then a human
-configures real local worker/verifier/reviewer commands (entrypoints as absolute paths under
-`toolsDirectory`) and runs `doctor` on the target host.
+PR #8 (both candidate-entrypoint bypass fixes, ENAMETOOLONG handling) merged on 2026-11-10.
+Next:
+
+1. A human configures real local worker, verifier and reviewer commands (entrypoints as
+   absolute paths under `toolsDirectory`) and runs `doctor` on the target Linux host.
+2. T4 (diff review, verification and durable handoff) is still `Planned`; a reviewer runs
+   it, and a human sets task statuses (T1-T3 read `Reviewing`).
 
 ## Implemented
 

@@ -387,7 +387,20 @@ Owner decision (open): choose the containment mechanism that satisfies R-11 (des
 create its feature packet for T13 (`tasks.json`); until then no task executes and
 execution-dependent tests stay ignored.
 
-Parent session integrates the separately assigned security changes, reconciles test fixtures with the chosen containment policy, and requests independent review using `docs/reviews/pr13-functional-review-fixes.md`. Rerun the packet acceptance checks on the combined head before any merge. No phase transition, live run, release or deployment is approved by this handoff.
+Status 2026-11-20: the integration this paragraph used to describe is done. PR #25 (issues
+#20-#24) was stacked on PR #18, and #18 merged into `main` at `483f630`; PR #13 was closed as
+superseded. What remains, in order:
+
+1. Owner: the containment decision above (T13). `kill_identity` stays fail-closed after a
+   restart (only a reboot or `reaped_on_record` yields `TreeGone`), so no task executes
+   until it is made.
+2. A human reviews the three decisions listed under "Integration: issues #20-#24" below;
+   this file does not record that review.
+3. A human updates `tasks.json`: T1-T10 still read `Planned` although their code is on
+   `main`. Agents do not change task status.
+4. Then T11 (live runs, owner present) and T12 (independent review).
+
+No phase transition, live run, release or deployment is approved by this handoff.
 
 ## PR 13 review fix: operator egress authorization
 
@@ -908,5 +921,7 @@ Decisions for review:
 3. `design.md:24` and the plan still describe one exact Codex pin; the code now uses a
    tested-version list (#20).
 
-Exact next action: a human reviews the three decisions above on the PR. Containment stays
-disabled, and no phase or release approval is implied.
+Exact next action (updated 2026-11-20): #25 and #18 are merged (`main` at `483f630`), so a
+human reviews the three decisions above against `main`; the current overall next action is
+under "Exact next action" earlier in this file. Containment stays disabled, and no phase or
+release approval is implied.
