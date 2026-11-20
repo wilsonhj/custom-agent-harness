@@ -384,21 +384,24 @@ The initial sandboxed conformance attempt failed with `sandbox_unavailable` beca
 ## Exact next action
 
 Owner decision (open): choose the containment mechanism that satisfies R-11 (design §6.2) and
-create its feature packet for T13 (`tasks.json`); until then no task executes and
-execution-dependent tests stay ignored.
+create its feature packet for T13 (`tasks.json`). Task execution and execution-dependent
+tests stay blocked until the backend is implemented and verified.
 
 Status 2026-11-20: the integration this paragraph used to describe is done. PR #25 (issues
 #20-#24) was stacked on PR #18, and #18 merged into `main` at `483f630`; PR #13 was closed as
 superseded. What remains, in order:
 
-1. Owner: the containment decision above (T13). `kill_identity` stays fail-closed after a
-   restart (only a reboot or `reaped_on_record` yields `TreeGone`), so no task executes
-   until it is made.
+1. Owner: make the containment decision above and create the T13 feature packet.
+   Restart recovery stays fail-closed unless a confirmed reboot or `reaped_on_record`
+   establishes `TreeGone`.
 2. A human reviews the three decisions listed under "Integration: issues #20-#24" below;
    this file does not record that review.
 3. A human updates `tasks.json`: T1-T10 still read `Planned` although their code is on
    `main`. Agents do not change task status.
-4. Then T11 (live runs, owner present) and T12 (independent review).
+4. Implement the T13 containment backend and verify it against R-11 using the containment
+   checks in [acceptance-tests.md](acceptance-tests.md).
+5. Once T13 is complete, proceed with T11 (live runs, owner present), followed by T12
+   (independent review).
 
 No phase transition, live run, release or deployment is approved by this handoff.
 

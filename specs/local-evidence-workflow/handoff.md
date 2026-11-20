@@ -3,7 +3,8 @@
 | Field | Value |
 |---|---|
 | Base SHA | 7fce6c6 (main after PR #4 merged; the follow-up starts here) |
-| Head SHA | PR #8 merged on 2026-11-10 (`dd5a200`); this handoff was last updated on `483f630` |
+| PR #8 merge SHA | `dd5a200` (merged 2026-11-10) |
+| Main SHA checked for this handoff update | `483f630` |
 | Author (runtime / session ID) | Claude Code (lead integration) / session_01AaDiMJVSVxQVfoGPARPgBn; post-merge follow-up session_01AaDiMLni7kwVNftEwaHm1a; original implementation by Codex |
 | Date | 2026-11-03; next action updated 2026-11-20 |
 
