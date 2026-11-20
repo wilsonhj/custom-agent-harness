@@ -1,4 +1,5 @@
--- harness-store schema, version 2 (research-2026-11-09/5-rust-core.md §4.1, without `anchors`).
+-- harness-store schema, version 3 (research-2026-11-09/5-rust-core.md §4.1, without `anchors`).
+-- Version 3 adds `workspaces.reaped` (issue #24); `lib.rs` migrates a version-2 database.
 -- Pragmas (WAL, synchronous=FULL, foreign_keys=ON) are set per connection in `lib.rs`.
 
 CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -72,7 +73,9 @@ CREATE TABLE IF NOT EXISTS artifacts (
   PRIMARY KEY (id, label, produced_by));
 
 -- Worktree lock records. `holder_effect` NULL means released; the identity columns keep the
--- last process that ran in the worktree.
+-- last process that ran in the worktree. `reaped` is 1 once the supervisor proved that process
+-- tree gone: set in the statement that releases the lock, cleared in the statement that records
+-- the next process.
 CREATE TABLE IF NOT EXISTS workspaces (
   task_id TEXT PRIMARY KEY,
   path TEXT NOT NULL UNIQUE,
@@ -80,4 +83,5 @@ CREATE TABLE IF NOT EXISTS workspaces (
   pgid INTEGER,
   leader_pid INTEGER,
   leader_start_us INTEGER,
-  boot_id TEXT);
+  boot_id TEXT,
+  reaped INTEGER NOT NULL DEFAULT 0 CHECK (reaped IN (0, 1)));

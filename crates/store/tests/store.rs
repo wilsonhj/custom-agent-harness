@@ -628,3 +628,117 @@ fn abort_after_each_statement_then_reopen_is_consistent() {
         );
     }
 }
+
+fn started_effect(store: &Store, process: &harness_store::ProcessRecord) -> EffectId {
+    ok_submit(store, create("c1", "create"));
+    ok_submit(store, approve("c2"));
+    ok_submit(store, run("c3", "run"));
+    let effect = store.pending_effects().unwrap()[0].effect.clone();
+    store
+        .record_workspace(&TaskId::new(TASK), Path::new("/wt"))
+        .unwrap();
+    store
+        .mark_effect(&effect, OutboxState::Starting, None)
+        .unwrap();
+    store
+        .mark_effect(&effect, OutboxState::Started, Some(process))
+        .unwrap();
+    effect
+}
+
+fn process(pid: i32) -> harness_store::ProcessRecord {
+    harness_store::ProcessRecord {
+        pgid: pid,
+        pid,
+        start_us: 7,
+        boot_id: "boot".into(),
+    }
+}
+
+/// Issue #24: the proof that a run's tree is gone is written in the transaction that releases
+/// the worktree lock, survives a restart, and is voided by the next recorded process.
+#[test]
+fn releasing_the_workspace_records_the_last_tree_as_reaped() {
+    let d = TempDir::new("reaped");
+    let task = TaskId::new(TASK);
+    let effect = {
+        let store = open(d.path());
+        let effect = started_effect(&store, &process(100));
+        let ws = store.workspace(&task).unwrap().unwrap();
+        assert_eq!(ws.holder.as_ref(), Some(&effect));
+        assert!(!ws.reaped, "a live holder's tree is not reaped");
+        store.release_workspace(&task).unwrap();
+        effect
+    };
+    let store = open(d.path());
+    let ws = store.workspace(&task).unwrap().unwrap();
+    assert_eq!(ws.holder, None);
+    assert!(ws.reaped, "the reap is durable across a restart");
+    assert_eq!(ws.last_process, Some(process(100)));
+    assert_eq!(
+        store.effect(&effect).unwrap().unwrap().state,
+        OutboxState::Started,
+        "the outcome was not recorded yet"
+    );
+
+    // A new process in the worktree voids the record in the same transaction that locks it.
+    store
+        .mark_effect(&effect, OutboxState::Intended, None)
+        .unwrap();
+    store
+        .mark_effect(&effect, OutboxState::Starting, None)
+        .unwrap();
+    store
+        .mark_effect(&effect, OutboxState::Started, Some(&process(200)))
+        .unwrap();
+    let ws = store.workspace(&task).unwrap().unwrap();
+    assert!(!ws.reaped);
+    assert_eq!(ws.last_process, Some(process(200)));
+    assert_eq!(ws.holder.as_ref(), Some(&effect));
+}
+
+/// A schema-2 database opens under this build: the workspace gains the reap record, unset, so
+/// a legacy started run stays quarantined rather than being adopted.
+#[test]
+fn schema_2_database_is_migrated_with_nothing_reaped() {
+    let d = TempDir::new("migrate");
+    let task = TaskId::new(TASK);
+    {
+        let store = open(d.path());
+        started_effect(&store, &process(100));
+    }
+    {
+        let conn = raw(d.path());
+        conn.execute_batch(
+            "ALTER TABLE workspaces DROP COLUMN reaped;
+             UPDATE workspaces SET holder_effect = NULL;
+             UPDATE schema_meta SET value = '2' WHERE key = 'version';",
+        )
+        .unwrap();
+    }
+    let store = open(d.path());
+    let ws = store.workspace(&task).unwrap().unwrap();
+    assert!(!ws.reaped);
+    assert_eq!(ws.last_process, Some(process(100)));
+    drop(store);
+    assert_eq!(
+        count(
+            d.path(),
+            "SELECT COUNT(*) FROM schema_meta WHERE key = 'version' AND value = '3'"
+        ),
+        1
+    );
+}
+
+#[test]
+fn unknown_schema_version_is_refused() {
+    let d = TempDir::new("version");
+    drop(open(d.path()));
+    raw(d.path())
+        .execute(
+            "UPDATE schema_meta SET value = '9' WHERE key = 'version'",
+            [],
+        )
+        .unwrap();
+    assert!(matches!(Store::open(d.path()), Err(StoreError::Corrupt(_))));
+}

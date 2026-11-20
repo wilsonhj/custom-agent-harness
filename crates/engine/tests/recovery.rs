@@ -7,7 +7,7 @@
 mod common;
 
 use std::os::unix::process::ExitStatusExt as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command as Process, Stdio};
 
 use common::*;
@@ -76,13 +76,30 @@ fn crash_child(cfg: &EngineConfig, task: &TaskId, point: &str) {
 
 /// A created, approved and started task whose engine has been closed again.
 async fn prepared(cfg: &EngineConfig, f: &Fixture, pipeline_toml: &str) -> TaskId {
-    let engine = Engine::open(cfg.clone()).await.unwrap();
+    let engine = reopen_engine(cfg).await;
     start_task(&engine, f, pipeline_toml).await
 }
 
+/// Opens the store through `reopen_store`: another test's child may hold the engine lock
+/// descriptor between its fork and exec (see `common::reopen_store`).
 fn with_store<T>(f: &Fixture, read: impl FnOnce(&Store) -> T) -> T {
-    let store = Store::open(&f.state).unwrap();
+    let store = reopen_store(&f.state);
     read(&store)
+}
+
+/// `Engine::open`, retrying the same fork-to-exec `Locked` window as `reopen_store`.
+async fn reopen_engine(cfg: &EngineConfig) -> Engine {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match Engine::open(cfg.clone()).await {
+            Err(harness_engine::EngineError::Store(harness_store::StoreError::Locked))
+                if std::time::Instant::now() < deadline =>
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            other => return other.unwrap(),
+        }
+    }
 }
 
 fn outbox(f: &Fixture, effect: &EffectId) -> OutboxRow {
@@ -131,7 +148,7 @@ async fn crash_in_starting_reruns_effect_and_nothing_ran_twice() {
     // The shim saw end of file and ran nothing.
     assert!(!worktree(&f, &id).join("ran.txt").exists());
 
-    let engine = Engine::open(cfg).await.unwrap();
+    let engine = reopen_engine(&cfg).await;
     let t = engine
         .run_until_idle(&id, CancellationToken::new())
         .await
@@ -176,7 +193,7 @@ async fn crash_during_agent_run_gives_lost_on_restart_and_reset_worktree() {
     let orphan = pending[0].process.clone().unwrap();
     assert!(pid_alive(orphan.pid), "the agent outlived its engine");
 
-    let engine = Engine::open(cfg).await.unwrap();
+    let engine = reopen_engine(&cfg).await;
     let t = task(&engine, &id);
     assert_eq!(t.state, TaskState::Implementing);
     assert_eq!(
@@ -226,7 +243,7 @@ async fn crash_during_verify_retries_once() {
         .join(verify_effect.as_str());
     assert!(scratch.join("checkout").join("feature.txt").exists());
 
-    let engine = Engine::open(cfg).await.unwrap();
+    let engine = reopen_engine(&cfg).await;
     let t = engine
         .run_until_idle(&id, CancellationToken::new())
         .await
@@ -267,7 +284,7 @@ async fn crash_during_checkpoint_yields_same_commit_sha() {
     assert!(matches!(pending[0].spec, EffectSpec::Checkpoint { .. }));
     assert_eq!(pending[0].state, OutboxState::Started);
 
-    let engine = Engine::open(cfg).await.unwrap();
+    let engine = reopen_engine(&cfg).await;
     let t = engine
         .run_until_idle(&id, CancellationToken::new())
         .await
@@ -311,7 +328,7 @@ async fn lock_is_not_released_while_orphan_is_alive() {
     );
     assert_eq!(row.state, OutboxState::Started);
 
-    let engine = Engine::open(cfg).await.unwrap();
+    let engine = reopen_engine(&cfg).await;
     let alive_after = pid_alive(orphan.pid);
     if alive_after {
         kill_pid(orphan.pid);
@@ -348,7 +365,7 @@ async fn same_boot_legacy_run_remains_quarantined_even_without_a_live_leader() {
         .unwrap();
         effect
     });
-    let engine = Engine::open(cfg).await.unwrap();
+    let engine = reopen_engine(&cfg).await;
     assert!(matches!(
         engine.run_until_idle(&id, CancellationToken::new()).await,
         Err(harness_engine::EngineError::WorkspaceLocked { .. })
@@ -374,7 +391,7 @@ async fn fresh_starting_effect_without_a_process_is_recoverable() {
         s.mark_effect(&effect, OutboxState::Starting, None).unwrap();
         effect
     });
-    let engine = Engine::open(cfg).await.unwrap();
+    let engine = reopen_engine(&cfg).await;
     drop(engine);
     with_store(&f, |s| {
         let row = s.effect(&effect).unwrap().unwrap();
@@ -382,5 +399,236 @@ async fn fresh_starting_effect_without_a_process_is_recoverable() {
         assert_eq!(row.attempt, 0);
         assert!(row.process.is_none());
         assert!(s.workspace(&id).unwrap().is_none());
+    });
+}
+
+/// A same-boot process identity no live process has.
+fn dead_same_boot_process() -> harness_store::ProcessRecord {
+    harness_store::ProcessRecord {
+        pgid: i32::MAX,
+        pid: i32::MAX,
+        start_us: 1,
+        boot_id: harness_exec::supervisor::boot_id(),
+    }
+}
+
+/// What the worker leaves behind when the engine dies after `release` and before
+/// `record_outcome` (issue #24): the effect `started` with its process, the worktree released
+/// with its tree recorded as reaped.
+fn started_then_released(s: &Store, id: &TaskId, effect: &EffectId) {
+    s.mark_effect(effect, OutboxState::Starting, None).unwrap();
+    s.mark_effect(
+        effect,
+        OutboxState::Started,
+        Some(&dead_same_boot_process()),
+    )
+    .unwrap();
+    s.release_workspace(id).unwrap();
+}
+
+/// Records `outcome` for `effect` through the store, as an earlier engine would have.
+fn record_in_store(
+    s: &Store,
+    id: &TaskId,
+    effect: &EffectId,
+    outcome: harness_core::decide::EffectOutcome,
+    pipeline_toml: &str,
+) {
+    use harness_core::decide::{Command, Facts, decide};
+    use harness_core::policy::Pipeline;
+    use harness_core::types::Actor;
+
+    let pipeline = Pipeline::parse_toml(pipeline_toml).unwrap();
+    let ids: Vec<EffectId> = (0..8)
+        .map(|i| EffectId::new(format!("{effect}-next-{i}")))
+        .collect();
+    let cmd = envelope(
+        id,
+        Actor::Effect {
+            effect: effect.clone(),
+        },
+        Command::RecordEffectOutcome {
+            effect: effect.clone(),
+            outcome,
+        },
+    );
+    let receipt = s
+        .submit(cmd, &|t, c| {
+            decide(
+                t,
+                c,
+                &Facts {
+                    pipeline: &pipeline,
+                    review: None,
+                    diff_chunks: None,
+                    new_effect_ids: &ids,
+                },
+            )
+        })
+        .unwrap();
+    assert!(receipt.accepted, "{:?}", receipt.rejection);
+}
+
+/// The implementer run finished (outcome recorded) after writing `feature.txt`; the next
+/// pending effect is its checkpoint.
+fn implementer_finished(s: &Store, id: &TaskId, ws: &Path, pipeline_toml: &str) {
+    use harness_core::artifact::{MediaType, Provenance};
+    use harness_core::decide::EffectOutcome;
+    use harness_core::outcome::RunOutcome;
+
+    std::fs::write(ws.join("feature.txt"), b"the run's work\n").unwrap();
+    let effect = s.pending_effects().unwrap()[0].effect.clone();
+    s.record_workspace(id, ws).unwrap();
+    started_then_released(s, id, &effect);
+    let transcript = s
+        .put_artifact(
+            b"{}\n",
+            MediaType::Jsonl,
+            Provenance::RuntimeClaim,
+            Some(&effect),
+        )
+        .unwrap();
+    record_in_store(
+        s,
+        id,
+        &effect,
+        EffectOutcome::AgentRun {
+            outcome: RunOutcome::Succeeded,
+            transcript,
+            review: None,
+        },
+        pipeline_toml,
+    );
+}
+
+/// Issue #24: the engine died after the run's tree was proven gone and the worktree released,
+/// but before its outcome was recorded. The store holds the reap, so recovery settles the run
+/// as `LostOnRestart` (resetting the worktree) instead of quarantining the task. Driven through
+/// the store, so it needs no containment backend.
+#[tokio::test]
+async fn crash_between_release_and_outcome_recovers_a_runnable_task() {
+    let f = fixture();
+    let cfg = config(&f, "clean", "clean");
+    let id = prepared(&cfg, &f, &default_pipeline()).await;
+    let ws = harness_exec::workspace::create(&f.repo, &id, &f.base, &f.state.join("worktrees"))
+        .await
+        .unwrap();
+    let marker = ws.path.join("feature.txt");
+    std::fs::write(&marker, b"written by the lost run").unwrap();
+    let effect = with_store(&f, |s| {
+        let effect = s.pending_effects().unwrap()[0].effect.clone();
+        s.record_workspace(&id, &ws.path).unwrap();
+        started_then_released(s, &id, &effect);
+        effect
+    });
+
+    let engine = reopen_engine(&cfg).await;
+    let t = engine
+        .run_until_idle(&id, CancellationToken::new())
+        .await
+        .expect("the task is not WorkspaceLocked");
+    assert_eq!(
+        t.run,
+        StageRunState::AwaitingHuman {
+            gate: HumanGate::LostOnRestart
+        }
+    );
+    assert!(events(&engine).iter().any(|e| matches!(
+        e,
+        Event::EffectFinished { effect: e2, .. } if *e2 == effect
+    )));
+    assert!(!marker.exists(), "the worktree was reset to the run's base");
+    assert_eq!(tgit(&ws.path, &["status", "--porcelain"]), "");
+    drop(engine);
+
+    with_store(&f, |s| {
+        assert_eq!(s.effect(&effect).unwrap().unwrap().state, OutboxState::Done);
+        let w = s.workspace(&id).unwrap().unwrap();
+        assert_eq!(w.holder, None);
+        assert!(w.reaped, "still provably quiet for the next run");
+    });
+    // A second restart finds nothing in flight.
+    let engine = reopen_engine(&cfg).await;
+    assert!(
+        engine
+            .run_until_idle(&id, CancellationToken::new())
+            .await
+            .is_ok()
+    );
+}
+
+/// Issue #24, `quiesce`: a run finished, released its worktree and recorded its outcome, and
+/// the engine restarted before the checkpoint ran. The new engine has no in-memory proof, so
+/// the checkpoint must take the store's reap record rather than fail `KillFailed` on a
+/// same-boot identity. Checkpoints spawn nothing, so this needs no containment backend.
+#[tokio::test]
+async fn checkpoint_after_restart_quiesces_on_the_recorded_reap() {
+    let f = fixture();
+    let cfg = config(&f, "clean", "clean");
+    let pipeline_toml = default_pipeline();
+    let id = prepared(&cfg, &f, &pipeline_toml).await;
+    let ws = harness_exec::workspace::create(&f.repo, &id, &f.base, &f.state.join("worktrees"))
+        .await
+        .unwrap();
+    with_store(&f, |s| {
+        implementer_finished(s, &id, &ws.path, &pipeline_toml);
+        let pending = s.pending_effects().unwrap();
+        assert!(matches!(pending[0].spec, EffectSpec::Checkpoint { .. }));
+    });
+
+    let engine = reopen_engine(&cfg).await;
+    let t = engine
+        .run_until_idle(&id, CancellationToken::new())
+        .await
+        .expect("the checkpoint is not KillFailed");
+    assert_eq!(t.checkpoints.len(), 1, "the run's work was committed");
+}
+
+/// Issue #24, verification path (`worker.rs` releases before storing evidence too): a verify
+/// run was reaped and released, then the engine died before its outcome. Recovery takes the
+/// recorded reap and re-runs the verification (attempts remain) instead of quarantining.
+#[tokio::test]
+async fn crash_between_verify_release_and_outcome_retries_the_verification() {
+    use harness_core::decide::EffectOutcome;
+    use harness_core::outcome::RunOutcome;
+
+    let f = fixture();
+    let cfg = config(&f, "clean", "clean");
+    let pipeline_toml = default_pipeline();
+    let id = prepared(&cfg, &f, &pipeline_toml).await;
+    let ws = harness_exec::workspace::create(&f.repo, &id, &f.base, &f.state.join("worktrees"))
+        .await
+        .unwrap();
+    let verify = with_store(&f, |s| {
+        implementer_finished(s, &id, &ws.path, &pipeline_toml);
+        let checkpoint = s.pending_effects().unwrap()[0].effect.clone();
+        s.mark_effect(&checkpoint, OutboxState::Starting, None)
+            .unwrap();
+        s.mark_effect(&checkpoint, OutboxState::Started, None)
+            .unwrap();
+        record_in_store(
+            s,
+            &id,
+            &checkpoint,
+            EffectOutcome::Checkpoint {
+                outcome: RunOutcome::Succeeded,
+                commit: Some(f.base.clone()),
+                diff: None,
+            },
+            &pipeline_toml,
+        );
+        let row = s.pending_effects().unwrap()[0].clone();
+        assert!(matches!(row.spec, EffectSpec::Verify { .. }));
+        assert!(row.max_attempts > 1, "the default pipeline retries once");
+        started_then_released(s, &id, &row.effect);
+        row.effect
+    });
+
+    let engine = reopen_engine(&cfg).await;
+    drop(engine);
+    with_store(&f, |s| {
+        let row = s.effect(&verify).unwrap().unwrap();
+        assert_eq!(row.state, OutboxState::Intended, "re-run, not quarantined");
+        assert_eq!(row.attempt, 1);
     });
 }

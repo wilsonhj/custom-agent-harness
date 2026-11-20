@@ -25,7 +25,20 @@ const PREFIX_RULES: &[(&str, &str)] = &[
     ("github_pat_", "github-token"),
 ];
 
-const JSON_TOKEN_KEYS: &[&str] = &["accessToken", "refreshToken", "id_token"];
+/// JSON keys whose string value is a credential. camelCase as Claude Code stores them;
+/// snake_case as Codex's `auth.json` stores them (openai/codex
+/// `codex-rs/login/src/token_data.rs`, `TokenData`).
+const JSON_TOKEN_KEYS: &[&str] = &[
+    "accessToken",
+    "refreshToken",
+    "access_token",
+    "refresh_token",
+    "id_token",
+];
+
+/// Minimum length of a JWT header and of its payload. Both are base64url JSON objects, so
+/// both start with `eyJ` (`{"`); a real header alone is over 30 characters.
+const MIN_JWT_SEGMENT_CHARS: usize = 10;
 
 /// Every rule hit on every added line of `diff`, in diff order (one hit per rule per line).
 pub fn scan_for_secrets(diff: &str) -> Vec<SecretHit> {
@@ -122,6 +135,25 @@ fn record(hits: &mut Vec<SecretHit>, file: &str, line: u32, text: &str) {
     }) {
         push("json-token");
     }
+    if text
+        .match_indices("eyJ")
+        .any(|(at, _)| jwt_starts_at(bytes, at))
+    {
+        push("jwt");
+    }
+}
+
+/// True if a JWT starts at `at`: `<header>.<payload>`, where the header and the payload each
+/// start with `eyJ` and have at least [`MIN_JWT_SEGMENT_CHARS`] base64url characters. The
+/// signature is not required, so a token with its signature cut off still counts. Not
+/// anchored to a word start, so a character glued in front of the token does not hide it.
+fn jwt_starts_at(bytes: &[u8], at: usize) -> bool {
+    let header = token_run(&bytes[at..], is_token_char);
+    if header < MIN_JWT_SEGMENT_CHARS || bytes.get(at + header) != Some(&b'.') {
+        return false;
+    }
+    let rest = &bytes[at + header + 1..];
+    rest.starts_with(b"eyJ") && token_run(rest, is_token_char) >= MIN_JWT_SEGMENT_CHARS
 }
 
 fn is_token_char(c: u8) -> bool {

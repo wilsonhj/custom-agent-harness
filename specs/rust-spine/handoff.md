@@ -650,3 +650,263 @@ Verification (Rust 1.99.1, Git 2.50.1, macOS): `cargo fmt --check` pass;
 `cargo test -p harness-engine` 29 passed, 0 failed, 18 ignored;
 `cargo test --workspace` 235 passed, 0 failed, 35 ignored (baseline 234 plus the new
 regression test). Node suites not rerun.
+
+## Issue #22: the open question owns which answers are legal (2026-11-15)
+
+- New pure module `crates/core/src/gate.rs` (`OpenQuestion`, `Answer`, `subject`, `check`).
+  `decide` calls `gate::check` before any human decision and before `Run` at a human gate.
+  `Accept` is legal only at `ReviewClean`. `RepairLimitReached` allows reject and send-back.
+  `LimitExhausted` and `LostOnRestart` allow run and reject. An illegal decision returns
+  `Denied::WrongKind`, and an illegal `Run` keeps `WrongState`. No question open returns
+  `WrongState`. The wire format is unchanged: no new event, command or `Denied` variant.
+  `lifecycle::can_transition` is untouched and stays the fail-closed backstop.
+- Behaviour changes beyond #22. `ApproveSpec` with no open question now returns
+  `WrongState` instead of the lifecycle's `NotInTable`. `Accept`, `Reject` and `SendBack`
+  while `Planned` now return `WrongKind` instead of `WrongState`. `SendBack` at
+  `LimitExhausted` or `LostOnRestart` is now denied; previously the lifecycle table allowed
+  it in `Reviewing`.
+- CLI `eng decide`: the subject now comes from `gate::subject`. An illegal answer is refused
+  before the `yes` prompt and names the legal answers. The prompt shows the open question,
+  blocking findings this round, verify status and unfinished effects. The CLI calls the core
+  module directly on the `Task` it already reads. This deviates from grilling Q7, which
+  planned a pass-through engine method that would add no behaviour.
+- Tests: `crates/core/tests/gate.rs` covers the exhaustive question × answer table and
+  subject binding. `crates/core/tests/decide.rs` adds #22 regressions: `Accept` at
+  `LimitExhausted` with a blocking finding open, at `LostOnRestart` in review and at
+  `RepairLimitReached`. These failed before the fix because `Accept` was honoured. It also
+  covers ordering (kind is checked before subject) and `Run` at `ReviewClean`.
+- `GLOSSARY.md` was created with: open question, human gate, subject, answer.
+- Out of scope, unchanged: the Blocked-resume branch (`blocked_from: None`), the `Seq(0)`
+  `HumanDecision` built for the lifecycle check, the engine's `ensure_branch` special case
+  for `Accept`, and `eng cancel`.
+## Codex adapter: retried `error` lines and tested versions (issues #20, #21; 2026-11-15)
+
+Branch `fix/20-21-codex-adapter` (base 737301b). Scope: `crates/adapters/src/codex.rs`, its
+tests and fixtures only.
+
+- #21: an `error` line no longer fails a run. Codex prints one for errors it is about to
+  retry, and the JSONL line drops `will_retry` (openai/codex b016cd1847
+  `exec/src/event_processor_with_jsonl_output.rs:450-460`; the exit code ignores retried
+  errors, `exec/src/lib.rs:1422-1427`).
+  - What decides failure: `turn.failed`, a nonzero exit, or a missing `turn.completed`.
+  - What decides the class (limit or other): the `turn.failed` message, else the last
+    `error` line. Earlier retry lines are never consulted.
+  - New fixtures `retry_then_ok.jsonl` and `limit_retry_then_unrelated_failure.jsonl`, with
+    provenance in `crates/adapters/fixtures/README.md`. All Codex fixtures now use a
+    UUID-format `thread_id`.
+- #20: the exact pin is now `TESTED_VERSIONS = ["0.166.0", "0.169.0"]`.
+  `Capabilities::pinned_version` lists both, so the doctor's `version_mismatch` message
+  names the installed and the accepted versions. A unit test keeps the list and the display
+  string in step. The argv adds `-c check_for_update_on_startup=false`, which is defence in
+  depth only, because `codex exec` does not read it.
+- Flag re-verification on codex-cli 0.169.0, offline and without starting a session:
+  - The probe ran `codex exec --strict-config` with an empty `CODEX_HOME` and a missing
+    `--output-schema` file.
+  - Controls: the unknown keys `definitely_not_a_codex_key` and `skills.not_a_real_subkey`
+    were rejected with "unknown configuration field … in -c/--config override".
+  - `project_doc_max_bytes=0`, `skills.include_instructions=false` and
+    `check_for_update_on_startup=false` passed config loading and reached "Failed to read
+    output schema file" (exit 1, empty stdout).
+  - Not verified on 0.169.0: that these keys actually change the prompt.
+
+Red / green: 6 new tests failed before the fix; 2 more guard behaviour that was already
+correct. Mutants killed:
+- an `error` line fails the run;
+- the last `error` is preferred over the `turn.failed` message;
+- the old "any limit text ever seen" rule;
+- 0.169.0 dropped from the list;
+- the update-check argument dropped.
+
+Verification (Rust 1.99.1, macOS):
+- `cargo fmt --check`: pass.
+- `cargo clippy -p harness-adapters --all-targets -- -D warnings`: pass.
+- `cargo test -p harness-adapters`: 30 passed, 0 failed (unit 1, argv_safety 1, claude 12,
+  codex 16).
+- `cargo clippy --workspace --all-targets -- -D warnings`: pass.
+- `cargo test --workspace`: 244 passed, 0 failed, 35 ignored (baseline 235 plus 9 new).
+- Node suites not rerun.
+
+Unresolved, so not done here:
+- Auth failure (`turn.failed` "401 Unauthorized") is still `ExitNonzero`, because
+  `FailureCode` has no auth variant and adding one changes `crates/core`.
+- `specs/rust-spine/design.md:24` and `docs/superpowers/plans/2026-11-09-rust-spine.md:16`
+  still describe a single exact codex pin. Updating them to a tested-version list is a
+  contract change that needs review.
+- The worker path still records only `VersionMismatch`, with no versions in it, because
+  `RuntimeAdapter::check_version` returns a bare `FailureCode`.
+
+Exact next action: review the commit on `fix/20-21-codex-adapter`, then decide on the auth
+`FailureCode` and the design-doc wording for the version policy.
+## Issue #24: persisted reap record (2026-11-15)
+
+Source: issue #24; R-5 and R-11 (`requirements.md`); design §5.4 restart table.
+
+- Root cause: `worker.rs` releases the worktree lock as soon as it holds `TreeGone`, then
+  stores the transcript or evidence and records the outcome. This applies to both the agent
+  run and verification. If the engine crashes in between, the row stays `started`, and on
+  the same boot `kill_identity` can never issue a proof, so `run_until_idle` returns
+  `WorkspaceLocked` permanently. The holder column plays no part. Even with recovery fixed,
+  the next `quiesce` (checkpoint, or a reset before a run) in a fresh engine called
+  `kill_identity` on the same-boot `last_process` and failed `KillFailed`.
+- Store, schema v3: adds `workspaces.reaped`. `release_workspace` sets it in the same UPDATE
+  that clears the holder. `mark_effect(.., Started, Some(process))` clears it in the same
+  UPDATE that records the new process. `Store::open` migrates a v2 database in place
+  (`ALTER TABLE ... ADD COLUMN reaped ... DEFAULT 0`, version set to 3). Every existing row
+  starts unreaped, so legacy same-boot runs stay quarantined. Any other version is still
+  refused. `WorkspaceRow` gains `reaped`.
+- Exec: new `supervisor::reaped_on_record(recorded, run: &ProcessIdentity) -> Option<TreeGone>`
+  restores the proof the supervisor already issued, from the engine's durable record. It
+  refuses unless the recorded identity and the run's identity match in every field (pgid,
+  leader pid, leader start time, boot id) and the boot id is known. A different boot is
+  refused here; a real reboot is still handled by `kill_identity`.
+  **R-11 boundary change, needs review:** besides the kill sequence, this is now the only
+  way to obtain a `TreeGone`, and it trusts the engine's store as the record of an earlier
+  proof. The engine calls it only through `recovery::recorded_proof`, which also requires
+  `reaped` and no holder. The record exists only when a `TreeGone` was presented at release
+  time, and the next recorded process clears it. Empty scans, missing leaders and a
+  free-looking lock still issue nothing. The surface is this one function; `TreeGone`
+  itself gains no constructor.
+- Engine: `recover_started` and `quiesce` take the recorded proof before falling back to
+  `kill_identity`. With a recorded proof, recovery then follows the existing design §5.4
+  table unchanged: an agent run becomes `Failed{LostOnRestart}` with its worktree reset to
+  the base; verify re-runs if attempts remain; a checkpoint re-runs.
+- Tests:
+  - `crash_between_release_and_outcome_recovers_a_runnable_task` (engine `recovery.rs`)
+    simulates the crash window through the store. It failed before the fix with
+    `WorkspaceLocked` and passes after; it does not depend on `containment_available()`.
+  - `checkpoint_after_restart_quiesces_on_the_recorded_reap` covers `quiesce`. I wrote it
+    after the fix, so it was never seen failing first; a mutant that removes the quiesce
+    branch fails it.
+  - `crash_between_verify_release_and_outcome_retries_the_verification` covers the verify
+    path (`worker.rs` verify also releases before storing evidence): the reaped verify row
+    goes back to `intended` with its attempt counted, instead of being quarantined.
+  - Exec unit test `reaped_record_restores_proof_only_for_the_exact_identity`: one variant
+    per differing field (including boot id), and an unknown boot id.
+  - `recorded_proof` unit tests in `recovery.rs`.
+  - Store tests `releasing_the_workspace_records_the_last_tree_as_reaped`,
+    `schema_2_database_is_migrated_with_nothing_reaped` and
+    `unknown_schema_version_is_refused`.
+  - Mutation testing: removing the set, the clear, the migration, each guard condition, the
+    identity comparison, the boot-id field of that comparison, the unknown-boot check, the
+    recovery branch or the quiesce branch each fails a test.
+  - Test flake (pre-existing race): with the new tests running in parallel, `recovery.rs`
+    intermittently failed `Store(Locked)` on a reopen, in new and old tests alike (for
+    example `fresh_starting_effect_without_a_process_is_recoverable`). A temporary `lsof`
+    probe showed no other process holding `engine.lock` at refusal time, which matches the
+    fork-to-exec window already documented on `common::reopen_store`. `recovery.rs` now opens
+    through `reopen_store` and a matching `reopen_engine` (2 s retry on `Locked`). Before the
+    change, 6 parallel runs gave 4 failures; with `--test-threads=1`, 6 of 6 passed; after the
+    change, 15 of 15 parallel runs passed.
+- Not done (follow-up): issue #24 item 2. The transcript is still held only in memory
+  (`sink.stdout`) until the child exits. A crash mid-run, or in the window above, loses it,
+  and recovery records a synthetic `lost_on_restart` note even when artifacts were already
+  indexed for the effect. Next step: spool stdout per effect to `<task dir>/spool/<effect>`,
+  fsync on a cadence, and ingest the spool as a `RuntimeClaim` in `recover_started` before
+  writing the note.
+
+Verification (Rust 1.99.1, macOS): `cargo fmt --check` pass;
+`cargo clippy --workspace --all-targets -- -D warnings` pass;
+`cargo test -p harness-store` 15 passed, 0 failed (baseline 12);
+`cargo test -p harness-engine` 34 passed, 0 failed, 18 ignored (baseline 29/18);
+`cargo test -p harness-exec --lib` 6 passed. The full workspace and Node suites were not
+rerun.
+
+Exact next action: external review of the `reaped_on_record` trust-boundary decision above,
+then issue #24 item 2 (transcript spool).
+## Issue 23: Codex login exposure and token scan (2026-11-15)
+
+Source for the Codex facts below: openai/codex at `b016cd1847` (`codex-rs/config/src/types.rs`
+`AuthCredentialsStoreMode`, default `File` = `CODEX_HOME/auth.json`;
+`codex-rs/login/src/token_data.rs` `TokenData`; `codex-rs/login/src/auth/manager.rs:241`
+refresh endpoint).
+
+- Exec (`secretscan.rs`): `JSON_TOKEN_KEYS` adds Codex's snake_case `access_token` and
+  `refresh_token`; a new `jwt` rule flags `eyJ<10+>.eyJ<10+>` (signature optional, not
+  anchored to a word start, so a glued prefix does not hide it). Tests in
+  `crates/exec/tests/workspace.rs`: a sanitized Codex `auth.json`, a bare and a prefixed
+  JWT, and a negative case for ordinary text containing `eyJ`. Each new condition was
+  mutation-checked (dropping it fails a test).
+- Engine (`worker.rs`): `launch_for` no longer puts `<state>/runtimes/codex` in the Codex
+  read set (Claude keeps `<state>/runtimes/claude`). Each Codex agent run gets
+  `CODEX_HOME=<role task home>/requests/<effect>/codex-home` (`run_codex_home`): mode 0700,
+  holding only a 0600 copy of the shared `auth.json`; a stale home or planted symlink at that
+  path is removed first without following it; a drop guard deletes the home when the run
+  function returns. The home is writable, so Codex can also write `sessions/` there.
+  `copy_login` refuses a symlinked or non-regular `auth.json` source (`O_NOFOLLOW |
+  O_NONBLOCK`, then `is_file`; a FIFO cannot block the open) and an existing destination
+  (`O_CREAT | O_EXCL`, which already refuses a symlink, dangling included; `O_NOFOLLOW` there
+  is a second layer, so dropping it alone fails no test). Any error after the home exists
+  drops the guard and removes it; in the agent-run function the guard is a local, so every
+  early return after it (plan, proxy, wrap, spawn failures) removes the home too.
+  Tests: `worker::tests::codex_home::*` (8). Mutation-checked: no-op drop, 0644 copy, reused
+  stale home, following a source symlink, no `is_file` check, and leaking the guard on a copy
+  error each fail a test. No copy-back of refreshed tokens (parent session decision).
+
+Trade-offs and limits (decisions for the parent session):
+
+- **The run still sees its own token.** Codex reads its login in-process, and with
+  `-s danger-full-access` its shell is in the same sandbox, so no per-run layout can hide
+  this run's token from this run. What changed: one run no longer reads the login directory
+  shared by every task and both roles, and the copy is gone after the run. Removing the token
+  from the sandbox needs a credential broker in the egress proxy (not built here).
+  **Follow-up:** credential broker in `egress.rs`: the proxy holds the login and attaches it
+  to requests to the allowed hosts, so no token enters the sandbox. Until then, a run can
+  read and misuse its own copy for the length of the run.
+  `CODEX_ACCESS_TOKEN` exists in Codex but is used for agent-identity auth (exec-server,
+  app-server); it is not verified for `codex exec` with a ChatGPT login, and an environment
+  variable would be just as readable.
+- **In-run token refresh is discarded.** Today refresh cannot happen anyway:
+  `auth.openai.com` is not in the Codex egress allowlist (`adapters/src/codex.rs`). If it is
+  added, a refresh rotates the refresh token inside the per-run copy and the shared
+  `auth.json` goes stale (OpenAI may invalidate the old refresh token on rotation), so later
+  runs fail to authenticate until `eng login codex` is rerun. Copy-back is deliberately not
+  implemented: copying from an agent-writable home would let a run plant a different login.
+  The broker above removes the problem (the proxy refreshes, outside the sandbox).
+- **Crash leftovers:** a killed `eng` leaves `codex-home` behind in the role's task home until
+  the next run of that effect path or task cleanup. Only the same role of the same task can
+  read it.
+- **Not exercised end to end:** `containment_available()` is still `false`, so no agent run
+  reaches the new wiring; the helper and `launch_for` are unit-tested only.
+- Claude's shared `CLAUDE_CONFIG_DIR` read is unchanged and has the same cross-task
+  exposure; out of scope for #23.
+
+Verification (Rust 1.99.1, macOS): `cargo fmt --check` pass;
+`cargo clippy --workspace --all-targets -- -D warnings` pass;
+`cargo test -p harness-exec -p harness-engine`: 117 passed, 0 failed, 35 ignored
+(harness-engine 37 = baseline 29 + 8; harness-exec `--test workspace` 41 = baseline 38 + 3).
+Node suites not rerun.
+
+Exact next action: parent session reviews branch `fix/23-codex-auth` (three commits on
+`737301b`), files the credential-broker and Claude follow-ups, then
+merges alongside #24 (which edits `worker.rs` around the run tail; this diff stays clear of
+it).
+
+## Integration: issues #20-#24 on `fix/verified-issues-20-24` (2026-11-15)
+
+This branch stacks the fixes for #22 (core gate), #20/#21 (Codex adapter), #24 (reap record)
+and #23 (secretscan, per-run Codex home) on PR 18 head `737301b`.
+
+Validation (Rust 1.99.1, macOS):
+- `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass.
+- `cargo test --workspace` was run three times in a row: 275 passed, 0 failed, 35 ignored
+  each time. Baseline was 235/0/35.
+- `node scripts/check-deps.mjs` is ok.
+- `ENG_BIN=target/debug/eng node --test conformance/cases/*.test.mjs` gives 9 pass, 0 fail
+  and 5 skipped under R-11.
+- `npm test` gives 44 pass and 44 fail, identical to untouched `737301b` on this machine
+  (Node 22.23.2; `package.json` requires 24). This is not a regression from this branch.
+- `harness-engine --test recovery` flaked with `StoreError::Locked` under parallel load. It
+  reproduces on untouched `737301b` (2 of 8 runs under CPU load). The cause is a sibling
+  test's fork briefly holding `engine.lock`. #24's commits move that file onto
+  `common::reopen_store`/`reopen_engine` (retry).
+
+Decisions for review:
+1. R-11: `supervisor::reaped_on_record` restores a `TreeGone` from the store's reap record,
+   bound to the exact process identity (#24).
+2. Per-run Codex home: the run still sees its own token, and an in-run refresh is dropped
+   (#23). The credential broker is the follow-up.
+3. `design.md:24` and the plan still describe one exact Codex pin; the code now uses a
+   tested-version list (#20).
+
+Exact next action: a human reviews the three decisions above on the PR. Containment stays
+disabled, and no phase or release approval is implied.

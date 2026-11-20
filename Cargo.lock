@@ -397,6 +397,7 @@ dependencies = [
  "harness-engine",
  "harness-exec",
  "harness-store",
+ "libc",
  "serde",
  "serde_json",
  "thiserror",

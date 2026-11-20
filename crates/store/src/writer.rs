@@ -677,7 +677,7 @@ pub(crate) fn mark_effect(
         }
         tx.execute(
             "UPDATE workspaces SET holder_effect = ?2, pgid = ?3, leader_pid = ?4,
-                                   leader_start_us = ?5, boot_id = ?6
+                                   leader_start_us = ?5, boot_id = ?6, reaped = 0
              WHERE task_id = ?1",
             params![task, id.as_str(), p.pgid, p.pid, p.start_us, p.boot_id],
         )?;
@@ -709,10 +709,11 @@ pub(crate) fn workspace(
         Option<i32>,
         Option<i64>,
         Option<String>,
+        bool,
     );
     let raw: Option<Raw> = conn
         .query_row(
-            "SELECT path, holder_effect, pgid, leader_pid, leader_start_us, boot_id
+            "SELECT path, holder_effect, pgid, leader_pid, leader_start_us, boot_id, reaped
              FROM workspaces WHERE task_id = ?1",
             [task.as_str()],
             |r| {
@@ -723,32 +724,36 @@ pub(crate) fn workspace(
                     r.get(3)?,
                     r.get(4)?,
                     r.get(5)?,
+                    r.get(6)?,
                 ))
             },
         )
         .optional()?;
-    Ok(raw.map(|(path, holder, pgid, pid, start_us, boot_id)| {
-        let last_process = match (pgid, pid, start_us, boot_id) {
-            (Some(pgid), Some(pid), Some(start_us), Some(boot_id)) => Some(ProcessRecord {
-                pgid,
-                pid,
-                start_us,
-                boot_id,
-            }),
-            _ => None,
-        };
-        WorkspaceRow {
-            task: task.clone(),
-            path: PathBuf::from(path),
-            holder: holder.map(EffectId::new),
-            last_process,
-        }
-    }))
+    Ok(
+        raw.map(|(path, holder, pgid, pid, start_us, boot_id, reaped)| {
+            let last_process = match (pgid, pid, start_us, boot_id) {
+                (Some(pgid), Some(pid), Some(start_us), Some(boot_id)) => Some(ProcessRecord {
+                    pgid,
+                    pid,
+                    start_us,
+                    boot_id,
+                }),
+                _ => None,
+            };
+            WorkspaceRow {
+                task: task.clone(),
+                path: PathBuf::from(path),
+                holder: holder.map(EffectId::new),
+                last_process,
+                reaped,
+            }
+        }),
+    )
 }
 
 pub(crate) fn release_workspace(conn: &mut Connection, task: &TaskId) -> Result<(), StoreError> {
     conn.execute(
-        "UPDATE workspaces SET holder_effect = NULL WHERE task_id = ?1",
+        "UPDATE workspaces SET holder_effect = NULL, reaped = 1 WHERE task_id = ?1",
         [task.as_str()],
     )?;
     Ok(())

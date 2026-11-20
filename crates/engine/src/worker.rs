@@ -98,6 +98,8 @@ pub(crate) fn launch_for(cfg: &EngineConfig, kind: RuntimeKind) -> Result<Launch
             if let Some(dir) = bin.parent() {
                 read_dirs.push(dir.to_path_buf());
             }
+            // The shared login directory (`CLAUDE_CONFIG_DIR`).
+            read_dirs.push(cfg.state_dir.join("runtimes").join(runtime_name(kind)));
             vec![utf8(&bin)?]
         }
         RuntimeKind::Codex => {
@@ -110,13 +112,14 @@ pub(crate) fn launch_for(cfg: &EngineConfig, kind: RuntimeKind) -> Result<Launch
                 dir
             };
             read_dirs.push(package.to_path_buf());
+            // Not the shared login directory: each run gets its own `CODEX_HOME` inside its
+            // task home (`run_codex_home`, issue #23).
             match cfg.node_bin.as_ref().filter(|_| cfg.codex_uses_node) {
                 Some(node) => vec![utf8(&canonical(node)?)?, utf8(&entry)?],
                 None => vec![utf8(&entry)?],
             }
         }
     };
-    read_dirs.push(cfg.state_dir.join("runtimes").join(runtime_name(kind)));
     Ok(Launch { prefix, read_dirs })
 }
 
@@ -158,6 +161,74 @@ fn private_dir(p: &Path) -> Result<(), EngineError> {
     fs::create_dir_all(p)?;
     fs::set_permissions(p, fs::Permissions::from_mode(0o700))?;
     Ok(())
+}
+
+/// The `CODEX_HOME` of one Codex run (issue #23), removed when dropped.
+pub(crate) struct RunCodexHome(PathBuf);
+
+impl RunCodexHome {
+    pub(crate) fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for RunCodexHome {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Creates `<request>/codex-home` (mode 0700) holding only a copy of `<shared>/auth.json`
+/// (mode 0600), if the shared login directory has one. Codex reads its login from
+/// `CODEX_HOME/auth.json` (openai/codex `AuthCredentialsStoreMode::File`, the default), so the
+/// run still sees its own copy; what it no longer sees is the shared directory every task and
+/// role uses. Whatever is at the path already (a stale home, a planted symlink) is removed
+/// first, without following a symlink, and [`copy_login`] refuses a symlinked source or
+/// destination. Any error after the home exists removes it again.
+pub(crate) fn run_codex_home(shared: &Path, request: &Path) -> Result<RunCodexHome, EngineError> {
+    use std::os::unix::fs::DirBuilderExt as _;
+    let home = request.join("codex-home");
+    match fs::symlink_metadata(&home) {
+        Ok(meta) if meta.is_dir() => fs::remove_dir_all(&home)?,
+        Ok(_) => fs::remove_file(&home)?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    fs::DirBuilder::new().mode(0o700).create(&home)?;
+    // From here on, an error return drops the guard, which removes the home.
+    let guard = RunCodexHome(home);
+    match copy_login(&shared.join("auth.json"), &guard.path().join("auth.json")) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    Ok(guard)
+}
+
+/// Copies the login file `src` to a new file `dst` (mode 0600). Neither may be a symlink:
+/// `src` is opened with `O_NOFOLLOW` and must be a regular file (`O_NONBLOCK` so a FIFO
+/// planted there cannot block the open), and `dst` is created with
+/// `O_CREAT | O_EXCL | O_NOFOLLOW`, which fails on any existing entry, dangling links
+/// included. A missing `src` is `NotFound`.
+fn copy_login(src: &Path, dst: &Path) -> std::io::Result<()> {
+    use std::io::{Read as _, Write as _};
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let mut from = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(src)?;
+    if !from.metadata()?.is_file() {
+        return Err(std::io::Error::other("login is not a regular file"));
+    }
+    let mut login = Vec::new();
+    from.read_to_end(&mut login)?;
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .mode(0o600)
+        .open(dst)?
+        .write_all(&login)
 }
 
 /// The effect id as one path component, or `Corrupt`.
@@ -521,13 +592,20 @@ impl Engine {
     }
 
     /// Proof that no process runs in the task's worktree: the one kept from the last run, or,
-    /// after a restart, the kill sequence against the last recorded process tree. `None` if no
-    /// process ever ran there.
+    /// after a restart, the reap the store recorded for the last process tree, else the kill
+    /// sequence against it. `None` if no process ever ran there.
     pub(crate) async fn quiesce(&self, task: &TaskId) -> Result<Option<TreeGone>, EngineError> {
         if let Some(proof) = self.take_proof(task) {
             return Ok(Some(proof));
         }
-        let last = self.store.workspace(task)?.and_then(|w| w.last_process);
+        let ws = self.store.workspace(task)?;
+        let last = ws.as_ref().and_then(|w| w.last_process.clone());
+        if let Some(proof) = last
+            .as_ref()
+            .and_then(|p| crate::recovery::recorded_proof(ws.as_ref(), p))
+        {
+            return Ok(Some(proof));
+        }
         match last {
             Some(p) => match kill_identity(&to_identity(&p)).await {
                 Ok(proof) => Ok(Some(proof)),
@@ -861,13 +939,14 @@ impl Engine {
         let ws = self.workspace(task).await?;
         let task_home = self.role_home(&task.id, *role)?;
         let adapter = adapter_for(*runtime);
-        // The harness-owned login directory of this runtime (readable, see `launch_for`).
-        let config_dir = self
+        // The harness-owned login directory of this runtime. Claude reads it directly; Codex
+        // gets a per-run copy of the login below (issue #23, see `launch_for`).
+        let shared_config_dir = self
             .cfg
             .state_dir
             .join("runtimes")
             .join(runtime_name(*runtime));
-        private_dir(&config_dir)?;
+        private_dir(&shared_config_dir)?;
 
         let launch = match self.launch_for(*runtime) {
             Ok(l) => l,
@@ -894,6 +973,14 @@ impl Engine {
         // Inputs the run reads: the harness MCP config and, for a reviewer, the schema.
         let request = task_home.join("requests").join(effect.as_str());
         private_dir(&request)?;
+        // Removed when this function returns, on every path after this point.
+        let codex_home = match runtime {
+            RuntimeKind::Codex => Some(run_codex_home(&shared_config_dir, &request)?),
+            RuntimeKind::Claude => None,
+        };
+        let config_dir = codex_home
+            .as_ref()
+            .map_or_else(|| shared_config_dir.clone(), |h| h.path().to_path_buf());
         let mcp_config = request.join("mcp.json");
         fs::write(&mcp_config, b"{\"mcpServers\":{}}\n")?;
         let review_schema = if *role == Role::Reviewer {
@@ -1386,5 +1473,227 @@ mod tests {
             ]
         );
         assert!(egress_jsonl(&[]).is_empty());
+    }
+
+    mod codex_home {
+        #![allow(clippy::unwrap_used)]
+        use super::*;
+        use std::os::unix::fs::symlink;
+
+        /// A fresh, canonical temp directory, removed on drop.
+        struct Tmp(PathBuf);
+        impl Tmp {
+            fn new() -> Tmp {
+                let p = std::env::temp_dir().join(format!("eng-codex-home-{}", new_id()));
+                fs::create_dir_all(&p).unwrap();
+                Tmp(fs::canonicalize(&p).unwrap())
+            }
+        }
+        impl Drop for Tmp {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+
+        fn mode(p: &Path) -> u32 {
+            fs::symlink_metadata(p).unwrap().permissions().mode() & 0o777
+        }
+
+        /// The shared login directory `eng login codex` fills: the login plus files a run
+        /// must not inherit.
+        fn shared_home(root: &Path) -> PathBuf {
+            let shared = root.join("state/runtimes/codex");
+            fs::create_dir_all(shared.join("sessions")).unwrap();
+            fs::write(shared.join("auth.json"), b"{\"tokens\":{}}\n").unwrap();
+            fs::write(shared.join("config.toml"), b"model = \"x\"\n").unwrap();
+            fs::write(shared.join("sessions/old.jsonl"), b"{}\n").unwrap();
+            shared
+        }
+
+        #[test]
+        fn codex_launch_does_not_read_the_shared_login_directory() {
+            let t = Tmp::new();
+            let pkg = t.0.join("pkg/bin");
+            fs::create_dir_all(&pkg).unwrap();
+            fs::write(pkg.join("codex.js"), b"").unwrap();
+            fs::write(t.0.join("claude"), b"").unwrap();
+            let state = t.0.join("state");
+            let cfg = EngineConfig {
+                state_dir: state.clone(),
+                claude_bin: t.0.join("claude"),
+                codex_bin: pkg.join("codex.js"),
+                node_bin: None,
+                codex_uses_node: false,
+                shim_bin: t.0.join("eng-shim"),
+                extra_read_dirs: vec![],
+            };
+            let codex = launch_for(&cfg, RuntimeKind::Codex).unwrap();
+            assert!(
+                !codex
+                    .read_dirs
+                    .iter()
+                    .any(|d| d.starts_with(state.join("runtimes"))),
+                "{:?}",
+                codex.read_dirs
+            );
+            assert!(codex.read_dirs.contains(&t.0.join("pkg")));
+            // Claude is unchanged: it still reads its own login directory.
+            let claude = launch_for(&cfg, RuntimeKind::Claude).unwrap();
+            assert!(
+                claude
+                    .read_dirs
+                    .contains(&state.join("runtimes").join("claude"))
+            );
+        }
+
+        #[test]
+        fn run_home_holds_only_a_private_copy_of_the_login_and_goes_away_on_drop() {
+            let t = Tmp::new();
+            let shared = shared_home(&t.0);
+            let request = t.0.join("home/requests/e1");
+            fs::create_dir_all(&request).unwrap();
+
+            let home = run_codex_home(&shared, &request).unwrap();
+            let path = home.path().to_path_buf();
+            assert_eq!(path, request.join("codex-home"));
+            assert_eq!(mode(&path), 0o700);
+            let mut names: Vec<_> = fs::read_dir(&path)
+                .unwrap()
+                .map(|e| e.unwrap().file_name())
+                .collect();
+            names.sort();
+            assert_eq!(names, ["auth.json"]);
+            assert_eq!(mode(&path.join("auth.json")), 0o600);
+            assert_eq!(
+                fs::read(path.join("auth.json")).unwrap(),
+                fs::read(shared.join("auth.json")).unwrap()
+            );
+
+            // The run may write its home; the shared login is a separate file.
+            fs::write(path.join("auth.json"), b"changed").unwrap();
+            assert_eq!(
+                fs::read(shared.join("auth.json")).unwrap(),
+                b"{\"tokens\":{}}\n"
+            );
+
+            drop(home);
+            assert!(fs::symlink_metadata(&path).is_err(), "run home not removed");
+            assert!(shared.join("auth.json").is_file());
+        }
+
+        #[test]
+        fn run_home_replaces_a_planted_symlink_or_stale_directory() {
+            let t = Tmp::new();
+            let shared = shared_home(&t.0);
+            let request = t.0.join("home/requests/e2");
+            fs::create_dir_all(&request).unwrap();
+
+            // A symlink planted where the run home goes must not redirect the copy.
+            let elsewhere = t.0.join("elsewhere");
+            fs::create_dir_all(&elsewhere).unwrap();
+            symlink(&elsewhere, request.join("codex-home")).unwrap();
+            let home = run_codex_home(&shared, &request).unwrap();
+            assert!(!elsewhere.join("auth.json").exists());
+            assert!(fs::symlink_metadata(home.path()).unwrap().is_dir());
+            drop(home);
+            assert!(
+                elsewhere.is_dir(),
+                "the symlink target itself is not removed"
+            );
+
+            // A stale run home (a crashed run) is replaced, not reused.
+            let stale = request.join("codex-home");
+            fs::create_dir_all(stale.join("sessions")).unwrap();
+            fs::write(stale.join("auth.json"), b"stale").unwrap();
+            let home = run_codex_home(&shared, &request).unwrap();
+            assert!(!home.path().join("sessions").exists());
+            assert_eq!(
+                fs::read(home.path().join("auth.json")).unwrap(),
+                b"{\"tokens\":{}}\n"
+            );
+        }
+
+        #[test]
+        fn run_home_refuses_a_symlinked_login_and_is_removed() {
+            let t = Tmp::new();
+            let shared = t.0.join("state/runtimes/codex");
+            fs::create_dir_all(&shared).unwrap();
+            let secret = t.0.join("elsewhere.json");
+            fs::write(&secret, b"not the login").unwrap();
+            symlink(&secret, shared.join("auth.json")).unwrap();
+            let request = t.0.join("home/requests/e4");
+            fs::create_dir_all(&request).unwrap();
+            assert!(run_codex_home(&shared, &request).is_err());
+            assert!(
+                fs::symlink_metadata(request.join("codex-home")).is_err(),
+                "a failed copy must not leave the run home behind"
+            );
+        }
+
+        #[test]
+        fn run_home_refuses_a_login_that_is_not_a_regular_file() {
+            let t = Tmp::new();
+            let shared = t.0.join("state/runtimes/codex");
+            fs::create_dir_all(shared.join("auth.json")).unwrap();
+            let request = t.0.join("home/requests/e5");
+            fs::create_dir_all(&request).unwrap();
+            assert!(run_codex_home(&shared, &request).is_err());
+            assert!(fs::symlink_metadata(request.join("codex-home")).is_err());
+
+            // A FIFO with no writer: refused at once, neither blocking nor copied as empty.
+            let fifo_shared = t.0.join("state/runtimes/codex-fifo");
+            fs::create_dir_all(&fifo_shared).unwrap();
+            let fifo = std::ffi::CString::new(
+                fifo_shared.join("auth.json").as_os_str().as_encoded_bytes(),
+            )
+            .unwrap();
+            // SAFETY: `fifo` is a valid NUL-terminated path.
+            assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+            assert!(run_codex_home(&fifo_shared, &request).is_err());
+            assert!(fs::symlink_metadata(request.join("codex-home")).is_err());
+        }
+
+        #[test]
+        fn run_home_is_removed_when_the_copy_fails_partway() {
+            let t = Tmp::new();
+            let shared = shared_home(&t.0);
+            let login = shared.join("auth.json");
+            fs::set_permissions(&login, fs::Permissions::from_mode(0o000)).unwrap();
+            let request = t.0.join("home/requests/e6");
+            fs::create_dir_all(&request).unwrap();
+            let r = run_codex_home(&shared, &request);
+            fs::set_permissions(&login, fs::Permissions::from_mode(0o600)).unwrap();
+            assert!(r.is_err());
+            assert!(fs::symlink_metadata(request.join("codex-home")).is_err());
+        }
+
+        #[test]
+        fn login_copy_refuses_a_symlinked_destination() {
+            let t = Tmp::new();
+            let src = t.0.join("auth.json");
+            fs::write(&src, b"{\"tokens\":{}}\n").unwrap();
+            let target = t.0.join("target.json");
+            fs::write(&target, b"untouched").unwrap();
+            let dst = t.0.join("dst.json");
+            symlink(&target, &dst).unwrap();
+            assert!(copy_login(&src, &dst).is_err());
+            assert_eq!(fs::read(&target).unwrap(), b"untouched");
+            // A dangling symlink is refused too: it must not create its target.
+            let dangling = t.0.join("dangling.json");
+            symlink(t.0.join("missing.json"), &dangling).unwrap();
+            assert!(copy_login(&src, &dangling).is_err());
+            assert!(!t.0.join("missing.json").exists());
+        }
+
+        #[test]
+        fn run_home_without_a_login_is_empty() {
+            let t = Tmp::new();
+            let shared = t.0.join("state/runtimes/codex");
+            fs::create_dir_all(&shared).unwrap();
+            let request = t.0.join("home/requests/e3");
+            fs::create_dir_all(&request).unwrap();
+            let home = run_codex_home(&shared, &request).unwrap();
+            assert_eq!(fs::read_dir(home.path()).unwrap().count(), 0);
+        }
     }
 }

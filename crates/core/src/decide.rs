@@ -19,6 +19,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::finding::{Finding, Review};
+use crate::gate::Answer;
 use crate::ids::{ArtifactId, CommitSha, EffectId, IdempotencyKey, Seq, Timestamp};
 use crate::lifecycle::{
     DecisionKind, Denied, HumanDecision, Subject, TaskState, TransitionContext, can_transition,
@@ -490,17 +491,6 @@ fn head(task: &Task) -> CommitSha {
         .map_or_else(|| task.base_commit.clone(), |c| c.commit.clone())
 }
 
-fn awaiting(task: &Task) -> Result<HumanGate, Rejection> {
-    match &task.run {
-        StageRunState::AwaitingHuman { gate } => Ok(*gate),
-        StageRunState::Pending
-        | StageRunState::EffectsInFlight { .. }
-        | StageRunState::Succeeded
-        | StageRunState::Failed { .. }
-        | StageRunState::Cancelled => Err(Rejection::WrongState),
-    }
-}
-
 fn implementer_run(task: &Task, facts: &Facts, out: &mut Out, inputs: Vec<ArtifactId>) {
     let effect = out.id();
     out.intend(EffectSpec::AgentRun {
@@ -632,6 +622,8 @@ fn human_decision(
     };
     // Only for the gate check below; the store builds the durable `HumanDecision`, with the
     // event's real sequence number, when it reads the recorded event back.
+    // The open question decides which answers are legal and what they are bound to.
+    crate::gate::check(task, Answer::Decide(kind), Some(subject))?;
     let decision = HumanDecision::from_event(kind, subject.clone(), principal, Seq(0));
     let ctx = ctx(task);
     let mut out = Out::new(task.state, facts.new_effect_ids);
@@ -639,29 +631,11 @@ fn human_decision(
         kind,
         subject: subject.clone(),
     });
-    // The subject of the open gate: the candidate commit, or the packet before any checkpoint.
-    let gate_subject = match &ctx.candidate {
-        Some(c) => Subject::Commit(c.clone()),
-        None => Subject::PacketDigest(task.packet.clone()),
-    };
     match kind {
         DecisionKind::ApproveSpec => out.to(TaskState::Approved, Some(&decision), &ctx)?,
-        DecisionKind::Accept => {
-            awaiting(task)?;
-            out.to(TaskState::Verified, Some(&decision), &ctx)?;
-        }
-        DecisionKind::Reject => {
-            awaiting(task)?;
-            if *subject != gate_subject {
-                return Err(Rejection::Denied(Denied::WrongSubject));
-            }
-            out.to(TaskState::Failed, None, &ctx)?;
-        }
+        DecisionKind::Accept => out.to(TaskState::Verified, Some(&decision), &ctx)?,
+        DecisionKind::Reject => out.to(TaskState::Failed, None, &ctx)?,
         DecisionKind::SendBack => {
-            awaiting(task)?;
-            if *subject != gate_subject {
-                return Err(Rejection::Denied(Denied::WrongSubject));
-            }
             out.to(TaskState::Repair, None, &ctx)?;
             repair_round(task, facts, &mut out, &task.progress.evidence)?;
         }
@@ -676,20 +650,16 @@ fn run(task: &Task, facts: &Facts) -> Result<Decision, Rejection> {
             out.to(TaskState::Implementing, None, &ctx(task))?;
             implementer_run(task, facts, &mut out, vec![task.packet.clone()]);
         }
-        StageRunState::AwaitingHuman { gate } => match gate {
-            HumanGate::LimitExhausted | HumanGate::LostOnRestart => {
-                if task.progress.retry.is_empty() {
-                    return Err(Rejection::WrongState);
-                }
-                for spec in &task.progress.retry {
-                    let id = out.id();
-                    out.intend(spec.with_effect(id));
-                }
-            }
-            HumanGate::ReviewClean | HumanGate::RepairLimitReached => {
+        StageRunState::AwaitingHuman { .. } => {
+            crate::gate::check(task, Answer::Run, None)?;
+            if task.progress.retry.is_empty() {
                 return Err(Rejection::WrongState);
             }
-        },
+            for spec in &task.progress.retry {
+                let id = out.id();
+                out.intend(spec.with_effect(id));
+            }
+        }
         StageRunState::EffectsInFlight { .. }
         | StageRunState::Succeeded
         | StageRunState::Failed { .. }

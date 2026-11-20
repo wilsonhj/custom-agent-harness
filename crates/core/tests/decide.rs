@@ -1395,3 +1395,105 @@ fn deleted_and_spaced_paths_are_named() {
     );
     assert_eq!(chunks[0].changed_lines, 1);
 }
+
+// ---- #22: the open question decides which answers are legal ----
+
+/// Reaches `Reviewing` with two reviewer runs in flight for candidate `sha(2)`; the first
+/// finishes with a blocking finding, the second ends with `second`.
+fn review_batch_ends_with(second: RunOutcome) -> Sim {
+    let mut sim = Sim::new();
+    sim.approved();
+    ok(sim.run());
+    sim.implemented();
+    sim.checkpointed(&sha(2));
+    sim.verified(&[true, true], 2);
+    let specs = sim.in_flight();
+    assert_eq!(specs.len(), 2);
+    let r = review(true, &sha(2));
+    ok(sim.outcome(
+        specs[0].effect(),
+        EffectOutcome::AgentRun {
+            outcome: RunOutcome::Succeeded,
+            transcript: art("t"),
+            review: Some(art("review-0")),
+        },
+        Some(&r),
+        None,
+    ));
+    ok(sim.outcome(
+        specs[1].effect(),
+        EffectOutcome::AgentRun {
+            outcome: second,
+            transcript: art("t"),
+            review: None,
+        },
+        None,
+        None,
+    ));
+    assert_eq!(sim.task().state, TaskState::Reviewing);
+    sim
+}
+
+fn at_repair_limit() -> Sim {
+    let mut sim = Sim::new();
+    sim.approved();
+    ok(sim.run());
+    sim.round(2, true, true);
+    sim.round(3, true, true);
+    sim.round(4, true, true);
+    assert_eq!(gate(sim.task()), Some(HumanGate::RepairLimitReached));
+    sim
+}
+
+#[test]
+fn accept_at_limit_exhausted_with_a_blocking_finding_is_wrong_kind() {
+    let mut sim = review_batch_ends_with(RunOutcome::LimitExhausted { reset_at: None });
+    assert_eq!(gate(sim.task()), Some(HumanGate::LimitExhausted));
+    let r = sim.decide_as_human(DecisionKind::Accept, Subject::Commit(sha(2)));
+    assert_eq!(r.err(), Some(Rejection::Denied(Denied::WrongKind)));
+    assert_eq!(sim.task().state, TaskState::Reviewing);
+    let r = sim.decide_as_human(DecisionKind::SendBack, Subject::Commit(sha(2)));
+    assert_eq!(r.err(), Some(Rejection::Denied(Denied::WrongKind)));
+    // The legal answers still work: `Run` retries the unreviewed chunk.
+    assert_eq!(ok(sim.run()).effects.len(), 1);
+}
+
+#[test]
+fn accept_at_lost_on_restart_in_review_is_wrong_kind() {
+    let mut sim = review_batch_ends_with(RunOutcome::Failed {
+        code: FailureCode::LostOnRestart,
+    });
+    assert_eq!(gate(sim.task()), Some(HumanGate::LostOnRestart));
+    let r = sim.decide_as_human(DecisionKind::Accept, Subject::Commit(sha(2)));
+    assert_eq!(r.err(), Some(Rejection::Denied(Denied::WrongKind)));
+    let r = sim.decide_as_human(DecisionKind::SendBack, Subject::Commit(sha(2)));
+    assert_eq!(r.err(), Some(Rejection::Denied(Denied::WrongKind)));
+    ok(sim.decide_as_human(DecisionKind::Reject, Subject::Commit(sha(2))));
+    assert_eq!(sim.task().state, TaskState::Failed);
+}
+
+#[test]
+fn accept_at_repair_limit_is_wrong_kind() {
+    let mut sim = at_repair_limit();
+    let r = sim.decide_as_human(DecisionKind::Accept, Subject::Commit(sha(4)));
+    assert_eq!(r.err(), Some(Rejection::Denied(Denied::WrongKind)));
+    assert_eq!(sim.task().state, TaskState::Reviewing);
+    assert_eq!(sim.run().err(), Some(Rejection::WrongState));
+}
+
+#[test]
+fn wrong_kind_is_checked_before_subject() {
+    let mut sim = at_repair_limit();
+    let r = sim.decide_as_human(DecisionKind::Accept, Subject::Commit(sha(9)));
+    assert_eq!(r.err(), Some(Rejection::Denied(Denied::WrongKind)));
+}
+
+#[test]
+fn run_at_review_clean_is_wrong_state() {
+    let mut sim = Sim::new();
+    sim.approved();
+    ok(sim.run());
+    sim.round(2, true, false);
+    assert_eq!(gate(sim.task()), Some(HumanGate::ReviewClean));
+    assert_eq!(sim.run().err(), Some(Rejection::WrongState));
+}

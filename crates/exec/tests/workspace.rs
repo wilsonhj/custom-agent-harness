@@ -1189,6 +1189,123 @@ fn secret_scan_ignores_headers_context_removed_lines_and_short_values() {
     assert_eq!((hits[0].file.as_str(), hits[0].line), ("y", 1));
 }
 
+/// A JWT-shaped value: base64url header and payload (each starting `eyJ`, i.e. `{"`) and a
+/// signature. Sanitized: the segments are not a real token.
+fn fake_jwt(tag: &str) -> String {
+    format!(
+        "{}{tag}.{}{tag}.{}",
+        concat!("ey", "JhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9"),
+        concat!("ey", "JzdWIiOiJ1c2VyLTEyMyIsImV4cCI6MH0"),
+        "c2lnbmF0dXJlLW5vdC1yZWFs_-0123456789"
+    )
+}
+
+/// The shape of the `auth.json` that `codex login` writes under `CODEX_HOME`
+/// (openai/codex `codex-rs/login/src/token_data.rs`: snake_case `id_token`, `access_token`,
+/// `refresh_token`), pretty-printed as Codex stores it, with sanitized values.
+#[test]
+fn secret_scan_flags_a_codex_auth_json_added_to_the_candidate() {
+    let lines = [
+        "{".to_owned(),
+        "  \"OPENAI_API_KEY\": null,".to_owned(),
+        "  \"tokens\": {".to_owned(),
+        format!(
+            "    \"{}\": \"{}\",",
+            concat!("id", "_token"),
+            fake_jwt("A")
+        ),
+        format!(
+            "    \"{}\": \"{}\",",
+            concat!("access", "_token"),
+            fake_jwt("B")
+        ),
+        format!(
+            "    \"{}\": \"{}\",",
+            concat!("refresh", "_token"),
+            concat!("rt", "_", "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789")
+        ),
+        "    \"account_id\": \"00000000-0000-0000-0000-000000000000\"".to_owned(),
+        "  },".to_owned(),
+        "  \"last_refresh\": \"2026-11-15T00:00:00Z\"".to_owned(),
+        "}".to_owned(),
+    ];
+    let mut diff = format!(
+        "diff --git a/auth.json b/auth.json\n--- /dev/null\n+++ b/auth.json\n@@ -0,0 +1,{} @@\n",
+        lines.len()
+    );
+    for l in &lines {
+        diff.push('+');
+        diff.push_str(l);
+        diff.push('\n');
+    }
+    let hits: Vec<(u32, &str)> = scan_for_secrets(&diff)
+        .into_iter()
+        .map(|h| {
+            assert_eq!(h.file, "auth.json");
+            (h.line, h.rule)
+        })
+        .collect();
+    assert_eq!(
+        hits,
+        [
+            (4, "json-token"),
+            (4, "jwt"),
+            (5, "json-token"),
+            (5, "jwt"),
+            (6, "json-token"),
+        ],
+        "{hits:?}"
+    );
+}
+
+#[test]
+fn secret_scan_flags_a_bare_jwt_outside_json() {
+    // Line 3: a character glued in front of the token does not hide it.
+    let diff = format!(
+        "diff --git a/run.sh b/run.sh\n--- /dev/null\n+++ b/run.sh\n@@ -0,0 +1,3 @@\n+echo hi\n+export TOKEN={}\n+x{}\n",
+        fake_jwt("C"),
+        fake_jwt("D")
+    );
+    let hits: Vec<(String, u32, &str)> = scan_for_secrets(&diff)
+        .into_iter()
+        .map(|h| (h.file, h.line, h.rule))
+        .collect();
+    assert_eq!(
+        hits,
+        [
+            ("run.sh".to_owned(), 2, "jwt"),
+            ("run.sh".to_owned(), 3, "jwt")
+        ],
+        "{hits:?}"
+    );
+}
+
+#[test]
+fn secret_scan_does_not_flag_ordinary_text_containing_eyj() {
+    let diff = [
+        "diff --git a/notes.md b/notes.md",
+        "--- /dev/null",
+        "+++ b/notes.md",
+        "@@ -0,0 +1,6 @@",
+        "+A JWT starts with eyJ because base64 of {\" is eyJ.",
+        // One segment: a base64 JSON blob, not a token.
+        &format!("+blob: {}", concat!("ey", "JhbGciOiJIUzI1NiJ9xyzabcdef")),
+        // Payload does not start with `eyJ`, so this is not a JWT.
+        &format!(
+            "+{}.notajsonpayload.signature",
+            concat!("ey", "JhbGciOiJIUzI1NiJ9")
+        ),
+        // Segments too short to be a header and a payload.
+        "+eyJa.eyJb.c",
+        "+keyJar.eyJson.example",
+        // A short snake_case value is not a token.
+        &format!("+{{\"{}\": \"short\"}}", concat!("access", "_token")),
+        "",
+    ]
+    .join("\n");
+    assert_eq!(scan_for_secrets(&diff), vec![]);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Pilot regressions (tests/local-workflow-regressions.test.mjs), one per case, same names.
 // ---------------------------------------------------------------------------------------------
