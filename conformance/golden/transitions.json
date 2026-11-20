@@ -1,0 +1,7274 @@
+{
+  "states": [
+    "Approved",
+    "Blocked",
+    "Cancelled",
+    "Closed",
+    "Draft",
+    "Failed",
+    "Implementing",
+    "MigrationGated",
+    "Observed",
+    "Planned",
+    "PreviewVerified",
+    "Released",
+    "Repair",
+    "Reviewing",
+    "Superseded",
+    "Verified"
+  ],
+  "allowed": {
+    "Approved": [
+      "Blocked",
+      "Cancelled",
+      "Implementing",
+      "Superseded"
+    ],
+    "Blocked": [
+      "Cancelled",
+      "Superseded"
+    ],
+    "Cancelled": [],
+    "Closed": [],
+    "Draft": [
+      "Blocked",
+      "Cancelled",
+      "Planned"
+    ],
+    "Failed": [
+      "Cancelled",
+      "Repair",
+      "Superseded"
+    ],
+    "Implementing": [
+      "Blocked",
+      "Cancelled",
+      "Failed",
+      "Reviewing",
+      "Superseded"
+    ],
+    "MigrationGated": [
+      "Blocked",
+      "Cancelled",
+      "Failed",
+      "Released",
+      "Repair"
+    ],
+    "Observed": [
+      "Blocked",
+      "Closed",
+      "Failed"
+    ],
+    "Planned": [
+      "Approved",
+      "Blocked",
+      "Cancelled",
+      "Draft",
+      "Superseded"
+    ],
+    "PreviewVerified": [
+      "Blocked",
+      "Cancelled",
+      "Failed",
+      "MigrationGated",
+      "Repair"
+    ],
+    "Released": [
+      "Blocked",
+      "Failed",
+      "Observed"
+    ],
+    "Repair": [
+      "Blocked",
+      "Cancelled",
+      "Failed",
+      "Reviewing",
+      "Superseded"
+    ],
+    "Reviewing": [
+      "Blocked",
+      "Cancelled",
+      "Failed",
+      "Repair",
+      "Verified"
+    ],
+    "Superseded": [],
+    "Verified": [
+      "Blocked",
+      "Cancelled",
+      "Failed",
+      "PreviewVerified",
+      "Repair"
+    ]
+  },
+  "matrix": [
+    {
+      "from": "Approved",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Approved",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Approved",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Approved",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Approved",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Approved",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Blocked",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Cancelled",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Closed",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Draft",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Draft",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Draft",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Draft",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Draft",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Failed",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Implementing",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Implementing",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Implementing",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Implementing",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Implementing",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "MigrationGated",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Observed",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Observed",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Observed",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Observed",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Observed",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Planned",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Planned",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Planned",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Planned",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Planned",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "PreviewVerified",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Released",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Released",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Released",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Released",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Released",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Repair",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Repair",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Repair",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Repair",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Repair",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Reviewing",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Reviewing",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Reviewing",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Reviewing",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Reviewing",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Superseded",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Approved",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Approved",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Verified",
+      "to": "Blocked",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Verified",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": true
+    },
+    {
+      "from": "Verified",
+      "to": "Blocked",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": true
+    },
+    {
+      "from": "Verified",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Cancelled",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Cancelled",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Closed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Closed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Draft",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Draft",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Failed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Failed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Implementing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Implementing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "MigrationGated",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "MigrationGated",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Observed",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Observed",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Planned",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Planned",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "PreviewVerified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "PreviewVerified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Released",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Released",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Repair",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Repair",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Reviewing",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Reviewing",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Superseded",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Superseded",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Verified",
+      "approval": false,
+      "blocked_record": true,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": false,
+      "allowed": false
+    },
+    {
+      "from": "Verified",
+      "to": "Verified",
+      "approval": true,
+      "blocked_record": true,
+      "allowed": false
+    }
+  ]
+}

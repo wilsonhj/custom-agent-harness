@@ -7,6 +7,7 @@
   "scripts": {
     "eng": "node harness/local/cli.mjs",
     "test": "node scripts/test.mjs",
-    "check": "node scripts/check-local.mjs"
+    "check": "node scripts/check-local.mjs",
+    "conformance": "node --test conformance/cases/*.test.mjs"
   }
 }

@@ -13,6 +13,7 @@ Check an item only when the result is recorded in `handoff.md`.
 - [ ] Human-decision gate — `cargo test -p harness-core --test lifecycle` and `ENG_BIN=target/debug/eng node --test conformance/cases/decide.test.mjs` — covers: R-7
 - [ ] Sandbox denial and fail-closed probe — `cargo test -p harness-exec --test sandbox_profile --test sandbox_live` and `conformance/cases/flow.test.mjs` (sandbox-unavailable case) — covers: R-8, R-9
 - [ ] Egress allowlist — `cargo test -p harness-exec --test egress` — covers: R-10
+- [ ] Implemented operator grant, audit binding and revocation checks — `cargo test -p harness-engine --test egress_policy` — covers: R-17
 - [ ] Missing/unknown classes, unauthorized provider, missing/unverified BAA entry and restrictive derived inputs deny hosted spawn; explicitly authorized eligible input succeeds — `cargo test -p harness-engine --test flow` — covers: R-17
 - [ ] Missing optional deny targets (including repository agent config and `~/.ssh`/`~/.aws`) resolve through the nearest existing ancestor and remain denied after creation; required-root, broken-symlink and other resolution errors fail closed — `cargo test -p harness-exec --test sandbox_profile --test sandbox_live` — covers: R-9
 - [ ] Process-tree cleanup covers detachment and responsibility disclaim; unestablished containment refuses spawn; supervisor loss, tracking failure or timeout returns no `TreeGone` and retains the lock — `cargo test -p harness-exec --test supervisor` — covers: R-11

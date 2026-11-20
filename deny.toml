@@ -1,0 +1,5 @@
+# cargo-deny policy. Licence choice is pending (design section 14 Q5); this only restricts sources.
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
