@@ -64,7 +64,7 @@ Method supplied by the owner: subagent-driven, parallel where interfaces allow, 
 | 8 Adapters: Claude and Codex | 2 | Sonnet | E |
 | 9 Store and engine | 4, 5, 6, 7, 8 | Opus | F |
 | 10 CLI and conformance flow | 9 | Sonnet | G |
-| 11 Live tests and first real run | 10, owner present | Lead + owner | H |
+| 11 Live tests and first real run | 10, 13, owner present | Lead + owner | H |
 
 Group E tasks touch disjoint files and consume only Task 2's types, so they run in separate worktrees.
 
