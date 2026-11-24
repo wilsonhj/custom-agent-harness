@@ -21,7 +21,9 @@ This file records only what the packet template asks for.
 
 - A Rust stable toolchain, installed by the owner (not present on the owner's Mac on
   2026-11-09).
-- Claude Code 2.1.318 and codex-cli 0.166.0, logged in by the owner through `eng login`.
+- Claude Code 2.1.318 and a tested codex-cli version (0.166.0 or 0.169.0; the list is
+  `TESTED_VERSIONS` in `crates/adapters/src/codex.rs`, issue #20), logged in by the owner
+  through `eng login`.
 - Node 24 for the conformance runner (already required by `package.json`).
 - Supersedes for this slice: adapter-interface D1 (Linux only) and D4 (TypeScript modules);
   claude-adapter C-2, C-7, C-8. Those packets are not edited here.
