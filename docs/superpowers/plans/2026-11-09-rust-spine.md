@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Platform: macOS 26 on Apple silicon only. Linux is the first follow-up, not this plan.
-- Pinned runtimes: Claude Code `2.1.318`, codex-cli `0.166.0`. A different `--version` fails the run with `VersionMismatch` before any task content is sent.
+- Pinned runtimes: Claude Code `2.1.318`; codex-cli one of the tested versions `0.166.0`, `0.169.0` (`TESTED_VERSIONS`, issue #20). Any other `--version` fails the run with `VersionMismatch` before any task content is sent.
 - `harness-core` must not use `std::fs`, `std::process`, `std::time::SystemTime`, any RNG, tokio or rusqlite. Time and IDs arrive as data.
 - `harness-adapters` must not depend on tokio and must never spawn a process.
 - Only `harness-store` touches SQLite. Only `harness-exec` spawns processes or runs Git.

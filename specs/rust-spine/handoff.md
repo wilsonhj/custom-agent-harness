@@ -923,6 +923,10 @@ Decisions for review:
    (#23). The credential broker is the follow-up.
 3. `design.md:24` and the plan still describe one exact Codex pin; the code now uses a
    tested-version list (#20).
+   Update 2026-11-24: `design.md` (Dependencies) and the plan's "Pinned runtimes" line now
+   name the tested-version list. The research notes under `docs/superpowers/specs/` keep
+   0.166.0 because they record what was installed on 2026-11-09. Accepting the list as policy
+   is still the reviewer's call.
 
 Exact next action (updated 2026-11-20): #25 and #18 are merged (`main` at `483f630`), so a
 human reviews the three decisions above against `main`; the current overall next action is
